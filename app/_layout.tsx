@@ -1,0 +1,257 @@
+import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
+import { BASE_URL } from "@/data/constants";
+import "@/global.css";
+import { useCustomModal } from "@/hooks/useCustomModal";
+import { store } from "@/store";
+import { ThemeProvider } from "@/theme";
+import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
+import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_800ExtraBold_Italic,
+  useFonts,
+} from "@expo-google-fonts/inter";
+import Entypo from "@expo/vector-icons/Entypo";
+import messaging from "@react-native-firebase/messaging";
+import * as Font from "expo-font";
+import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
+import { Slot, useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
+import * as SplashScreen from "expo-splash-screen";
+import { useEffect, useRef } from "react";
+import { StatusBar } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Provider as ReduxProvider } from "react-redux";
+SplashScreen.preventAutoHideAsync();
+
+if (typeof __DEV__ !== "undefined" && __DEV__) {
+  // Check Metro/Logcat: must match a URL your phone can open (firewall, same LAN, or adb reverse)
+  // eslint-disable-next-line no-console
+  console.log(`[FieldFlicks] API BASE_URL: ${BASE_URL}`);
+}
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+export default function RootLayout() {
+  const { showModal, ModalComponent } = useCustomModal();
+  const router = useRouter();
+
+  const [interLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_800ExtraBold_Italic,
+  });
+
+  // Startup routing is handled by `app/index` (splash) → /home or /login
+
+  useEffect(() => {
+    const checkTokenAndSetupListener = async () => {
+      try {
+        const token = await SecureStore.getItemAsync("token");
+        console.log("SecureStore token:", token);
+
+        if (token) {
+          setupFcmTokenRefreshListener();
+        } else {
+        
+        }
+      } catch (error) {
+       
+      }
+    };
+    checkTokenAndSetupListener();
+  }, []);
+
+
+  const notificationListener = useRef<Notifications.Subscription>(null);
+  const responseListener = useRef<Notifications.Subscription>(null);
+
+  useEffect(() => {
+    // Foreground notification
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
+        console.log("🔔 Notification Received:", notification);
+      });
+
+    // When user taps notification
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("📲 Notification Response:", response);
+      });
+
+    return () => {
+      Notifications.removeNotificationSubscription(
+        notificationListener.current!
+      );
+      Notifications.removeNotificationSubscription(responseListener.current!);
+    };
+  }, []);
+
+  // notification commented
+  // useEffect(() => {
+  //   registerForPushNotificationsAsync().then((token) => {
+  //     console.log("Expo Push Token:", token);
+  //     setExpoPushToken(token);
+  //   });
+
+  //   // Foreground notification
+  //   notificationListener.current =
+  //     Notifications.addNotificationReceivedListener((notification) => {
+  //       console.log("Notification Received in foreground:", notification);
+  //     });
+
+  //   // When user taps the notification
+  //   responseListener.current =
+  //     Notifications.addNotificationResponseReceivedListener((response) => {
+  //       console.log("Notification tapped:", response);
+  //     });
+
+  //   return () => {
+  //     Notifications.removeNotificationSubscription(
+  //       notificationListener.current
+  //     );
+  //     Notifications.removeNotificationSubscription(responseListener.current);
+  //   };
+  // }, []);
+
+  useEffect(() => {
+    async function prepare() {
+      try {
+        await Font.loadAsync(Entypo.font);
+      } catch (e) {
+        console.warn(e);
+      }
+      if (interLoaded) {
+        await SplashScreen.hideAsync();
+      }
+    }
+
+    void prepare();
+  }, [interLoaded]);
+
+  // Deep link handling
+  useEffect(() => {
+    const handleDeepLink = (url: string) => {
+      console.log('Deep link received:', url);
+      
+      // Check if it's a shared recording link
+      if (url.includes('shared-recording')) {
+        // Extract the recording ID from the URL
+        const recordingIdMatch = url.match(/shared-recording\/([^?&]+)/);
+        if (recordingIdMatch) {
+          const recordingId = recordingIdMatch[1];
+          console.log('Navigating to shared recording:', recordingId);
+          
+          router.push({
+            pathname: '/shared-recording/[recordingId]',
+            params: { recordingId }
+          });
+        }
+      }
+    };
+
+    // Handle initial URL when app is opened via deep link
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleDeepLink(url);
+      }
+    });
+
+    // Handle subsequent deep links when app is already running
+    const subscription = Linking.addEventListener('url', (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!canUseReactNativeFirebase()) {
+      return;
+    }
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = messaging().onMessage(async (remoteMessage) => {
+        showModal(
+          "info",
+          remoteMessage.notification?.title ?? "",
+          remoteMessage.notification?.body ?? ""
+        );
+      });
+      messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+        console.log("Background message:", remoteMessage);
+      });
+    } catch (e) {
+      console.warn("Firebase messaging not initialized:", e);
+    }
+    return () => unsubscribe?.();
+  }, [showModal]);
+
+  return (
+    <GluestackUIProvider mode="dark">
+      <ReduxProvider store={store}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
+            <ThemeProvider>
+              <StatusBar barStyle="light-content" />
+              <Slot />
+              <ModalComponent />
+            </ThemeProvider>
+          </SafeAreaView>
+        </GestureHandlerRootView>
+      </ReduxProvider>
+    </GluestackUIProvider>
+  );
+}
+
+// async function registerForPushNotificationsAsync() {
+//   let token;
+//   if (Constants.isDevice) {
+//     const { status: existingStatus } = await Notifications.getPermissionsAsync();
+//     let finalStatus = existingStatus;
+
+//     if (existingStatus !== 'granted') {
+//       const { status } = await Notifications.requestPermissionsAsync();
+//       finalStatus = status;
+//     }
+
+//     if (finalStatus !== 'granted') {
+//       // alert('Failed to get push token for push notification!');
+//       return;
+//     }
+
+//     token = (await Notifications.getExpoPushTokenAsync()).data;
+//   } else {
+//     // alert('Must use physical device for Push Notifications');
+//   }
+
+//   if (Platform.OS === 'android') {
+//     await Notifications.setNotificationChannelAsync('default', {
+//       name: 'default',
+//       importance: Notifications.AndroidImportance.MAX,
+//       vibrationPattern: [0, 250, 250, 250],
+//       lightColor: '#FF231F7C',
+//     });
+//   }
+
+//   return token;
+// }

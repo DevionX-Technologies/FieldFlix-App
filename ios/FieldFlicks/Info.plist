@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
+    <key>CFBundleAllowMixedLocalizations</key>
+    <true/>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleDisplayName</key>
+    <string>FieldFlicks</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.1.9</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>fieldflicks</string>
+          <string>com.fieldflicks</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>com.googleusercontent.apps.350089393900-s615t02m6d1mnc4vja4e9ndd753ti3s3</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>exp+fieldflicks-mobile-latest</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleURLName</key>
+        <string>razorpay</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+          <string>rzp_RQbGJa98EUfITd</string>
+        </array>
+      </dict>
+    </array>
+    <key>CFBundleVersion</key>
+    <string>13</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>airmail</string>
+      <string>message</string>
+      <string>bluemail</string>
+      <string>canary</string>
+      <string>edisonmail</string>
+      <string>szn-email</string>
+      <string>fastmail</string>
+      <string>x-gmxmail-netid-v1</string>
+      <string>googlegmail</string>
+      <string>mailrumail</string>
+      <string>ms-outlook</string>
+      <string>protonmail</string>
+      <string>ctxmail</string>
+      <string>readdle-spark</string>
+      <string>superhuman</string>
+      <string>telekommail</string>
+      <string>tutanota</string>
+      <string>x-webdemail-netid-v1</string>
+      <string>ymail</string>
+      <string>yandexmail</string>
+      <string>appcenter-f45b4c0b-75c9-2d01-7ab6-41f6a6015be2</string>
+      <string>mymail-mailto</string>
+    </array>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+      <key>NSAllowsArbitraryLoads</key>
+      <false/>
+      <key>NSAllowsLocalNetworking</key>
+      <true/>
+    </dict>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>FieldFlicks may use Bluetooth to connect with nearby devices for sharing or syncing features.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>FieldFlicks can access your calendar to help schedule and manage important events.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your camera</string>
+    <key>NSContactsUsageDescription</key>
+    <string>FieldFlicks can access your contacts so you can invite friends and share content easily.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to use your location.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your location</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>FieldFlicks uses your location to provide location-based services and improve your experience.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your microphone</string>
+    <key>NSMotionUsageDescription</key>
+    <string>FieldFlicks may use motion and fitness data to enhance activity tracking features.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>FieldFlicks needs permission to save photos and videos to your library after you capture or edit them.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>FieldFlicks needs access to your photo library so you can upload a profile picture and share images from your device.</string>
+    <key>NSRemindersUsageDescription</key>
+    <string>FieldFlicks can access your reminders so you can track and manage tasks directly from the app.</string>
+    <key>NSUserActivityTypes</key>
+    <array>
+      <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
+    </array>
+    <key>RazorpayMerchantId</key>
+    <string>RQbGJa98EUfITd</string>
+    <key>UIBackgroundModes</key>
+    <array>
+      <string>audio</string>
+    </array>
+    <key>UILaunchStoryboardName</key>
+    <string>SplashScreen</string>
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+      <string>arm64</string>
+    </array>
+    <key>UIRequiresFullScreen</key>
+    <false/>
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleDefault</string>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+      <string>UIInterfaceOrientationPortrait</string>
+      <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+      <string>UIInterfaceOrientationPortrait</string>
+      <string>UIInterfaceOrientationPortraitUpsideDown</string>
+      <string>UIInterfaceOrientationLandscapeLeft</string>
+      <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UIUserInterfaceStyle</key>
+    <string>Automatic</string>
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+  </dict>
+</plist>
