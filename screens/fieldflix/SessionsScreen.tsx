@@ -74,7 +74,7 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
 /** List layout from `web/src/screens/SessionsScreen.tsx`; rows from `GET /recording/my-recordings`. */
 export default function FieldflixSessionsScreen() {
   const router = useRouter();
-  const { rows, loading, backendLog, load } = useSessionsMyRecordings(
+  const { rows, loading, backendLog, error, load } = useSessionsMyRecordings(
     mapRecordingToSessionRow,
   );
   const [logModalOpen, setLogModalOpen] = useState(false);
@@ -128,6 +128,14 @@ export default function FieldflixSessionsScreen() {
                   <Text style={styles.logsBtnText}>Logs</Text>
                 </Pressable>
               ) : null}
+              <Pressable
+                onPress={() => void load()}
+                accessibilityRole="button"
+                accessibilityLabel="Reload sessions"
+                style={styles.reloadBtn}
+              >
+                <Text style={styles.reloadBtnText}>{loading ? 'Reloading…' : 'Reload'}</Text>
+              </Pressable>
             </View>
 
             <View style={styles.section}>
@@ -138,6 +146,18 @@ export default function FieldflixSessionsScreen() {
               {loading ? (
                 <View style={styles.loading}>
                   <ActivityIndicator size="large" color={WEB.green} />
+                </View>
+              ) : error ? (
+                <View style={styles.errorWrap}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  <Pressable
+                    onPress={() => void load()}
+                    style={styles.retryBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading sessions"
+                  >
+                    <Text style={styles.retryBtnText}>Try again</Text>
+                  </Pressable>
                 </View>
               ) : rows.length === 0 ? (
                 <Text style={styles.empty}>
@@ -349,6 +369,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
   },
+  reloadBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+  },
+  reloadBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: WEB.green,
+  },
   logsBtnText: {
     fontFamily: FF.semiBold,
     fontSize: 14,
@@ -428,6 +462,35 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  errorWrap: {
+    gap: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 8,
+  },
+  errorText: {
+    fontFamily: FF.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
+  },
+  retryBtn: {
+    minHeight: 36,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
+    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: WEB.green,
   },
   empty: {
     fontFamily: FF.regular,

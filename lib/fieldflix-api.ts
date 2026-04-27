@@ -351,7 +351,13 @@ export async function uploadProfilePicture(params: {
   return text.replace(/^"|"$/g, '');
 }
 
-export type PlanId = 'free' | 'pro' | 'premium';
+export type PlanId =
+  | 'cricket'
+  | 'pickleball'
+  | 'padel'
+  | 'free'
+  | 'pro'
+  | 'premium';
 
 export type PlanOrderResponse = {
   id: string;
@@ -384,7 +390,7 @@ export async function verifyRazorpayPayment(body: {
 
 export type ActivePlan = {
   active: boolean;
-  plan: 'free' | 'pro' | 'premium' | null;
+  plan: PlanId | null;
   paid_at: string | null;
   expires_at: string | null;
   payment_id: string | null;

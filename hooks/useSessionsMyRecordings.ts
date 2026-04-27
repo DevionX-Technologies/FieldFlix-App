@@ -30,19 +30,28 @@ export function useSessionsMyRecordings(mapRecordingToSessionRow: MapRowFn) {
   const [rows, setRows] = useState<SessionRowForUi[]>([]);
   const [loading, setLoading] = useState(true);
   const [backendLog, setBackendLog] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const genRef = useRef(0);
   /** Last successful mapped count — for “keep previous rows” on error. */
   const lastSuccessCountRef = useRef(0);
 
   const load = useCallback(async () => {
     const gen = ++genRef.current;
+    setError(null);
     if (lastSuccessCountRef.current === 0) {
       setLoading(true);
     }
 
     const ts = new Date().toISOString();
     try {
-      const data = await getMyRecordings();
+      const data = await Promise.race([
+        getMyRecordings(),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('Sessions request timed out. Please tap Reload.'));
+          }, 15_000);
+        }),
+      ]);
       if (gen !== genRef.current) {
         return;
       }
@@ -98,6 +107,11 @@ export function useSessionsMyRecordings(mapRecordingToSessionRow: MapRowFn) {
       if (gen !== genRef.current) {
         return;
       }
+      setError(
+        e instanceof Error && e.message
+          ? e.message
+          : 'Could not load sessions right now. Please tap Reload.',
+      );
       const hadSessions = lastSuccessCountRef.current > 0;
       setRows((prev) => (prev.length > 0 ? prev : []));
       setBackendLog(
@@ -113,5 +127,5 @@ export function useSessionsMyRecordings(mapRecordingToSessionRow: MapRowFn) {
     }
   }, [mapRecordingToSessionRow]);
 
-  return { rows, loading, backendLog, load };
+  return { rows, loading, backendLog, error, load };
 }

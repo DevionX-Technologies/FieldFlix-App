@@ -129,7 +129,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; previewOnly?: string }>();
   const recordingId = forcedRecordingId ?? (params.id as string | undefined) ?? '';
-  const { isPaid: rawIsPaid, refresh } = useEntitlement();
+  const { isPaid: rawIsPaid, plan, refresh } = useEntitlement();
   const isPaid = forcePreview ? false : rawIsPaid;
   const previewOnly = forcePreview || params.previewOnly === '1';
 
@@ -250,10 +250,38 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       ? (recording.turf.sports_supported as string[])
       : undefined,
   );
+  const requiredSportPlan = useMemo<'cricket' | 'pickleball' | 'padel' | null>(() => {
+    const raw = String(sportLabel || '').toLowerCase();
+    if (raw.includes('cricket')) return 'cricket';
+    if (raw.includes('pickle')) return 'pickleball';
+    if (raw.includes('padel') || raw.includes('paddle')) return 'padel';
+    return null;
+  }, [sportLabel]);
+  const hasSportAccess = useMemo(() => {
+    if (!isPaid) return false;
+    if (!requiredSportPlan) return true;
+    if (plan === 'cricket' || plan === 'pickleball' || plan === 'padel') {
+      return plan === requiredSportPlan;
+    }
+    // Legacy paid plans still keep full access.
+    return true;
+  }, [isPaid, plan, requiredSportPlan]);
+  const planLabel =
+    requiredSportPlan === 'pickleball'
+      ? 'Pickleball'
+      : requiredSportPlan === 'cricket'
+        ? 'Cricket'
+        : requiredSportPlan === 'padel'
+          ? 'Padel'
+          : null;
 
   const onWatchHero = useCallback(() => {
     if (!recordingId) return;
     if (!isPaid && !previewOnly) {
+      router.push(Paths.profilePremium);
+      return;
+    }
+    if (!hasSportAccess && !previewOnly) {
       router.push(Paths.profilePremium);
       return;
     }
@@ -277,6 +305,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   }, [
     recordingId,
     isPaid,
+    hasSportAccess,
     previewOnly,
     heroPlaybackUrl,
     recording,
@@ -322,7 +351,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
   const onHighlightPress = useCallback(
     async (h: RecordingHighlightDto) => {
-      if (!isPaid) {
+      if (!isPaid || !hasSportAccess) {
         router.push(Paths.profilePremium);
         return;
       }
@@ -346,7 +375,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         },
       });
     },
-    [isPaid, recording, recordingId, router],
+    [hasSportAccess, isPaid, recording, recordingId, router],
   );
 
   if (loading) {
@@ -415,10 +444,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                       : 'Processing'}
                   </Text>
                 </View>
-                {!isPaid ? (
+                {!hasSportAccess ? (
                   <View style={styles.previewPill}>
                     <LockIcon size={12} />
-                    <Text style={styles.previewPillText}>Preview only</Text>
+                    <Text style={styles.previewPillText}>
+                      {isPaid && planLabel ? `${planLabel} plan required` : 'Preview only'}
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -441,10 +472,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   />
                   <PlayIcon color="#fff" size={16} />
                   <Text style={styles.watchBtnText}>
-                    {isPaid ? 'Watch Now' : 'Unlock Full Match'}
+                    {hasSportAccess ? 'Watch Now' : 'Unlock this sport'}
                   </Text>
                 </Pressable>
-                {!isPaid ? (
+                {!hasSportAccess ? (
                   <Pressable
                     style={styles.previewBtn}
                     onPress={onPreviewHero}
@@ -485,7 +516,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 key={h.id}
                 highlight={h}
                 index={idx}
-                isPaid={isPaid}
+                hasSportAccess={hasSportAccess}
                 onPress={() => void onHighlightPress(h)}
               />
             ))}
@@ -537,12 +568,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 function HighlightRow({
   highlight,
   index,
-  isPaid,
+  hasSportAccess,
   onPress,
 }: {
   highlight: RecordingHighlightDto;
   index: number;
-  isPaid: boolean;
+  hasSportAccess: boolean;
   onPress: () => void;
 }) {
   const thumb = highlight.thumbnail_url
@@ -552,7 +583,7 @@ function HighlightRow({
     <Pressable style={styles.row} onPress={onPress}>
       <View style={styles.rowThumb}>
         <Image source={thumb} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-        {!isPaid ? (
+        {!hasSportAccess ? (
           <View style={styles.rowLockBadge}>
             <LockIcon size={12} />
           </View>
