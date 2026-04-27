@@ -155,22 +155,36 @@ export default function FieldflixSessionsScreen() {
                 </Text>
               ) : (
                 <View style={styles.cards} collapsable={false}>
-                  {rows.map((row) => (
-                    <Pressable
-                      key={row.id}
-                      style={styles.cardPressable}
-                      onPress={() =>
-                        router.push({
-                          pathname: Paths.highlights as never,
-                          params: { id: row.recordingId },
-                        })
-                      }
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open ${row.arena} highlights`}
-                    >
-                      <SessionCard row={row} />
-                    </Pressable>
-                  ))}
+                  {rows.map((row) => {
+                    const canOpen = row.isReady;
+                    return (
+                      <Pressable
+                        key={row.id}
+                        disabled={!canOpen}
+                        style={({ pressed }) => [
+                          styles.cardPressable,
+                          !canOpen && styles.cardPressableDisabled,
+                          canOpen && pressed && styles.cardPressablePressed,
+                        ]}
+                        onPress={() => {
+                          if (!canOpen) return;
+                          router.push({
+                            pathname: Paths.highlights as never,
+                            params: { id: row.recordingId },
+                          });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: !canOpen }}
+                        accessibilityLabel={
+                          canOpen
+                            ? `Open ${row.arena} highlights`
+                            : `${row.arena} is still processing. Try again when ready.`
+                        }
+                      >
+                        <SessionCard row={row} />
+                      </Pressable>
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -238,12 +252,23 @@ function SessionCard({ row }: { row: SessionRowExtended }) {
       </View>
 
       {row.playIcon ? (
-        <Pressable
-          style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
-          accessibilityLabel="Share or play session"
-        >
-          <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
-        </Pressable>
+        isProcessing ? (
+          <View
+            style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
+            pointerEvents="none"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          >
+            <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+          </View>
+        ) : (
+          <Pressable
+            style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
+            accessibilityLabel="Share or play session"
+          >
+            <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+          </Pressable>
+        )
       ) : null}
 
       <View
@@ -377,6 +402,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 372,
     alignSelf: 'center',
+  },
+  cardPressableDisabled: {
+    opacity: 0.72,
+  },
+  cardPressablePressed: {
+    opacity: 0.92,
   },
   card: {
     position: 'relative',
