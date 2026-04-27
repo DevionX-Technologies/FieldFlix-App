@@ -6,6 +6,7 @@ import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { gradientPillInner } from '@/screens/fieldflix/fieldflixUi';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import * as SecureStore from 'expo-secure-store';
+import { requestAndRegisterFcmToken, setupFcmTokenRefreshListener } from '@/utils/fcmTokenManager';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -97,6 +98,12 @@ export default function FieldflixOtpScreen() {
     try {
       const res = await verifyOtp(mobile, code);
       await SecureStore.setItemAsync('token', res.token);
+      try {
+        setupFcmTokenRefreshListener();
+        await requestAndRegisterFcmToken();
+      } catch {
+        // FCM is optional; dev build / permissions may skip.
+      }
       // AccountType is a one-time signup step. Returning users skip it.
       if (isSignup === '1') {
         router.replace(Paths.accountType);

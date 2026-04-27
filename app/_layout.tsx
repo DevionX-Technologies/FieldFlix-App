@@ -4,8 +4,10 @@ import "@/global.css";
 import { useCustomModal } from "@/hooks/useCustomModal";
 import { store } from "@/store";
 import { ThemeProvider } from "@/theme";
-import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
+import { presentEventNotification } from "@/utils/presentEventNotification";
+import { requestAndRegisterFcmToken, setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
 import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
+import { routeFromNotificationData } from "@/utils/notificationRouting";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -38,29 +40,14 @@ if (typeof __DEV__ !== "undefined" && __DEV__) {
 }
 
 /**
- * Routes an FCM payload to the right in-app screen. Supports
- * `RECORDING_COMPLETE` taps which deep-link to the per-recording highlights view.
+ * Routes an FCM / notification payload to the right in-app screen.
  */
 function handleFcmTap(
   remoteMessage: any,
   router: { push: (h: any) => void },
 ): void {
   try {
-    const data = remoteMessage?.data ?? {};
-    const action = String(data?.click_action ?? data?.notification_type ?? "")
-      .toUpperCase();
-    if (action === "RECORDING_COMPLETE") {
-      const recordingId =
-        data?.recordingId ?? data?.recording_id ?? data?.id ?? null;
-      if (recordingId) {
-        router.push({
-          pathname: "/highlights/[id]",
-          params: { id: String(recordingId) },
-        });
-      } else {
-        router.push("/recordings");
-      }
-    }
+    routeFromNotificationData(remoteMessage?.data ?? {}, router);
   } catch (err) {
     console.warn("Failed to route FCM tap:", err);
   }
@@ -76,7 +63,7 @@ Notifications.setNotificationHandler({
   }),
 });
 export default function RootLayout() {
-  const { showModal, ModalComponent } = useCustomModal();
+  const { ModalComponent } = useCustomModal();
   const router = useRouter();
 
   const [interLoaded] = useFonts({
@@ -93,19 +80,19 @@ export default function RootLayout() {
   useEffect(() => {
     const checkTokenAndSetupListener = async () => {
       try {
+        await Notifications.requestPermissionsAsync();
         const token = await SecureStore.getItemAsync("token");
         console.log("SecureStore token:", token);
 
         if (token) {
           setupFcmTokenRefreshListener();
-        } else {
-        
+          await requestAndRegisterFcmToken();
         }
       } catch (error) {
-       
+        /* ignore */
       }
     };
-    checkTokenAndSetupListener();
+    void checkTokenAndSetupListener();
   }, []);
 
 
@@ -124,23 +111,9 @@ export default function RootLayout() {
       Notifications.addNotificationResponseReceivedListener((response) => {
         console.log("📲 Notification Response:", response);
         try {
-          const data: any =
+          const data: unknown =
             response?.notification?.request?.content?.data ?? {};
-          const action = String(
-            data?.click_action ?? data?.notification_type ?? "",
-          ).toUpperCase();
-          if (action === "RECORDING_COMPLETE") {
-            const recordingId =
-              data?.recordingId ?? data?.recording_id ?? data?.id ?? null;
-            if (recordingId) {
-              router.push({
-                pathname: "/highlights/[id]",
-                params: { id: String(recordingId) },
-              });
-            } else {
-              router.push("/recordings");
-            }
-          }
+          routeFromNotificationData(data, router);
         } catch (err) {
           console.warn("Failed to route notification tap:", err);
         }
@@ -252,12 +225,24 @@ export default function RootLayout() {
     try {
       unsubs.push(
         messaging().onMessage(async (remoteMessage) => {
-          showModal(
-            "info",
-            remoteMessage.notification?.title ?? "",
-            remoteMessage.notification?.body ?? ""
-          );
-        })
+          const title =
+            remoteMessage.notification?.title ?? "FieldFlicks";
+          const body = remoteMessage.notification?.body ?? "";
+          const d = (remoteMessage.data ?? {}) as Record<string, string>;
+          const t =
+            d.notification_type ?? d.click_action ?? "MESSAGE";
+          try {
+            await presentEventNotification({
+              title,
+              body,
+              notificationType: String(t),
+              data: d,
+              persist: false,
+            });
+          } catch (e) {
+            console.warn("presentEventNotification (FCM foreground):", e);
+          }
+        }),
       );
 
       // Cold-start: app opened by tapping a notification.
@@ -290,7 +275,7 @@ export default function RootLayout() {
       console.warn("Firebase messaging not initialized:", e);
     }
     return () => unsubs.forEach((u) => u?.());
-  }, [showModal, router]);
+  }, [router]);
 
   return (
     <GluestackUIProvider mode="dark">

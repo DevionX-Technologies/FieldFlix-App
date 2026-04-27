@@ -10,6 +10,7 @@ import {
   TURF_ID,
 } from "@/data/constants";
 import { Paths } from "@/data/paths";
+import { presentEventNotification } from "@/utils/presentEventNotification";
 import axiosInstance from "@/utils/axiosInstance";
 import axios from "axios";
 import { useRouter } from "expo-router";
@@ -159,6 +160,13 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       await SecureStore.setItemAsync("end_time", String(endMs));
       setIsRunning(true);
 
+      void presentEventNotification({
+        title: "Recording started",
+        body: "Your session is live. We will notify you when processing finishes.",
+        notificationType: "LOCAL_RECORDING_START",
+        data: { recordingId: String(newId) },
+      });
+
       const nowIso = new Date().toISOString();
       await SecureStore.setItemAsync(
         RECORDING_KEY,
@@ -257,6 +265,13 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       console.log("PUT /recording/stop", { recordingId: id });
 
       await axiosInstance.put(`/recording/stop/${id}`, { recordingId: id });
+
+      void presentEventNotification({
+        title: "Recording stopped",
+        body: "Your video is processing. We will alert you when it is ready to watch.",
+        notificationType: "LOCAL_RECORDING_STOP",
+        data: { recordingId: String(id) },
+      });
 
       showModal(
         "success",
