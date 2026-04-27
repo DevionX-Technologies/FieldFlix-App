@@ -278,11 +278,17 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const onWatchHero = useCallback(() => {
     if (!recordingId) return;
     if (!isPaid && !previewOnly) {
-      router.push(Paths.profilePremium);
+      router.push({
+        pathname: Paths.profilePremium,
+        params: { sport: requiredSportPlan ?? undefined },
+      });
       return;
     }
     if (!hasSportAccess && !previewOnly) {
-      router.push(Paths.profilePremium);
+      router.push({
+        pathname: Paths.profilePremium,
+        params: { sport: requiredSportPlan ?? undefined },
+      });
       return;
     }
     if (!heroPlaybackUrl) {
@@ -352,7 +358,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const onHighlightPress = useCallback(
     async (h: RecordingHighlightDto) => {
       if (!isPaid || !hasSportAccess) {
-        router.push(Paths.profilePremium);
+        router.push({
+          pathname: Paths.profilePremium,
+          params: { sport: requiredSportPlan ?? undefined },
+        });
         return;
       }
       if (!h.mux_public_playback_url || h.status !== 'ready') return;
@@ -375,7 +384,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         },
       });
     },
-    [hasSportAccess, isPaid, recording, recordingId, router],
+    [hasSportAccess, isPaid, recording, recordingId, requiredSportPlan, router],
   );
 
   if (loading) {
@@ -494,7 +503,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             <Pressable
               hitSlop={8}
               onPress={() => {
-                if (!isPaid) router.push(Paths.profilePremium);
+                if (!isPaid) {
+                  router.push({
+                    pathname: Paths.profilePremium,
+                    params: { sport: requiredSportPlan ?? undefined },
+                  });
+                }
               }}
             >
               <View style={styles.viewAllPill}>

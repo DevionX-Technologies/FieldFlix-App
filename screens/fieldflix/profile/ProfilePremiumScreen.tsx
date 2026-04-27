@@ -11,8 +11,8 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import { gradientPillInner } from '@/screens/fieldflix/fieldflixUi';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -77,6 +77,7 @@ const PLAN_ORDER: { id: PlanId; name: string; sub: string; price: string; img: n
  */
 export default function FieldflixProfilePremiumScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ sport?: string }>();
   const insets = useSafeAreaInsets();
   const [pay, setPay] = useState<Pay>('upi');
   const [plan, setPlan] = useState<PlanId>('padel');
@@ -85,13 +86,41 @@ export default function FieldflixProfilePremiumScreen() {
   const planScrollViewportW = useRef(0);
   const planScrollContentW = useRef(0);
 
-  const scrollPlansToProCenter = (contentW: number, viewportW: number) => {
+  const scrollPlansToCenter = (contentW: number, viewportW: number) => {
     const el = planScroll.current as unknown as { scrollTo: (o: { x: number; animated: boolean }) => void } | null;
     if (!el?.scrollTo) return;
     if (viewportW <= 0 || contentW <= 0) return;
-    const maxX = Math.max(0, contentW - viewportW);
-    el.scrollTo({ x: maxX / 2, animated: false });
+    const selectedIndex = PLAN_ORDER.findIndex((p) => p.id === plan);
+    if (selectedIndex < 0) return;
+    const targetCenter =
+      PLANS_H_PAD +
+      selectedIndex * (PLAN_CARD_W + PLAN_GAP) +
+      PLAN_CARD_W / 2;
+    const x = Math.max(0, Math.min(contentW - viewportW, targetCenter - viewportW / 2));
+    el.scrollTo({ x, animated: false });
   };
+
+  useEffect(() => {
+    const raw = String(params.sport ?? '').toLowerCase();
+    const preferred: PlanId | null =
+      raw.includes('cricket')
+        ? 'cricket'
+        : raw.includes('pickle')
+          ? 'pickleball'
+          : raw.includes('padel') || raw.includes('paddle')
+            ? 'padel'
+            : null;
+    if (preferred) {
+      setPlan(preferred);
+    }
+  }, [params.sport]);
+
+  useEffect(() => {
+    scrollPlansToCenter(
+      planScrollContentW.current,
+      planScrollViewportW.current,
+    );
+  }, [plan]);
 
   const onUpgrade = async () => {
     if (!RAZORPAY_KEY_ID) {
@@ -204,11 +233,11 @@ export default function FieldflixProfilePremiumScreen() {
               onLayout={(e) => {
                 const vw = e.nativeEvent.layout.width;
                 planScrollViewportW.current = vw;
-                scrollPlansToProCenter(planScrollContentW.current, vw);
+                scrollPlansToCenter(planScrollContentW.current, vw);
               }}
               onContentSizeChange={(w) => {
                 planScrollContentW.current = w;
-                scrollPlansToProCenter(w, planScrollViewportW.current);
+                scrollPlansToCenter(w, planScrollViewportW.current);
               }}
               contentContainerStyle={styles.plansScroll}
             >

@@ -1,10 +1,16 @@
 import { Paths } from '@/data/paths';
+import ErrorBoundary from '@/components/organisms/ErrorBoundary/ErrorBoundary';
 import { useSessionsMyRecordings, type SessionRowForUi } from '@/hooks/useSessionsMyRecordings';
 import { FF } from '@/screens/fieldflix/fonts';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
-import { SESSIONS_BACK_ARROW, SESSIONS_ROW, type SessionRowLocal } from '@/screens/fieldflix/sessionsData';
+import {
+  SESSIONS_BACK_ARROW,
+  SESSIONS_ROW,
+  SESSIONS_SPORT_TEMPLATES,
+  type SessionRowLocal,
+} from '@/screens/fieldflix/sessionsData';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import {
   formatRecordingListWhen,
@@ -13,14 +19,11 @@ import {
   recordingThumbUrl,
   sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Clipboard from 'expo-clipboard';
 import {
   ActivityIndicator,
-  Alert,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,14 +34,15 @@ import { useRouter } from 'expo-router';
 
 /** 21px / 372px — right inset for play + Completed (web `SessionsScreen.tsx`) */
 const CARD_PAD_X_PCT = (21 / 372) * 100;
-const SHOW_SESSION_LOGS_BUTTON = false;
 
 function pickTemplateForSport(sport: string): SessionRowLocal {
   const s = sport.toLowerCase();
+  if (s.includes('cricket')) return SESSIONS_SPORT_TEMPLATES.cricket;
+  if (s.includes('padel') || s === 'paddle') return SESSIONS_SPORT_TEMPLATES.padel;
+  if (s.includes('pickle')) return SESSIONS_ROW[0];
   if (s.includes('badminton')) return SESSIONS_ROW[1];
   if (s.includes('tennis')) return SESSIONS_ROW[2];
   if (s.includes('basketball')) return SESSIONS_ROW[3];
-  if (s.includes('cricket')) return SESSIONS_ROW[4] ?? SESSIONS_ROW[0];
   return SESSIONS_ROW[0];
 }
 
@@ -74,10 +78,7 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
 /** List layout from `web/src/screens/SessionsScreen.tsx`; rows from `GET /recording/my-recordings`. */
 export default function FieldflixSessionsScreen() {
   const router = useRouter();
-  const { rows, loading, backendLog, error, load } = useSessionsMyRecordings(
-    mapRecordingToSessionRow,
-  );
-  const [logModalOpen, setLogModalOpen] = useState(false);
+  const { rows, loading, error, load } = useSessionsMyRecordings(mapRecordingToSessionRow);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,21 +86,27 @@ export default function FieldflixSessionsScreen() {
     }, [load]),
   );
 
-  const onCopyBackendLog = useCallback(async () => {
-    const text =
-      backendLog ||
-      'No log yet. This fills when the screen loads my-recordings.';
-    try {
-      await Clipboard.setStringAsync(text);
-      Alert.alert('Copied', 'Session logs were copied to the clipboard.');
-    } catch {
-      Alert.alert('Copy failed', 'Could not copy to the clipboard.');
-    }
-  }, [backendLog]);
-
   return (
-    <WebShell backgroundColor={WEB.sessionsBg}>
-      <View style={styles.flex}>
+    <ErrorBoundary
+      fallback={
+        <WebShell backgroundColor={WEB.sessionsBg}>
+          <View style={styles.crashWrap}>
+            <Text style={styles.crashTitle}>Unable to show sessions</Text>
+            <Text style={styles.crashSub}>Go back to home and try again.</Text>
+            <Pressable
+              style={styles.crashBtn}
+              onPress={() => router.push(Paths.home)}
+              accessibilityRole="button"
+              accessibilityLabel="Back to home"
+            >
+              <Text style={styles.crashBtnText}>Back to home</Text>
+            </Pressable>
+          </View>
+        </WebShell>
+      }
+    >
+      <WebShell backgroundColor={WEB.sessionsBg}>
+        <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.scrollContent}
@@ -119,23 +126,6 @@ export default function FieldflixSessionsScreen() {
                   Sessions
                 </Text>
               </View>
-              {SHOW_SESSION_LOGS_BUTTON ? (
-                <Pressable
-                  onPress={() => setLogModalOpen(true)}
-                  accessibilityLabel="View backend request log for this screen"
-                  style={styles.logsBtn}
-                >
-                  <Text style={styles.logsBtnText}>Logs</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={() => void load()}
-                accessibilityRole="button"
-                accessibilityLabel="Reload sessions"
-                style={styles.reloadBtn}
-              >
-                <Text style={styles.reloadBtnText}>{loading ? 'Reloading…' : 'Reload'}</Text>
-              </Pressable>
             </View>
 
             <View style={styles.section}>
@@ -168,9 +158,10 @@ export default function FieldflixSessionsScreen() {
                   {rows.map((row) => (
                     <Pressable
                       key={row.id}
+                      style={styles.cardPressable}
                       onPress={() =>
                         router.push({
-                          pathname: Paths.highlights,
+                          pathname: Paths.highlights as never,
                           params: { id: row.recordingId },
                         })
                       }
@@ -186,58 +177,10 @@ export default function FieldflixSessionsScreen() {
           </View>
         </ScrollView>
 
-        {SHOW_SESSION_LOGS_BUTTON ? (
-          <Modal
-            visible={logModalOpen}
-            animationType="fade"
-            transparent
-            onRequestClose={() => setLogModalOpen(false)}
-          >
-            <View style={styles.logModalRoot}>
-              <Pressable
-                style={styles.logModalBackdrop}
-                onPress={() => setLogModalOpen(false)}
-                accessibilityLabel="Close log"
-              />
-              <View style={styles.logPanel}>
-                <View style={styles.logPanelHeader}>
-                  <Text style={styles.logPanelTitle} numberOfLines={2}>
-                    GET /recording/my-recordings
-                  </Text>
-                  <View style={styles.logPanelActions}>
-                    <Pressable
-                      onPress={() => void onCopyBackendLog()}
-                      hitSlop={10}
-                      accessibilityLabel="Copy session logs to clipboard"
-                    >
-                      <Text style={styles.logPanelAction}>Copy</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setLogModalOpen(false)}
-                      hitSlop={10}
-                      accessibilityLabel="Close"
-                    >
-                      <Text style={styles.logPanelAction}>Close</Text>
-                    </Pressable>
-                  </View>
-                </View>
-                <ScrollView
-                  style={styles.logScroll}
-                  contentContainerStyle={styles.logScrollContent}
-                  nestedScrollEnabled
-                >
-                  <Text selectable style={styles.logBody}>
-                    {backendLog || 'No log yet. This fills when the screen loads my-recordings.'}
-                  </Text>
-                </ScrollView>
-              </View>
-            </View>
-          </Modal>
-        ) : null}
-
         <FieldflixBottomNav active="sessions" />
-      </View>
-    </WebShell>
+        </View>
+      </WebShell>
+    </ErrorBoundary>
   );
 }
 
@@ -341,7 +284,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 8,
   },
   headerStart: {
@@ -365,85 +308,9 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     color: WEB.white,
   },
-  logsBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  reloadBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.35)',
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-  },
-  reloadBtnText: {
-    fontFamily: FF.semiBold,
-    fontSize: 13,
-    lineHeight: 18,
-    color: WEB.green,
-  },
-  logsBtnText: {
-    fontFamily: FF.semiBold,
-    fontSize: 14,
-    lineHeight: 19,
-    color: WEB.green,
-  },
-  logModalRoot: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  logModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  logPanel: {
-    maxHeight: '88%',
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.35)',
-    padding: 12,
-  },
-  logPanelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 8,
-  },
-  logPanelTitle: {
-    flex: 1,
-    fontFamily: FF.semiBold,
-    fontSize: 15,
-    color: WEB.white,
-  },
-  logPanelActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  logPanelAction: {
-    fontFamily: FF.semiBold,
-    fontSize: 15,
-    color: WEB.green,
-  },
-  logScroll: {
-    maxHeight: 480,
-  },
-  logScrollContent: {
-    paddingBottom: 8,
-  },
-  logBody: {
-    fontFamily: 'monospace',
-    fontSize: 11,
-    lineHeight: 16,
-    color: 'rgba(255,255,255,0.88)',
-  },
   section: {
     marginTop: 30,
-    gap: 40,
+    gap: 20,
   },
   completedStrip: {
     width: '100%',
@@ -506,6 +373,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 30,
   },
+  cardPressable: {
+    width: '100%',
+    maxWidth: 372,
+    alignSelf: 'center',
+  },
   card: {
     position: 'relative',
     height: 165,
@@ -513,6 +385,9 @@ const styles = StyleSheet.create({
     maxWidth: 372,
     borderRadius: 20,
     overflow: 'hidden',
+    backgroundColor: '#0f172a',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.25)',
   },
   frameMain: {
     position: 'absolute',
@@ -614,5 +489,41 @@ const styles = StyleSheet.create({
   },
   processingBadgeText: {
     color: '#facc15',
+  },
+  crashWrap: {
+    flex: 1,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  crashTitle: {
+    fontFamily: FF.semiBold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: WEB.white,
+  },
+  crashSub: {
+    fontFamily: FF.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'center',
+  },
+  crashBtn: {
+    marginTop: 6,
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crashBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: WEB.green,
   },
 });

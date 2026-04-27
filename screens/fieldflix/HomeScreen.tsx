@@ -5,6 +5,8 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import {
   formatRecordingTimeLabel,
   highlightCountFromRecording,
+  recordingDurationLabel,
+  recordingThumbUrl,
 } from '@/utils/recordingDisplay';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
@@ -62,10 +64,13 @@ type ArenaRow = {
 
 type RecentRow = {
   id: string;
+  recordingId: string;
   arenaName: string;
   location: string;
   timeLabel: string;
   thumbTime: string;
+  thumbUrl: string | null;
+  duration: string;
   score: number;
 };
 
@@ -138,10 +143,13 @@ function mapRecordingToRecent(s: any, idx: number): RecentRow {
   const score = highlightCountFromRecording(s);
   return {
     id: String(s?.id ?? idx),
+    recordingId: String(s?.id ?? idx),
     arenaName: s?.turf?.name ?? s?.recording_name ?? s?.name ?? 'Session',
     location: s?.turf?.city ?? s?.turf?.address_line ?? s?.turf?.location ?? '',
     timeLabel,
     thumbTime,
+    thumbUrl: recordingThumbUrl(s, 6),
+    duration: recordingDurationLabel(s),
     score,
   };
 }
@@ -239,7 +247,19 @@ export default function FieldflixHomeScreen() {
           ? turfRes.items
           : [];
       setTurfs(items as TurfRow[]);
-      setSessions(Array.isArray(recRes) ? recRes.slice(0, 6) : []);
+      const recs = Array.isArray(recRes) ? recRes : [];
+      const recent = recs
+        .filter((r: any) => {
+          const s = String(r?.status ?? '').toLowerCase();
+          return s !== 'failed' && s !== 'cancelled';
+        })
+        .sort((a: any, b: any) => {
+          const ta = new Date(String(a?.startTime ?? a?.created_at ?? 0)).getTime() || 0;
+          const tb = new Date(String(b?.startTime ?? b?.created_at ?? 0)).getTime() || 0;
+          return tb - ta;
+        })
+        .slice(0, 6);
+      setSessions(recent);
       setNotifCount(typeof n === 'number' ? n : 0);
     } catch {
       setTurfs([]);
@@ -458,16 +478,31 @@ export default function FieldflixHomeScreen() {
                 </Text>
               ) : (
                 recentRows.map((session) => (
-                  <View key={session.id} style={styles.recentCard}>
+                  <Pressable
+                    key={session.id}
+                    style={styles.recentCard}
+                    onPress={() =>
+                      router.push({
+                        pathname: Paths.highlights,
+                        params: { id: session.recordingId },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${session.arenaName} highlights`}
+                  >
                     <View style={styles.recentThumb}>
                       <ExpoImage
-                        source={BG.homeHero}
+                        source={session.thumbUrl ? { uri: session.thumbUrl } : BG.homeHero}
                         style={StyleSheet.absoluteFillObject}
                         contentFit="cover"
                         contentPosition={{ top: '22%', left: '50%' }}
                       />
                       <View style={styles.recentThumbTag}>
-                        <Text style={styles.recentThumbText}>{session.thumbTime}</Text>
+                        <Text style={styles.recentThumbText}>
+                          {session.duration && session.duration !== '—'
+                            ? session.duration
+                            : session.thumbTime}
+                        </Text>
                       </View>
                     </View>
                     <View style={styles.recentMeta}>
@@ -491,7 +526,7 @@ export default function FieldflixHomeScreen() {
                       <MaterialCommunityIcons name="trophy" size={16} color="#22C55E" />
                       <Text style={styles.recentScoreText}>{session.score}</Text>
                     </View>
-                  </View>
+                  </Pressable>
                 ))
               )}
             </View>
