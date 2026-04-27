@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FieldFlicks - Shared Recording</title>
+    <meta name="description" content="Watch this amazing game recording on FieldFlicks">
+    
+    <!-- Social Media Meta Tags -->
+    <meta property="og:title" content="FieldFlicks - Game Recording">
+    <meta property="og:description" content="Check out this amazing game recording captured with FieldFlicks!">
+    <meta property="og:type" content="video.other">
+    <meta property="og:image" content="https://www.fieldflicks.com/thumbnail.jpg">
+    <meta property="og:url" content="https://www.fieldflicks.com">
+    
+    <meta name="twitter:card" content="player">
+    <meta name="twitter:title" content="FieldFlicks - Game Recording">
+    <meta name="twitter:description" content="Check out this amazing game recording captured with FieldFlicks!">
+    <meta name="twitter:image" content="https://www.fieldflicks.com/thumbnail.jpg">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .logo {
+            width: 120px;
+            height: 120px;
+            background: white;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e3c72;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            margin-bottom: 40px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 300px;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+        
+        .app-stores {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .store-badge {
+            height: 60px;
+            transition: transform 0.3s ease;
+        }
+        
+        .store-badge:hover {
+            transform: scale(1.05);
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .footer {
+            position: absolute;
+            bottom: 20px;
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 480px) {
+            h1 { font-size: 2rem; }
+            .subtitle { font-size: 1rem; }
+            .app-stores { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">⚽📱</div>
+    
+    <h1>FieldFlicks</h1>
+    <p class="subtitle">Check out this amazing game recording!</p>
+    
+    <div class="action-buttons">
+        <button id="openApp" class="btn btn-primary">Open in FieldFlicks App</button>
+        <a id="fallbackVideo" href="#" class="btn btn-secondary" style="display: none;">Watch in Browser</a>
+    </div>
+    
+    <div class="app-stores">
+        <a href="https://apps.apple.com/app/fieldflicks/id1234567890" target="_blank">
+            <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" 
+                 alt="Download on App Store" class="store-badge">
+        </a>
+        <a href="https://play.google.com/store/apps/details?id=com.fieldflicks&hl=en_IN" target="_blank">
+            <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" 
+                 alt="Get it on Google Play" class="store-badge">
+        </a>
+    </div>
+    
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>Opening FieldFlicks...</p>
+    </div>
+    
+    <div class="footer">
+        <p>FieldFlicks - Capture Every Moment</p>
+    </div>
+
+    <script>
+        // Extract recording ID and fallback URL from current page URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const recordingId = window.location.pathname.split('/').pop();
+        const fallbackUrl = urlParams.get('fallback');
+        
+        // Show fallback video button if available
+        if (fallbackUrl) {
+            const fallbackBtn = document.getElementById('fallbackVideo');
+            fallbackBtn.href = fallbackUrl;
+            fallbackBtn.style.display = 'inline-block';
+        }
+        
+        // Deep link generation
+        const deepLink = `fieldflicks://shared-recording/${recordingId}`;
+        const universalLink = `https://www.fieldflicks.com/shared-recording/${recordingId}`;
+        
+        // App detection and opening logic
+        document.getElementById('openApp').addEventListener('click', function() {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            
+            // Try to open the app
+            const startTime = Date.now();
+            
+            // Create a hidden iframe to trigger the deep link
+            const iframe = document.createElement('iframe');
+            iframe.style.display = 'none';
+            iframe.src = deepLink;
+            document.body.appendChild(iframe);
+            
+            // Fallback: if app doesn't open within 3 seconds, show app store links
+            setTimeout(() => {
+                const timeElapsed = Date.now() - startTime;
+                
+                // If user is still on the page after 3 seconds, app probably isn't installed
+                if (timeElapsed >= 2500) {
+                    loading.style.display = 'none';
+                    
+                    // Show appropriate app store based on device
+                    const userAgent = navigator.userAgent.toLowerCase();
+                    if (/iphone|ipad|ipod/.test(userAgent)) {
+                        window.location.href = 'https://apps.apple.com/app/fieldflicks/id1234567890';
+                    } else if (/android/.test(userAgent)) {
+                        window.location.href = 'https://play.google.com/store/apps/details?id=com.fieldflicks&hl=en_IN';
+                    } else {
+                        // Desktop or other - show both options
+                        alert('FieldFlicks is available on mobile devices. Please visit the App Store or Google Play Store.');
+                    }
+                }
+                
+                // Clean up
+                document.body.removeChild(iframe);
+            }, 3000);
+        });
+        
+        // Auto-trigger app opening on page load (optional)
+        // window.addEventListener('load', function() {
+        //     setTimeout(() => {
+        //         document.getElementById('openApp').click();
+        //     }, 1000);
+        // });
+    </script>
+</body>
+</html>

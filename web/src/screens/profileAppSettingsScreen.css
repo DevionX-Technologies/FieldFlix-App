@@ -1,0 +1,147 @@
+/* App Settings — Codia layout */
+
+.pas-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  font-family: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  color: #fff;
+  background: #020617;
+}
+
+.pas-page *,
+.pas-page *::before,
+.pas-page *::after {
+  box-sizing: border-box;
+}
+
+.pas-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 16px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pas-back {
+  display: flex;
+  height: 44px;
+  width: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pas-back img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+}
+
+.pas-back:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+}
+
+.pas-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 27px;
+}
+
+.pas-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 24px 20px 40px;
+}
+
+.pas-section {
+  margin-bottom: 4px;
+}
+
+.pas-section-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 16px;
+}
+
+.pas-section-head img {
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+}
+
+.pas-section-head span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.pas-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.pas-row:last-child {
+  margin-bottom: 0;
+}
+
+.pas-row__label {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.pas-row-btn {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: #fff;
+}
+
+.pas-row-btn span:first-child {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.pas-row-btn img {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.pas-row-btn:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.pas-rule {
+  height: 1px;
+  margin: 18px 0 22px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/pNrEMoeWoV.png) center / cover no-repeat;
+  opacity: 0.85;
+}

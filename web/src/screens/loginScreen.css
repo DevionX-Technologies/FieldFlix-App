@@ -1,0 +1,283 @@
+/* Full Codia-style login scene + new auth card in original .login-card slot */
+
+.login-page-root {
+  --default-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue',
+    Helvetica, Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft Yahei UI', 'Microsoft Yahei',
+    'Source Han Sans CN', sans-serif;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 100%;
+  isolation: isolate;
+}
+
+.login-page-root *,
+.login-page-root *::before,
+.login-page-root *::after {
+  box-sizing: border-box;
+}
+
+.login-page-root input,
+.login-page-root button {
+  outline: 0;
+  font: inherit;
+}
+
+/* --- Artboard (restored) --- */
+.login-page-root .main-container {
+  position: relative;
+  overflow: hidden;
+  width: 402px;
+  height: 874px;
+  margin: 0 auto;
+  flex-shrink: 0;
+  background: #ffffff;
+}
+
+.login-page-root .ellipse {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  margin: 44px 0 0 32px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/x035Eabqju.png) no-repeat center;
+  background-size: cover;
+  z-index: 15;
+  border-radius: 50%;
+}
+
+.login-page-root .frame {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin: -9px 0 0 326px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/U6dykUSyca.png) no-repeat center;
+  background-size: cover;
+  z-index: 18;
+  overflow: hidden;
+}
+
+.login-page-root .frame-1 {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  margin: 72px 0 0 347px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/BHcskL35YF.png) no-repeat center;
+  background-size: cover;
+  z-index: 19;
+  overflow: hidden;
+}
+
+/* Card slot: same position as original export; inner UI = new green-border panel */
+.login-page-root .login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 20px;
+  position: relative;
+  width: 370px;
+  margin: 371px 0 0 17px;
+  padding: 28px 22px 26px;
+  border: 1px solid #5cb85c;
+  border-radius: 28px;
+  background: #0a0e14;
+  z-index: 5;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.login-page-root .login-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #050a0f;
+  border: 1px solid rgba(30, 41, 59, 0.9);
+}
+
+.login-page-root .login-field__icon {
+  flex-shrink: 0;
+  color: #718096;
+}
+
+.login-page-root .login-field__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: transparent;
+  font-family: 'Open Sans', Inter, var(--default-font-family);
+  font-size: 15px;
+  font-weight: 400;
+  color: #e2e8f0;
+}
+
+.login-page-root .login-field__input::placeholder {
+  color: #718096;
+}
+
+.login-page-root .login-btn-otp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 52px;
+  margin: 0;
+  padding: 0 24px;
+  border: none;
+  border-radius: 999px;
+  background: #5cb85c;
+  color: #ffffff;
+  font-family: 'Open Sans', Inter, var(--default-font-family);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.login-page-root .login-btn-otp:hover {
+  filter: brightness(1.06);
+}
+
+.login-page-root .login-btn-otp:active {
+  transform: scale(0.99);
+}
+
+.login-page-root .login-footer {
+  margin: 4px 0 0;
+  text-align: center;
+  font-family: 'Open Sans', Inter, var(--default-font-family);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.login-page-root .login-footer__muted {
+  color: #a0aec0;
+}
+
+.login-page-root .login-footer__link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #5cb85c;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-page-root .login-footer__link:hover {
+  text-decoration: underline;
+}
+
+.login-page-root .image {
+  position: absolute;
+  width: 402px;
+  height: 874px;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  background-color: #0f172a;
+  background-image: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/YXw0DNe0UZ.png),
+    url(/image5.png);
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: cover, cover;
+  pointer-events: none;
+}
+
+.login-page-root .ellipse-3 {
+  position: absolute;
+  width: 264px;
+  height: 221px;
+  top: 326px;
+  left: 69px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/kQvBujmT3H.png) no-repeat center;
+  background-size: cover;
+  filter: blur(40px);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.login-page-root .frame-4 {
+  position: absolute;
+  width: 55.827px;
+  height: 60.122px;
+  top: 326.439px;
+  left: 326.087px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/dYtPGYLWyX.png) no-repeat center;
+  background-size: cover;
+  z-index: 14;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.login-page-root .ellipse-5 {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  top: 341px;
+  left: 17px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/1JWKvdsG6k.png) no-repeat center;
+  background-size: cover;
+  z-index: 17;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.login-page-root .level-up-game {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  position: absolute;
+  width: 192px;
+  height: 108px;
+  top: 357px;
+  left: 106px;
+  color: #ffffff;
+  font-family: Anton, var(--default-font-family);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 54.193px;
+  text-align: center;
+  letter-spacing: 1.44px;
+  z-index: 4;
+  text-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
+  -webkit-text-stroke: 1px #16a34a;
+  pointer-events: none;
+}
+
+.login-page-root .track-analyze-improve {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  position: absolute;
+  width: 262px;
+  height: 50px;
+  top: 465px;
+  left: 69px;
+  color: #ffffff;
+  font-family: 'Open Sans', var(--default-font-family);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24.513px;
+  text-align: center;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.login-page-root .ellipse-6 {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  top: 493px;
+  left: 369px;
+  background: url(https://codia-f2c.s3.us-west-1.amazonaws.com/image/2026-04-10/LRUgOuX8ju.png) no-repeat center;
+  background-size: cover;
+  z-index: 16;
+  border-radius: 50%;
+  pointer-events: none;
+}

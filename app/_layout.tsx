@@ -37,6 +37,35 @@ if (typeof __DEV__ !== "undefined" && __DEV__) {
   console.log(`[FieldFlicks] API BASE_URL: ${BASE_URL}`);
 }
 
+/**
+ * Routes an FCM payload to the right in-app screen. Supports
+ * `RECORDING_COMPLETE` taps which deep-link to the per-recording highlights view.
+ */
+function handleFcmTap(
+  remoteMessage: any,
+  router: { push: (h: any) => void },
+): void {
+  try {
+    const data = remoteMessage?.data ?? {};
+    const action = String(data?.click_action ?? data?.notification_type ?? "")
+      .toUpperCase();
+    if (action === "RECORDING_COMPLETE") {
+      const recordingId =
+        data?.recordingId ?? data?.recording_id ?? data?.id ?? null;
+      if (recordingId) {
+        router.push({
+          pathname: "/highlights/[id]",
+          params: { id: String(recordingId) },
+        });
+      } else {
+        router.push("/recordings");
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to route FCM tap:", err);
+  }
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -90,10 +119,31 @@ export default function RootLayout() {
         console.log("🔔 Notification Received:", notification);
       });
 
-    // When user taps notification
+    // When user taps notification (Expo / FCM payload).
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         console.log("📲 Notification Response:", response);
+        try {
+          const data: any =
+            response?.notification?.request?.content?.data ?? {};
+          const action = String(
+            data?.click_action ?? data?.notification_type ?? "",
+          ).toUpperCase();
+          if (action === "RECORDING_COMPLETE") {
+            const recordingId =
+              data?.recordingId ?? data?.recording_id ?? data?.id ?? null;
+            if (recordingId) {
+              router.push({
+                pathname: "/highlights/[id]",
+                params: { id: String(recordingId) },
+              });
+            } else {
+              router.push("/recordings");
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to route notification tap:", err);
+        }
       });
 
     return () => {
@@ -150,18 +200,28 @@ export default function RootLayout() {
   useEffect(() => {
     const handleDeepLink = (url: string) => {
       console.log('Deep link received:', url);
-      
-      // Check if it's a shared recording link
+
+      // New shared-media link format used by createShareLink/APP_BASE_URL.
+      // Matches both `fieldflicks://shared/media/<token>` and
+      // `https://fieldflix.app/shared/media/<token>` (from APP_BASE_URL).
+      const sharedMediaMatch = url.match(/shared\/media\/([^?&/]+)/);
+      if (sharedMediaMatch) {
+        const token = sharedMediaMatch[1];
+        router.push({
+          pathname: '/shared/media/[token]',
+          params: { token },
+        });
+        return;
+      }
+
+      // Legacy in-app share path — keep for backwards compatibility.
       if (url.includes('shared-recording')) {
-        // Extract the recording ID from the URL
         const recordingIdMatch = url.match(/shared-recording\/([^?&]+)/);
         if (recordingIdMatch) {
           const recordingId = recordingIdMatch[1];
-          console.log('Navigating to shared recording:', recordingId);
-          
           router.push({
             pathname: '/shared-recording/[recordingId]',
-            params: { recordingId }
+            params: { recordingId },
           });
         }
       }
@@ -188,23 +248,49 @@ export default function RootLayout() {
     if (!canUseReactNativeFirebase()) {
       return;
     }
-    let unsubscribe: (() => void) | undefined;
+    const unsubs: (() => void)[] = [];
     try {
-      unsubscribe = messaging().onMessage(async (remoteMessage) => {
-        showModal(
-          "info",
-          remoteMessage.notification?.title ?? "",
-          remoteMessage.notification?.body ?? ""
+      unsubs.push(
+        messaging().onMessage(async (remoteMessage) => {
+          showModal(
+            "info",
+            remoteMessage.notification?.title ?? "",
+            remoteMessage.notification?.body ?? ""
+          );
+        })
+      );
+
+      // Cold-start: app opened by tapping a notification.
+      try {
+        messaging()
+          .getInitialNotification()
+          .then((remoteMessage) => {
+            if (remoteMessage) handleFcmTap(remoteMessage, router);
+          })
+          .catch(() => {});
+      } catch {
+        // ignore
+      }
+
+      // Foreground/background tap.
+      try {
+        unsubs.push(
+          messaging().onNotificationOpenedApp((remoteMessage) =>
+            handleFcmTap(remoteMessage, router),
+          ),
         );
-      });
+      } catch {
+        // ignore
+      }
+
       messaging().setBackgroundMessageHandler(async (remoteMessage) => {
         console.log("Background message:", remoteMessage);
       });
     } catch (e) {
       console.warn("Firebase messaging not initialized:", e);
     }
-    return () => unsubscribe?.();
-  }, [showModal]);
+    return () => unsubs.forEach((u) => u?.());
+  }, [showModal, router]);
 
   return (
     <GluestackUIProvider mode="dark">

@@ -1,246 +1,369 @@
+import { BASE_URL, RAZORPAY_KEY_ID } from '@/data/constants';
+import {
+  createPlanOrder,
+  getFieldflixApiErrorMessage,
+  type PlanId,
+  verifyRazorpayPayment,
+} from '@/lib/fieldflix-api';
+import { refreshEntitlement } from '@/lib/fieldflix-entitlement';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
+import { gradientPillInner } from '@/screens/fieldflix/fieldflixUi';
 import { WEB } from '@/screens/fieldflix/webDesign';
-import { BackHeader } from '@/screens/fieldflix/profile/BackHeader';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
+import * as SecureStore from 'expo-secure-store';
+import axios from 'axios';
 
-type PaymentMethod = 'upi' | 'card' | 'netbank';
+/**
+ * Only true raster PNGs are bundled. Codia “.png” URLs that return SVG were breaking
+ * `mergeReleaseResources` (AAPT2: file failed to compile) — small UI marks use `react-native-svg` below.
+ */
+const RASTER = {
+  planFree: require('@/assets/fieldflix-web/premium/plan-bg-free.png'),
+  planPro: require('@/assets/fieldflix-web/premium/plan-bg-pro.png'),
+  planPrem: require('@/assets/fieldflix-web/premium/plan-bg-premium.png'),
+  payUpi: require('@/assets/fieldflix-web/premium/pay-upi.png'),
+  payVisa: require('@/assets/fieldflix-web/premium/pay-visa-mc.png'),
+  /** Design ticks — real PNGs so Android `mergeReleaseResources` stays valid. */
+  insideplanTick: require('@/assets/fieldflix-web/premium/insideplan-tick.png'),
+  featureTick: require('@/assets/fieldflix-web/premium/feature-tick.png'),
+} as const;
 
-const PG = '#22c55e';
-const PG_SOFT = '#4ade80';
-const PG_DEEP = '#166534';
+const BG = '#020617';
 const MUTED = '#94a3b8';
-const CARD_BG = '#0f1218';
-const CARD_BORDER = 'rgba(100,116,139,0.5)';
+const BORDER = 'rgba(100,116,139,0.5)';
+const ACCENT = '#22c55e';
+const PLAN_CARD_W = 170;
+const PLAN_GAP = 14;
+const PLANS_H_PAD = 16;
+/** Taller to fit 3 plan feature rows like `web/.../ProfilePremiumScreen.tsx` + `profilePremium.css`. */
+const CARD_H = 258;
 
-type Plan = {
-  id: 'free' | 'pro' | 'premium';
-  name: string;
-  tagline: string;
-  price: string;
-  features: string[];
-  recommended?: boolean;
+const PLAN_BULLETS: Record<PlanId, [string, string, string]> = {
+  pro: ['Advanced features', 'Video Recording', 'View AI insights'],
+  premium: ['AI features', 'AI features', 'Unlimited Storage'],
+  free: ['Track Sessions', 'View basic Stats', 'View Analytics'],
 };
 
-const PLANS: Plan[] = [
-  { id: 'free', name: 'Free Plan', tagline: '(Basic)', price: '₹149', features: ['Track Sessions', 'View basic Stats', 'View Analyts'] },
-  { id: 'pro', name: 'Pro Plan', tagline: '(Recommended)', price: '₹199', features: ['Advanced features', 'Video Recording', 'View AI insights'], recommended: true },
-  { id: 'premium', name: 'Premium Plan', tagline: '(Elite)', price: '₹399', features: ['AI features', 'AI features', 'Unlimited Storage'] },
+type Pay = 'upi' | 'card' | 'netbank';
+
+const PLAN_ORDER: { id: PlanId; name: string; sub: string; price: string; img: number }[] = [
+  { id: 'free', name: 'Free Plan', sub: '(Basic)', price: '₹149', img: RASTER.planFree },
+  { id: 'pro', name: 'Pro Plan', sub: '(Recommended)', price: '₹199', img: RASTER.planPro },
+  { id: 'premium', name: 'Premium Plan', sub: '(Elite)', price: '₹399', img: RASTER.planPrem },
 ];
 
-/** Matches `web/src/screens/ProfilePremiumScreen.tsx` visual design. */
+/**
+ * Parity with `web/src/screens/ProfilePremiumScreen.tsx` + `profilePremium.css` (plan + payment art as PNG; other marks as SVG).
+ * Checkout: `POST /payments/plan/create-order` → `react-native-razorpay` → `POST /payments/verify`.
+ */
 export default function FieldflixProfilePremiumScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [payment, setPayment] = useState<PaymentMethod>('upi');
-  const [plan, setPlan] = useState<Plan['id']>('pro');
+  const [pay, setPay] = useState<Pay>('upi');
+  const [plan, setPlan] = useState<PlanId>('pro');
+  const [submitting, setSubmitting] = useState(false);
+  const planScroll = useRef<ScrollView | null>(null);
+  const planScrollViewportW = useRef(0);
+  const planScrollContentW = useRef(0);
+
+  const scrollPlansToProCenter = (contentW: number, viewportW: number) => {
+    const el = planScroll.current as unknown as { scrollTo: (o: { x: number; animated: boolean }) => void } | null;
+    if (!el?.scrollTo) return;
+    if (viewportW <= 0 || contentW <= 0) return;
+    const maxX = Math.max(0, contentW - viewportW);
+    el.scrollTo({ x: maxX / 2, animated: false });
+  };
+
+  const onUpgrade = async () => {
+    if (!RAZORPAY_KEY_ID) {
+      Alert.alert('Payments', 'Add EXPO_PUBLIC_RAZORPAY_KEY_ID to your .env (publishable key from Razorpay).');
+      return;
+    }
+    const token = await SecureStore.getItemAsync('token');
+    if (!token?.trim()) {
+      Alert.alert('Sign in required', 'Log in to create an order and complete upgrade.');
+      return;
+    }
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const order = await createPlanOrder(plan);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const RazorpayCheckout = require('react-native-razorpay').default as {
+        open: (opts: Record<string, unknown>) => Promise<{
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature?: string;
+        }>;
+      };
+      const amountPaise = String(Math.round(Number(order.amount) * 100));
+      // Native module exports a class: call `RazorpayCheckout.open(...)`, not `RazorpayCheckout(...)`.
+      const data = await RazorpayCheckout.open({
+        key: RAZORPAY_KEY_ID,
+        name: 'FieldFlicks',
+        description: `FieldFlicks — ${plan} plan`,
+        order_id: order.razorpay_order_id,
+        currency: order.currency ?? 'INR',
+        amount: amountPaise,
+        theme: { color: '#22C55E' },
+        /** Lets support correlate UI selection with the checkout session. Razorpay still shows all methods. */
+        notes: { fieldflicks_preferred_method: pay },
+      });
+      await verifyRazorpayPayment({
+        razorpay_order_id: data.razorpay_order_id,
+        razorpay_payment_id: data.razorpay_payment_id,
+        status: 'completed',
+      });
+      // Refresh server-truth entitlement so paywalled UI (preview cap, lock badges)
+      // unlocks immediately when the user navigates back to a video.
+      try {
+        await refreshEntitlement();
+      } catch {
+        // entitlement cache will catch up on next app focus — non-fatal
+      }
+      Alert.alert('Payment', 'Your payment was received. Your plan will be activated shortly.');
+    } catch (e: unknown) {
+      if (axios.isAxiosError(e)) {
+        const st = e.response?.status;
+        if (st === 401) {
+          Alert.alert('Session expired', 'Sign in again, then try Upgrade.');
+          return;
+        }
+        if (st === 404) {
+          Alert.alert(
+            'Payment',
+            `Plan checkout is not available at this API (POST /payments/plan/create-order returned 404). ` +
+              `Point EXPO_PUBLIC_BASE_URL at a server that has the FieldFlicks payment module deployed, or use your local API (e.g. http://LAN_IP:PORT). ` +
+              `Current base: ${BASE_URL}`,
+          );
+          return;
+        }
+      }
+      const msg = getFieldflixApiErrorMessage(e, 'Could not complete payment');
+      if (String(msg).toLowerCase().includes('user')) {
+        // user cancelled
+        return;
+      }
+      Alert.alert('Payment', msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <WebShell backgroundColor="#020617">
-      <View style={styles.flex}>
-        <BackHeader title="" bottomBorder={false} />
+    <WebShell backgroundColor={BG}>
+      <View style={[styles.root, { paddingBottom: insets.bottom }]}>
         <ScrollView
-          style={styles.flex}
-          contentContainerStyle={[styles.scroll, { paddingBottom: 40 + insets.bottom }]}
+          style={styles.pageScroll}
+          contentContainerStyle={[styles.pageScrollContent, { paddingBottom: 28 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.kickerRow}>
-            <CrownIcon />
-            <Text style={styles.kicker}>Unlock your potential</Text>
-          </View>
-
-          <Text style={styles.heroTitle}>Upgrade Your Game</Text>
-          <Text style={styles.heroSub}>Unlock advanced features and insights</Text>
-
-          <View style={styles.popularWrap}>
-            <LinearGradient
-              colors={['#22c55e', '#16a34a']}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.popularPill}
+          <View style={[styles.max, { paddingTop: insets.top }]}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.backBtn}
+              hitSlop={8}
+              accessibilityLabel="Go back"
             >
-              <Text style={styles.popularText}>Most Popular</Text>
-            </LinearGradient>
-          </View>
+              <IconBack />
+            </Pressable>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.plansRow}
-          >
-            {PLANS.map((p) => {
-              const selected = plan === p.id;
-              return (
-                <Pressable
-                  key={p.id}
-                  onPress={() => setPlan(p.id)}
-                  style={[styles.planCard, selected && styles.planCardSelected]}
-                >
-                  {selected ? (
-                    <LinearGradient
-                      colors={['rgba(34,197,94,0.18)', 'rgba(22,101,52,0.08)']}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  ) : null}
-                  <View style={styles.planHead}>
-                    <Text style={styles.planName}>{p.name}</Text>
-                    <Text style={styles.planTag}>{p.tagline}</Text>
-                  </View>
-                  <View style={styles.priceRow}>
-                    <Text style={styles.price}>{p.price}</Text>
-                    <Text style={styles.perMonth}> /month</Text>
-                  </View>
-                  <View style={styles.featureList}>
-                    {p.features.map((f, idx) => (
-                      <View key={`${f}-${idx}`} style={styles.featureRow}>
-                        <CheckDot />
-                        <Text style={styles.featureText}>{f}</Text>
+            <View style={styles.kickerRow}>
+              <IconKicker />
+              <Text style={styles.kicker}>Unlock your potential</Text>
+            </View>
+
+            <Text style={styles.heroTitle}>Upgrade Your Game</Text>
+            <Text style={styles.heroSub}>Unlock advanced features and insights</Text>
+
+            <ScrollView
+              ref={planScroll}
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={false}
+              onLayout={(e) => {
+                const vw = e.nativeEvent.layout.width;
+                planScrollViewportW.current = vw;
+                scrollPlansToProCenter(planScrollContentW.current, vw);
+              }}
+              onContentSizeChange={(w) => {
+                planScrollContentW.current = w;
+                scrollPlansToProCenter(w, planScrollViewportW.current);
+              }}
+              contentContainerStyle={styles.plansScroll}
+            >
+              {PLAN_ORDER.map((p) => {
+                const on = plan === p.id;
+                const bullets = PLAN_BULLETS[p.id];
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => setPlan(p.id)}
+                    style={[styles.planPress, { width: PLAN_CARD_W }]}
+                  >
+                    {p.id === 'pro' ? (
+                      <View style={styles.popularOnPro} pointerEvents="none">
+                        <LinearGradient
+                          colors={['#22c55e', '#16a34a']}
+                          start={{ x: 0, y: 0.5 }}
+                          end={{ x: 1, y: 0.5 }}
+                          style={styles.popularPill}
+                        >
+                          <Text style={styles.popularText}>Most Popular</Text>
+                        </LinearGradient>
                       </View>
-                    ))}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+                    ) : null}
+                    <ImageBackground
+                      source={p.img}
+                      style={[styles.planBg, { width: PLAN_CARD_W, height: CARD_H }]}
+                      imageStyle={styles.planBgImage}
+                      resizeMode="cover"
+                    >
+                      {on ? <View style={styles.planSelectedRing} pointerEvents="none" /> : null}
+                      <View style={styles.planPad}>
+                        <Text style={styles.planName}>{p.name}</Text>
+                        <Text style={styles.planSub}>{p.sub}</Text>
+                        <View style={styles.priceRow}>
+                          <Text style={styles.priceNum}>{p.price.replace('₹', '₹')}</Text>
+                          <Text style={styles.priceMo}> /month</Text>
+                        </View>
+                        <View style={styles.planBullets}>
+                          {bullets.map((line, bi) => (
+                            <View key={`${p.id}-${bi}`} style={styles.planBulletRow}>
+                              <Image source={RASTER.insideplanTick} style={styles.tickInside} resizeMode="contain" />
+                              <Text style={styles.planBulletText}>{line}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    </ImageBackground>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
-          <View style={styles.recordingsCard}>
-            <View style={styles.recordingsHead}>
-              <View style={styles.recordingsHeadLeft}>
-                <VideoIcon />
-                <Text style={styles.recordingsTitle}>Recordings</Text>
-              </View>
-              <View style={styles.dotOuter}>
-                <View style={styles.dotInner} />
+            <View style={styles.featSection}>
+              <View style={styles.featBlock}>
+                <Text style={styles.featListTitle}>Feature List</Text>
+                <View style={styles.fLine}>
+                  <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
+                  <Text style={styles.fText}>Advanced Analytics</Text>
+                </View>
+                <View style={styles.fLine}>
+                  <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
+                  <Text style={styles.fText}>Video Recording & Replays</Text>
+                </View>
+                <View style={styles.fLine}>
+                  <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
+                  <Text style={styles.fText}>AI-Powered Performance Insights</Text>
+                </View>
+                <View style={styles.fLine}>
+                  <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
+                  <Text style={styles.fText}>Unlimited Data Storage</Text>
+                </View>
               </View>
             </View>
-            <Text style={styles.recordingsBody}>
-              Access full match recordings anytime, on demand.
-            </Text>
+
+            <View style={styles.pmHeader}>
+              <Text style={styles.pmTitle}>Payment Methods</Text>
+              <Text style={styles.pmSub}>Secure checkout with Razorpay. Choose a preferred method below, then pay in the Razorpay sheet.</Text>
+            </View>
+
+            <Pressable
+              onPress={() => setPay('upi')}
+              style={[styles.payRow, pay === 'upi' && styles.payRowOn]}
+              accessibilityRole="button"
+            >
+              <View style={styles.payLeft}>
+                <Image source={RASTER.payUpi} style={styles.payUpi} resizeMode="cover" />
+                <Text style={styles.payTxt} numberOfLines={1}>
+                  UPI
+                </Text>
+              </View>
+              <IconPayChevron />
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPay('card')}
+              style={[styles.payRow, pay === 'card' && styles.payRowOn]}
+              accessibilityRole="button"
+            >
+              <View style={styles.payLeft}>
+                <IconPayCard />
+                <Text style={styles.payTxt} numberOfLines={2}>
+                  Credit / Debit Card
+                </Text>
+              </View>
+              <Image source={RASTER.payVisa} style={styles.payVisa} resizeMode="contain" />
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPay('netbank')}
+              style={[styles.payRow, pay === 'netbank' && styles.payRowOn]}
+              accessibilityRole="button"
+            >
+              <View style={styles.payLeft}>
+                <IconPayBank />
+                <Text style={styles.payTxt} numberOfLines={1}>
+                  Net Banking
+                </Text>
+              </View>
+              <View style={styles.payRowSpacer} />
+            </Pressable>
+
+            <View style={styles.upgradeShell} accessibilityLabel="Upgrade plan">
+              <Pressable
+                onPress={() => void onUpgrade()}
+                disabled={submitting}
+                style={({ pressed }) => [
+                  styles.upgradePress,
+                  (pressed || submitting) && { opacity: 0.86 },
+                ]}
+              >
+                <LinearGradient
+                  colors={['#22c55e', '#16a34a']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={styles.upgradeGrad}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.upText}>Upgrade Now</Text>
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </View>
           </View>
-
-          <View style={styles.featuresCard}>
-            <Text style={styles.featuresCardTitle}>Feature List</Text>
-            <FeatureRow icon={<ChartIcon />} label="Advanced Analytics" />
-            <FeatureRow icon={<PlayIcon />} label="Video Recording & Replays" />
-            <FeatureRow icon={<BrainIcon />} label="AI-Powered Performance Insights" />
-            <FeatureRow icon={<DatabaseIcon />} label="Unlimited Data Storage" />
-          </View>
-
-          <Text style={styles.paymentTitle}>Payment Methods</Text>
-
-          <PaymentRow
-            active={payment === 'upi'}
-            onPress={() => setPayment('upi')}
-            left={
-              <View style={styles.payLeft}>
-                <UpiLogo />
-                <Text style={styles.payLabel}>UPI</Text>
-              </View>
-            }
-            right={<UpiArrowIcon />}
-          />
-
-          <PaymentRow
-            active={payment === 'card'}
-            onPress={() => setPayment('card')}
-            left={
-              <View style={styles.payLeft}>
-                <CardIcon />
-                <Text style={styles.payLabel}>Credit / Debit Card</Text>
-              </View>
-            }
-            right={<VisaMcLogo />}
-          />
-
-          <PaymentRow
-            active={payment === 'netbank'}
-            onPress={() => setPayment('netbank')}
-            left={
-              <View style={styles.payLeft}>
-                <BankIcon />
-                <Text style={styles.payLabel}>Net Banking</Text>
-              </View>
-            }
-          />
-
-          <Pressable style={styles.upgradeBtn}>
-            <Text style={styles.upgradeText}>Upgrade Now</Text>
-          </Pressable>
         </ScrollView>
       </View>
     </WebShell>
   );
 }
 
-/* -------------------------- Small presentational -------------------------- */
-
-function FeatureRow({ icon, label }: { icon: React.ReactNode; label: string }) {
+function IconBack() {
   return (
-    <View style={styles.featLine}>
-      <View style={styles.featIcon}>{icon}</View>
-      <Text style={styles.featLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function PaymentRow({
-  active,
-  onPress,
-  left,
-  right,
-}: {
-  active: boolean;
-  onPress: () => void;
-  left: React.ReactNode;
-  right?: React.ReactNode;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.paymentRow, active && styles.paymentRowActive]}
-    >
-      {left}
-      <View>{right}</View>
-    </Pressable>
-  );
-}
-
-/* ------------------------------ SVG icons ------------------------------- */
-
-function CrownIcon() {
-  return (
-    <Svg width={14} height={14} viewBox="0 0 24 24" fill={PG}>
-      <Path d="M3 18l2-9 4 3 3-6 3 6 4-3 2 9H3zm0 2h18v2H3v-2z" />
-    </Svg>
-  );
-}
-
-function CheckDot() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 24 24">
-      <Circle cx={12} cy={12} r={10} fill={PG} />
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M7 12.5l3.2 3.2L17 9"
+        d="M15 19l-7-7 7-7"
         stroke="#fff"
-        strokeWidth={2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
-}
-
-function VideoIcon() {
-  return (
-    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
-      <Rect x={2} y={6} width={14} height={12} rx={3} stroke={PG} strokeWidth={2} />
-      <Path
-        d="M16 10l5-2.6a.6.6 0 0 1 .9.5v8.2a.6.6 0 0 1-.9.5L16 14"
-        stroke={PG}
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -249,73 +372,24 @@ function VideoIcon() {
   );
 }
 
-function ChartIcon() {
+/** Codia kicker mark (SVG in design — not AAPT-compilable as .png). */
+function IconKicker() {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
       <Path
-        d="M3 20V4m0 16h18M7 14l4-4 3 3 5-6"
-        stroke={PG}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M7.033 12.133 10.483 8H7.817L8.3 4.217l-3.083 4.45h2.316L7.033 12.133zM6 10H3.933a.5.5 0 01-.408-.95L8.367 1.783a.6.6 0 01.983.567L8.333 6.667H11.917c.29 0 .491.127.608.383.116.256.08.494-.108.717L6.933 14.333a.6.6 0 01-1.066-.65L6 10z"
+        fill={ACCENT}
       />
     </Svg>
   );
 }
 
-function PlayIcon() {
+/** Web `profilePremium.css` `.group` chevron (UPI row, right). */
+function IconPayChevron() {
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={10} stroke={PG} strokeWidth={2} />
-      <Path d="M10 8.5l6 3.5-6 3.5V8.5z" fill={PG} />
-    </Svg>
-  );
-}
-
-function BrainIcon() {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M9 4a3 3 0 0 0-3 3 2.5 2.5 0 0 0-1 4.8A3 3 0 0 0 7 17a3 3 0 0 0 5 1.2A3 3 0 0 0 17 17a3 3 0 0 0 2-5.2A2.5 2.5 0 0 0 18 7a3 3 0 0 0-3-3 3 3 0 0 0-3 1.5A3 3 0 0 0 9 4zM12 5.5v13"
-        stroke={PG}
-        strokeWidth={1.9}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-function DatabaseIcon() {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"
-        stroke={PG}
-        strokeWidth={1.9}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-function UpiLogo() {
-  // UPI/BHIM-style mark: orange + green triangle inside, framed
-  return (
-    <Svg width={30} height={26} viewBox="0 0 30 26">
-      <Rect x={0.5} y={0.5} width={29} height={25} rx={4} fill="#fff" stroke="#e5e7eb" />
-      <Path d="M6 19L12 5h3l-6 14H6z" fill="#f97316" />
-      <Path d="M14 19L20 5h3l-6 14h-3z" fill="#10b981" />
-    </Svg>
-  );
-}
-
-function UpiArrowIcon() {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M7 17L17 7M8 7h9v9"
+        d="M9 6l6 6-6 6"
         stroke={MUTED}
         strokeWidth={2}
         strokeLinecap="round"
@@ -325,316 +399,144 @@ function UpiArrowIcon() {
   );
 }
 
-function CardIcon() {
+function IconPayCard() {
   return (
-    <Svg width={26} height={20} viewBox="0 0 26 20" fill="none">
-      <Defs>
-        <SvgLinearGradient id="cardGrad" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#3b82f6" />
-          <Stop offset="1" stopColor="#1e40af" />
-        </SvgLinearGradient>
-      </Defs>
-      <Rect x={0.5} y={0.5} width={25} height={19} rx={3} fill="url(#cardGrad)" />
-      <Rect x={2} y={6} width={22} height={2.5} fill="#1e293b" />
-      <Rect x={3} y={12} width={6} height={1.5} rx={0.5} fill="#bfdbfe" />
-      <Rect x={3} y={14.5} width={8} height={1.5} rx={0.5} fill="#bfdbfe" />
-    </Svg>
-  );
-}
-
-function VisaMcLogo() {
-  return (
-    <Svg width={58} height={22} viewBox="0 0 58 22">
-      {/* Visa wordmark */}
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
       <Path
-        d="M3 16l3-10h2l-3 10H3zm5-5c.3-1.8 1.6-3 3.4-3 .7 0 1.3.1 1.7.3l-.4 1.5c-.3-.1-.7-.2-1-.2-.7 0-1.2.3-1.3 1l-.3 1.8h-1.5l.3-1.8c.2-.8.6-1.3 1.1-1.6zm6 5l.6-2h1.5l.2.9h1.5l-1.2-4.5h-1.3l-2.6 4.5H14zm2.5-2.8l.5 1.3h-1l.5-1.3zM22 10l1.5 2 1-2h2l-2 3.5 1.6 3h-2l-1-2-1.3 2h-2l2.5-3.5L20 10h2z"
-        fill="#1a1f71"
-      />
-      {/* Mastercard circles */}
-      <Circle cx={42} cy={11} r={6} fill="#eb001b" />
-      <Circle cx={50} cy={11} r={6} fill="#f79e1b" opacity={0.9} />
-    </Svg>
-  );
-}
-
-function BankIcon() {
-  return (
-    <Svg width={26} height={24} viewBox="0 0 26 24" fill="none">
-      <Path
-        d="M13 2L2 8h22L13 2zm-9 8v9m5-9v9m8-9v9m5-9v9M2 21h22"
-        stroke={MUTED}
-        strokeWidth={2}
-        strokeLinecap="round"
+        d="M4 20c-.55 0-1.02-.2-1.41-.59C2.2 19.02 2 18.55 2 18V6c0-.55.2-1.02.59-1.41C2.98 4.2 3.45 4 4 4h16c.55 0 1.02.2 1.41.59.39.39.59.86.59 1.41v12c0 .55-.2 1.02-.59 1.41-.39.39-.86.59-1.41.59H4zM4 12h16V8H4v4z"
+        fill={MUTED}
       />
     </Svg>
   );
 }
 
-/* ---------------------------------- styles --------------------------------- */
+function IconPayBank() {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5 17V10h2v7H5zm6 0v-7h2v7h-2zM2 21v-2h20v2H2zm15-4v-7h2v7h-2zM2 8V6L12 1l10 5v2H2z"
+        fill={MUTED}
+      />
+    </Svg>
+  );
+}
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
-  },
+  root: { flex: 1, paddingTop: 0 },
+  pageScroll: { flex: 1 },
+  pageScrollContent: { flexGrow: 1 },
+  max: { width: '100%', maxWidth: 402, alignSelf: 'center', alignItems: 'stretch' },
+  /** No extra 56px strip — `paddingTop: insets.top` on `max` matches web without dead space. */
+  backBtn: { position: 'absolute', top: 4, left: 16, width: 24, height: 24, zIndex: 10, alignItems: 'center', justifyContent: 'center' },
   kickerRow: {
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: 'rgba(34,197,94,0.2)',
-  },
-  kicker: {
-    fontFamily: FF.semiBold,
-    fontSize: 12,
-    color: '#fff',
-    lineHeight: 16,
-  },
-  heroTitle: {
-    marginTop: 10,
-    fontFamily: FF.bold,
-    fontSize: 26,
-    lineHeight: 32,
-    color: WEB.white,
-    letterSpacing: 0.24,
-    textAlign: 'center',
-  },
-  heroSub: {
-    marginTop: 2,
-    fontFamily: FF.semiBold,
-    fontSize: 12,
-    lineHeight: 16,
-    color: MUTED,
-    textAlign: 'center',
-  },
-  popularWrap: {
-    alignItems: 'center',
-    marginTop: 17,
-  },
-  popularPill: {
-    paddingHorizontal: 15,
+    gap: 10,
+    /** Clears the absolute back control (24px) without the old 56px gray strip. */
+    marginTop: 28,
+    paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
-  },
-  popularText: {
-    fontFamily: FF.semiBold,
-    fontSize: 14,
-    color: '#fff',
-    lineHeight: 19,
-  },
-  plansRow: {
-    gap: 12,
-    paddingVertical: 16,
-    paddingRight: 4,
-  },
-  planCard: {
-    width: 170,
-    minHeight: 230,
-    borderRadius: 20,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    backgroundColor: CARD_BG,
-    overflow: 'hidden',
-  },
-  planCardSelected: {
-    borderColor: PG,
-    borderWidth: 2,
-    shadowColor: PG,
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  planHead: {
-    marginBottom: 8,
-  },
-  planName: {
-    fontFamily: FF.bold,
-    fontSize: 16,
-    lineHeight: 22,
-    color: WEB.white,
-  },
-  planTag: {
-    marginTop: 2,
-    fontFamily: FF.semiBold,
-    fontSize: 12,
-    lineHeight: 16,
-    color: MUTED,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 8,
-    marginTop: 4,
-  },
-  price: {
-    fontFamily: FF.bold,
-    fontSize: 24,
-    lineHeight: 33,
-    color: WEB.white,
-  },
-  perMonth: {
-    fontFamily: FF.semiBold,
-    fontSize: 12,
-    color: MUTED,
-  },
-  featureList: {
-    gap: 4,
-    marginTop: 4,
-  },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  featureText: {
-    flex: 1,
-    fontFamily: FF.semiBold,
-    fontSize: 12,
-    lineHeight: 16,
-    color: MUTED,
-  },
-  recordingsCard: {
-    marginTop: 12,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    backgroundColor: '#1e1e22',
-  },
-  recordingsHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  recordingsHeadLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-  },
-  recordingsTitle: {
-    fontFamily: FF.bold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: WEB.white,
-  },
-  dotOuter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
     backgroundColor: 'rgba(34,197,94,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  dotInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: PG,
+  kickerIcon: { width: 16, height: 16 },
+  kicker: { fontFamily: FF.semiBold, fontSize: 12, color: '#fff' },
+  heroTitle: {
+    marginTop: 10,
+    fontFamily: FF.extraBold,
+    fontSize: 24,
+    lineHeight: 32,
+    color: '#fff',
+    textAlign: 'center',
   },
-  recordingsBody: {
-    fontFamily: FF.semiBold,
-    fontSize: 14,
-    lineHeight: 19,
-    color: MUTED,
-  },
-  featuresCard: {
-    marginTop: 20,
-    gap: 10,
-  },
-  featuresCardTitle: {
-    fontFamily: FF.bold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: WEB.white,
-    marginBottom: 2,
-  },
-  featLine: {
+  heroSub: { marginTop: 4, fontFamily: FF.semiBold, fontSize: 12, color: MUTED, textAlign: 'center' },
+  popularPill: { paddingHorizontal: 15, paddingVertical: 5, borderRadius: 20 },
+  popularText: { fontFamily: FF.semiBold, fontSize: 14, color: '#fff' },
+  /** Sits on the Pro card (not a separate row). */
+  popularOnPro: { position: 'absolute', top: -11, left: 0, right: 0, zIndex: 3, alignItems: 'center' },
+  plansScroll: {
+    marginTop: 10,
+    paddingLeft: PLANS_H_PAD,
+    paddingRight: PLANS_H_PAD + 8,
+    paddingTop: 16,
+    paddingBottom: 10,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 4,
+    gap: PLAN_GAP,
+    alignItems: 'flex-start',
   },
-  featIcon: {
-    width: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+  planPress: { position: 'relative' },
+  planBg: { borderRadius: 20, overflow: 'hidden' },
+  planBgImage: { borderRadius: 20 },
+  planSelectedRing: { ...StyleSheet.absoluteFillObject, borderRadius: 20, borderWidth: 2, borderColor: ACCENT },
+  planPad: { padding: 16, paddingBottom: 14, justifyContent: 'flex-start' },
+  planName: { fontFamily: FF.bold, fontSize: 16, color: '#fff' },
+  planSub: { marginTop: 2, fontFamily: FF.semiBold, fontSize: 12, color: MUTED },
+  priceRow: { marginTop: 6, flexDirection: 'row', alignItems: 'baseline' },
+  priceNum: { fontFamily: FF.bold, fontSize: 24, color: '#fff' },
+  priceMo: { fontFamily: FF.semiBold, fontSize: 12, color: MUTED },
+  planBullets: { marginTop: 6, gap: 2 },
+  planBulletRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  tickInside: { width: 18, height: 18, flexShrink: 0 },
+  planBulletText: { flex: 1, fontFamily: FF.semiBold, fontSize: 12, lineHeight: 16, color: MUTED },
+  featSection: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    width: '100%',
+    alignSelf: 'stretch',
   },
-  featLabel: {
-    flex: 1,
-    fontFamily: FF.semiBold,
-    fontSize: 16,
-    lineHeight: 22,
-    color: WEB.white,
-  },
-  paymentTitle: {
-    marginTop: 28,
-    marginBottom: 14,
-    fontFamily: FF.bold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: WEB.white,
-  },
-  paymentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  featBlock: { gap: 8, width: '100%' },
+  featListTitle: { fontFamily: FF.bold, fontSize: 20, color: '#fff', marginBottom: 4 },
+  fLine: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  tickFeature: { width: 20, height: 20, flexShrink: 0 },
+  fText: { flex: 1, minWidth: 0, fontFamily: FF.semiBold, fontSize: 16, color: '#fff' },
+  pmHeader: { marginTop: 30, marginHorizontal: 20, marginBottom: 14 },
+  pmTitle: { fontFamily: FF.bold, fontSize: 20, color: '#fff' },
+  pmSub: { marginTop: 6, fontFamily: FF.regular, fontSize: 12, lineHeight: 17, color: MUTED },
+  payRow: {
+    marginHorizontal: 20,
+    marginBottom: 12,
     minHeight: 55,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: CARD_BORDER,
+    borderColor: BORDER,
     backgroundColor: '#1e1e22',
-    marginBottom: 12,
-  },
-  paymentRowActive: {
-    borderColor: PG,
-  },
-  payLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
+    justifyContent: 'space-between',
   },
-  payLabel: {
-    fontFamily: FF.semiBold,
-    fontSize: 18,
-    lineHeight: 24,
-    color: MUTED,
+  payRowOn: { borderColor: ACCENT },
+  payLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, paddingRight: 4 },
+  payUpi: { width: 28, height: 27 },
+  payIcon24: { width: 24, height: 24 },
+  payTxt: { fontFamily: FF.semiBold, fontSize: 20, lineHeight: 27, color: MUTED, flex: 1 },
+  payVisa: { width: 61, height: 25 },
+  payRowSpacer: { width: 24, height: 24 },
+  /** Same horizontal inset as `payRow` so width matches; stretch fixes Pressable hugging text (no green pill) on some builds. */
+  upgradeShell: {
+    marginTop: 24,
+    marginHorizontal: 20,
+    alignSelf: 'stretch',
   },
-  upgradeBtn: {
-    marginTop: 30,
-    alignSelf: 'center',
-    width: '90%',
-    maxWidth: 332,
-    height: 50,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: PG,
-    shadowColor: PG,
+  upgradePress: {
+    width: '100%',
+    borderRadius: 999,
+    overflow: 'hidden',
+    shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.35,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowRadius: 16,
+    elevation: 6,
   },
-  upgradeText: {
-    fontFamily: FF.bold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: WEB.white,
+  upgradeGrad: {
+    minHeight: 56,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...gradientPillInner,
   },
+  upText: { fontFamily: FF.bold, fontSize: 20, textAlign: 'center', color: WEB.white },
 });
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _keepDeep = PG_SOFT + PG_DEEP;

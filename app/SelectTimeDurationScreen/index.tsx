@@ -17,6 +17,7 @@ export default function SelectTimeDurationScreen() {
     turfId?: string | string[];
     cameraId?: string | string[];
     GroundDescription?: string | string[];
+    GroundNumber?: string | string[];
   }>();
 
   return (
@@ -27,6 +28,7 @@ export default function SelectTimeDurationScreen() {
         turfId: one(p.turfId),
         cameraId: one(p.cameraId),
         GroundDescription: one(p.GroundDescription),
+        GroundNumber: one(p.GroundNumber),
       }}
     />
   );

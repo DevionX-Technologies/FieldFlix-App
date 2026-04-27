@@ -1,6 +1,7 @@
 // src/screens/recording/hooks/useCountdown.ts
 import { CustomModal } from "@/components/ui/CustomModal";
 import {
+  LAST_STOPPED_RECORDING_ID,
   RECORDING_CAMERA_ID,
   RECORDING_KEY,
   TIME_GROUNDLOCATION,
@@ -10,6 +11,7 @@ import {
 } from "@/data/constants";
 import { Paths } from "@/data/paths";
 import axiosInstance from "@/utils/axiosInstance";
+import axios from "axios";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { jwtDecode } from "jwt-decode";
@@ -23,6 +25,20 @@ async function getToken(): Promise<string | null> {
 }
 
 const STEP_ADJUST_SEC = 5 * 60;
+
+/** Nest may return `existingRecordingId` on 409 so the client can stop the stuck row and retry. */
+function extractConflictRecordingId(err: unknown): string | undefined {
+  if (!axios.isAxiosError(err)) return undefined;
+  const d = err.response?.data as Record<string, unknown> | undefined;
+  if (!d) return undefined;
+  if (typeof d.existingRecordingId === "string") return d.existingRecordingId;
+  const m = d.message;
+  if (m && typeof m === "object" && !Array.isArray(m) && "existingRecordingId" in m) {
+    const id = (m as Record<string, unknown>).existingRecordingId;
+    if (typeof id === "string") return id;
+  }
+  return undefined;
+}
 
 export function useCountdown(initialSeconds: number, turfId: string, cameraId?: string | string[]) {
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
@@ -88,7 +104,7 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
   }, [timeLeft]);
 
   const start = useCallback(async () => {
-    try {
+    const postStart = async () => {
       const tokenNew = await getToken();
       setToken(tokenNew);
 
@@ -98,19 +114,28 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       }
 
       const decoded = jwtDecode<DecodedToken>(tokenNew);
-      const userId = decoded.user_id ?? null;
-      setUserId(userId);
-      if (!userId) {
+      const uid = decoded.user_id ?? null;
+      setUserId(uid);
+      if (!uid) {
         showModal("error", "Not signed in", "Missing user id in token.");
+        return;
+      }
+      const tid = Array.isArray(turfId) ? turfId[0] : turfId;
+      if (tid == null || String(tid).trim() === "") {
+        showModal(
+          "error",
+          "Invalid QR",
+          "This QR is missing a turf. Scan a valid FieldFlicks court QR to start recording."
+        );
         return;
       }
       const actualCameraId = Array.isArray(cameraId) ? cameraId[0] : cameraId || "27ce1af1-721a-421c-9223-3ddeda95f315";
 
       const payload = {
-        userId,
+        userId: uid,
         cameraId: actualCameraId,
         metadata: {},
-        turfId,
+        turfId: String(tid).trim(),
       };
 
       console.log("📤 POST /recording/start API Called !!!!!", payload);
@@ -139,23 +164,54 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
         RECORDING_KEY,
         JSON.stringify({ dateTime: nowIso })
       );
-      const newTimeLeft = timeLeft / 60;
-      await SecureStore.setItemAsync(TIME_LEFT_KEY, newTimeLeft.toString());
+      await SecureStore.setItemAsync(TIME_LEFT_KEY, String(initialSeconds / 60));
       await SecureStore.setItemAsync(RECORDING_CAMERA_ID, newId.toString());
       await SecureStore.setItemAsync(TURF_ID, turfId.toString());
-    } catch (err: any) {
-      console.error("❌ start() error:", err.response?.data || err.message);
+    };
 
-      const status = err.response?.status;
+    try {
+      await postStart();
+    } catch (err: unknown) {
+      console.error("❌ start() error:", axios.isAxiosError(err) ? err.response?.data : err);
+
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       if (status === 409) {
-        showModal(
-          "error",
-          "Recording in Progress",
-          err.response?.data?.message ||
-            "Please stop the current recording before starting a new one."
-        );
+        const existingId = extractConflictRecordingId(err);
+        if (existingId) {
+          try {
+            await axiosInstance.put(`/recording/stop/${existingId}`, {
+              recordingId: existingId,
+            });
+            await postStart();
+            return;
+          } catch (stopErr) {
+            console.error("❌ stop after 409 failed:", axios.isAxiosError(stopErr) ? stopErr.response?.data : stopErr);
+            showModal(
+              "error",
+              "Could not clear previous session",
+              axios.isAxiosError(stopErr)
+                ? String(stopErr.response?.data?.message ?? stopErr.message)
+                : "Try again in a moment or ask support to clear the camera session."
+            );
+            return;
+          }
+        }
+        const raw = axios.isAxiosError(err) ? err.response?.data : undefined;
+        const m = raw && typeof raw === "object" && "message" in raw ? (raw as { message: unknown }).message : undefined;
+        const text =
+          typeof m === "string"
+            ? m
+            : m && typeof m === "object" && m !== null && "message" in m
+              ? String((m as { message: string }).message)
+              : "Please stop the current recording before starting a new one.";
+        showModal("error", "Recording in Progress", text);
       } else {
-        showModal("error", "Start failed", err.response?.data?.message || err.message);
+        const msg = axios.isAxiosError(err)
+          ? String(err.response?.data?.message ?? err.message)
+          : err instanceof Error
+            ? err.message
+            : "Unknown error";
+        showModal("error", "Start failed", msg);
       }
     }
   }, [initialSeconds, turfId, cameraId]);
@@ -209,6 +265,14 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       );
 
       console.log("recording stopped!");
+
+      // Persist the most recently stopped recording so RecordingsScreen can poll
+      // for the Mux source.ready event and surface an in-app "ready" toast.
+      try {
+        await SecureStore.setItemAsync(LAST_STOPPED_RECORDING_ID, String(id));
+      } catch {
+        // SecureStore can fail on Android emulators without a keystore — ignore.
+      }
 
       await Promise.all([
         SecureStore.deleteItemAsync(RECORDING_KEY),

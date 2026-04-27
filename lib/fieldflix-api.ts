@@ -36,6 +36,41 @@ export function getFieldflixApiErrorMessage(e: unknown, fallback: string): strin
   return fallback;
 }
 
+const DEBUG_BODY_MAX = 1200;
+
+/**
+ * Multi-line details for dev-friendly alerts: HTTP status, URL, response body.
+ * Server "logs" only appear here if the backend includes them in the JSON body.
+ */
+export function getFieldflixApiErrorDebug(e: unknown): string {
+  if (!axios.isAxiosError(e)) {
+    return e instanceof Error ? e.message : String(e);
+  }
+  const lines: string[] = [];
+  if (e.response?.status != null) {
+    lines.push(`HTTP ${e.response.status}`);
+  }
+  if (e.config) {
+    const method = (e.config.method ?? 'GET').toUpperCase();
+    const fullUrl = `${e.config.baseURL ?? ''}${e.config.url ?? ''}`;
+    if (fullUrl) lines.push(`${method} ${fullUrl}`);
+  }
+  if (e.code) lines.push(`code: ${e.code}`);
+  const data = e.response?.data;
+  if (data != null) {
+    const raw =
+      typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    lines.push(
+      raw.length > DEBUG_BODY_MAX
+        ? `Response (truncated):\n${raw.slice(0, DEBUG_BODY_MAX)}…`
+        : `Response:\n${raw}`,
+    );
+  } else if (!e.response) {
+    lines.push(getFieldflixApiErrorMessage(e, e.message));
+  }
+  return lines.join('\n');
+}
+
 /** E.164 without + for MSG91-style APIs (e.g. 9198xxxxxxxx) */
 export function normalizeMobile(raw: string): string {
   const d = raw.replace(/\D/g, '');
@@ -81,14 +116,54 @@ export async function getNotificationCount() {
   return 0;
 }
 
+/**
+ * `GET /recording/*` can arrive as a raw array, or nested as `{ items }`, `{ recordings }`, etc.
+ * after intermediaries. Used so Sessions and Recordings both show the same rows.
+ */
+export function coerceToRecordingList(payload: unknown): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload == null || typeof payload !== 'object') return [];
+  const o = payload as Record<string, unknown>;
+  const fromKeys = (obj: Record<string, unknown>): unknown[] | null => {
+    for (const k of [
+      'data',
+      'items',
+      'recordings',
+      'results',
+      'rows',
+      'sharedRecordings',
+      'shared_recordings',
+      'shared',
+    ]) {
+      const v = obj[k];
+      if (Array.isArray(v)) return v;
+    }
+    return null;
+  };
+  const top = fromKeys(o);
+  if (top) return top as any[];
+  const inner = o.data;
+  if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+    const nested = fromKeys(inner as Record<string, unknown>);
+    if (nested) return nested as any[];
+  }
+  return [];
+}
+
 export async function getMyRecordings() {
   const { data } = await axiosInstance.get('/recording/my-recordings');
-  return Array.isArray(data) ? data : [];
+  return coerceToRecordingList(data);
+}
+
+/** Single recording with related entities (`GET /recording/:id`). */
+export async function getRecordingById(recordingId: string) {
+  const { data } = await axiosInstance.get(`/recording/${recordingId}`);
+  return data;
 }
 
 export async function getSharedWithMe() {
   const { data } = await axiosInstance.get('/recording/shared-with-me');
-  return Array.isArray(data) ? data : [];
+  return coerceToRecordingList(data);
 }
 
 /** Backend `ESportsSupported`: e.g. `Pickleball`, `Paddle`, `Cricket`. */
@@ -276,9 +351,178 @@ export async function uploadProfilePicture(params: {
   return text.replace(/^"|"$/g, '');
 }
 
-export async function getNotifications(page = 1) {
-  const { data } = await axiosInstance.get('/notification', {
-    params: { page },
+export type PlanId = 'free' | 'pro' | 'premium';
+
+export type PlanOrderResponse = {
+  id: string;
+  razorpay_order_id: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_type: string;
+  created_at?: string;
+  expires_at?: string;
+};
+
+/** Creates a Razorpay order for the premium / plan screen (`POST /payments/plan/create-order`). */
+export async function createPlanOrder(plan: PlanId): Promise<PlanOrderResponse> {
+  const { data } = await axiosInstance.post<PlanOrderResponse>('/payments/plan/create-order', {
+    plan,
   });
+  return data as PlanOrderResponse;
+}
+
+/** Confirms payment after native Razorpay Checkout (`POST /payments/verify`). */
+export async function verifyRazorpayPayment(body: {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  status: 'completed' | 'failed' | 'pending' | 'cancelled' | 'refunded';
+}) {
+  const { data } = await axiosInstance.post('/payments/verify', body);
   return data;
+}
+
+export type ActivePlan = {
+  active: boolean;
+  plan: 'free' | 'pro' | 'premium' | null;
+  paid_at: string | null;
+  expires_at: string | null;
+  payment_id: string | null;
+};
+
+/** Server-truth entitlement (`GET /payments/plan/active`). */
+export async function getActivePlan(): Promise<ActivePlan> {
+  const { data } = await axiosInstance.get<ActivePlan>('/payments/plan/active');
+  return data;
+}
+
+export type RecordingHighlightDto = {
+  id: string;
+  relative_timestamp: string | null;
+  button_click_timestamp: string | Date;
+  playback_id: string | null;
+  mux_public_playback_url: string | null;
+  thumbnail_url: string | null;
+  status: string;
+};
+
+/** Ready highlights for a recording (`GET /recording/:id/highlights`). */
+export async function getRecordingHighlights(
+  recordingId: string,
+): Promise<RecordingHighlightDto[]> {
+  const { data } = await axiosInstance.get<RecordingHighlightDto[]>(
+    `/recording/${recordingId}/highlights`,
+  );
+  return Array.isArray(data) ? data : [];
+}
+
+export type RecordingPlayback = {
+  recording_id: string;
+  playback_id: string | null;
+  mux_public_url: string | null;
+  signed_token: string | null;
+  signed_url: string | null;
+  expires_at: string | null;
+};
+
+/** Latest playback URL/token for a recording (`GET /recording/:id/playback`). */
+export async function getRecordingPlayback(
+  recordingId: string,
+): Promise<RecordingPlayback> {
+  const { data } = await axiosInstance.get<RecordingPlayback>(
+    `/recording/${recordingId}/playback`,
+  );
+  return data;
+}
+
+export type RecordingStatus = {
+  id: string;
+  status: 'in_progress' | 'processing' | 'completed' | 'ready' | 'failed' | string;
+  s3Path?: string | null;
+  mux_playback_id?: string | null;
+  startTime?: string | Date | null;
+  endTime?: string | Date | null;
+};
+
+export async function getRecordingStatus(
+  recordingId: string,
+): Promise<RecordingStatus | null> {
+  try {
+    const { data } = await axiosInstance.get<RecordingStatus>(
+      `/recording/${recordingId}/status`,
+    );
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Polls `/recording/:id/status` until it's ready, completed (with playback id), or the timeout elapses. */
+export async function pollRecordingReady(
+  recordingId: string,
+  options?: {
+    intervalMs?: number;
+    timeoutMs?: number;
+    onTick?: (status: RecordingStatus | null) => void;
+  },
+): Promise<RecordingStatus | null> {
+  const intervalMs = options?.intervalMs ?? 5000;
+  const timeoutMs = options?.timeoutMs ?? 5 * 60 * 1000;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = await getRecordingStatus(recordingId);
+    options?.onTick?.(status);
+    if (status?.status === 'ready' && status?.mux_playback_id) return status;
+    if (status?.status === 'completed' && status?.mux_playback_id) return status;
+    if (status?.status === 'failed') return status;
+    await new Promise((res) => setTimeout(res, intervalMs));
+  }
+  return null;
+}
+
+/** Generates (or returns) a deep-linkable share URL for a recording (`POST /recording/:id/share`). */
+export async function createShareLink(
+  recordingId: string,
+): Promise<{ shareableLink: string }> {
+  const { data } = await axiosInstance.post<{ shareableLink: string }>(
+    `/recording/${recordingId}/share`,
+  );
+  return data;
+}
+
+export type ShareLinkResolution = {
+  recording_id: string | null;
+  owner_id: string | null;
+  mux_playback_id: string | null;
+  mux_media_url: string | null;
+  duration_seconds: number | null;
+  start_time: string | null;
+  end_time: string | null;
+  turf_name: string | null;
+  owner_name: string | null;
+  status: string | null;
+  presignedUrl: string | null;
+};
+
+/** Resolves a share token (public / unauthenticated) — `GET /recording/shared/media/:token`. */
+export async function resolveShareToken(
+  shareToken: string,
+): Promise<ShareLinkResolution> {
+  const { data } = await axiosInstance.get<ShareLinkResolution>(
+    `/recording/shared/media/${encodeURIComponent(shareToken)}`,
+  );
+  return data;
+}
+
+export async function getNotifications(page = 1, limit = 50) {
+  const { data } = await axiosInstance.get('/notification', {
+    params: { page, limit },
+  });
+  if (data == null) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'object' && data !== null && 'items' in data) {
+    const items = (data as { items?: unknown }).items;
+    return Array.isArray(items) ? items : [];
+  }
+  return [];
 }

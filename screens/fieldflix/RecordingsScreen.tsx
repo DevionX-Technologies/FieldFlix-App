@@ -1,10 +1,18 @@
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
-import { getMyRecordings, getSharedWithMe } from '@/lib/fieldflix-api';
+import { createShareLink, getMyRecordings, getSharedWithMe } from '@/lib/fieldflix-api';
+import {
+  highlightCountFromRecording,
+  formatRecordingListWhen,
+  recordingDurationLabel,
+  recordingIsReady,
+  recordingThumbUrl,
+} from '@/utils/recordingDisplay';
 import { FF } from '@/screens/fieldflix/fonts';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { RECORDINGS_REC_LOCAL } from '@/screens/fieldflix/recordingsAssets';
 import { WEB } from '@/screens/fieldflix/webDesign';
+import { useRecordingReadyToast } from '@/hooks/useRecordingReadyToast';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -26,46 +34,21 @@ const REC_BG = '#020617';
 const ACCENT = '#22C55E';
 const MUTED = '#94a3b8';
 
-/** Fallback rows aligned with `web/src/screens/RecordingsScreen.tsx` when API is empty. */
-const MY_RECORDINGS_MOCK = [
-  {
-    id: 'm1',
-    title: 'TSG Sports Arena | Santacruz West',
-    location: 'Santacruz West, Mumbai',
-    when: 'Feb 27, 2026 | 04:57 PM',
-    duration: '00:18',
-    highlights: 40,
-    tags: ['#1', '#2', '#3'] as string[],
-    moreTags: 37,
-  },
-  {
-    id: 'm2',
-    title: 'Velocity Padel Mumbai',
-    location: 'Bandra East, Mumbai',
-    when: 'Feb 26, 2026 | 06:30 PM',
-    duration: '00:42',
-    highlights: 18,
-    tags: ['#1', '#2'] as string[],
-    moreTags: 12,
-  },
-  {
-    id: 'm3',
-    title: 'Greenline Pickleball Hub',
-    location: 'Powai, Mumbai',
-    when: 'Feb 25, 2026 | 07:15 AM',
-    duration: '01:05',
-    highlights: null as number | null,
-    tags: ['#4', '#5'] as string[],
-    moreTags: 8,
-  },
-];
-
-const SHARED_MOCK = [
-  { id: 's1', title: 'Recordings #8116', highlights: 45, shareWith: 100 },
-  { id: 's2', title: 'Recordings #8092', highlights: 12, shareWith: 24 },
-];
-
 type TabId = 'my' | 'shared' | 'find';
+
+function parseClockOnDay(base: Date, clock: string): number | null {
+  const t = clock.trim().toLowerCase();
+  const m = t.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  const ap = m[3]?.toLowerCase();
+  if (ap === 'pm' && h < 12) h += 12;
+  if (ap === 'am' && h === 12) h = 0;
+  const d = new Date(base);
+  d.setHours(h, min, 0, 0);
+  return d.getTime();
+}
 
 export default function FieldflixRecordingsScreen() {
   const router = useRouter();
@@ -73,17 +56,20 @@ export default function FieldflixRecordingsScreen() {
   const [my, setMy] = useState<any[]>([]);
   const [shared, setShared] = useState<any[]>([]);
 
-  const [findLocation, setFindLocation] = useState('Santacruz Playfield, Santacruz West, Mumbai');
-  const [findGround, setFindGround] = useState('ground 10');
-  const [findDate, setFindDate] = useState('Feb 27, 2026');
-  const [findStart, setFindStart] = useState('01:30 PM');
-  const [findEnd, setFindEnd] = useState('03:00 PM');
+  const [findLocation, setFindLocation] = useState('');
+  const [findGround, setFindGround] = useState('');
+  const [findDate, setFindDate] = useState('');
+  const [findStart, setFindStart] = useState('');
+  const [findEnd, setFindEnd] = useState('');
   const [findPhone, setFindPhone] = useState('');
+  const [findMatches, setFindMatches] = useState<any[] | null>(null);
 
-  const onShareRecording = useCallback(async (title: string) => {
+  const onShareRecording = useCallback(async (recordingId: string, title: string) => {
     try {
+      const { shareableLink } = await createShareLink(recordingId);
       await Share.share({
-        message: `Check out my FieldFlicks recording: ${title}`,
+        message: `Watch my game on FieldFlicks: ${shareableLink}`,
+        url: shareableLink,
         title,
       });
     } catch {
@@ -91,11 +77,48 @@ export default function FieldflixRecordingsScreen() {
     }
   }, []);
 
+  const runFindInMyRecordings = useCallback(() => {
+    const locQ = findLocation.trim().toLowerCase();
+    const g = findGround.trim().toLowerCase();
+    const out = my.filter((r: any) => {
+      const turf = r.turf;
+      const hay = [turf?.name, turf?.address_line, turf?.city, turf?.location]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      if (locQ) {
+        const parts = locQ.split(/[,\n]+/).map((p) => p.trim()).filter(Boolean);
+        const anyPart = parts.some((p) => p.length > 0 && hay.includes(p));
+        if (!anyPart && !hay.includes(locQ)) return false;
+      }
+      if (g && !hay.includes(g)) return false;
+      const st = r.startTime ? new Date(String(r.startTime)) : null;
+      if (st && findDate.trim()) {
+        const fd = Date.parse(findDate);
+        if (!Number.isNaN(fd) && st.toDateString() !== new Date(fd).toDateString()) {
+          return false;
+        }
+      }
+      if (findStart.trim() && findEnd.trim() && st) {
+        const t0 = parseClockOnDay(st, findStart);
+        const t1 = parseClockOnDay(st, findEnd);
+        if (t0 != null && t1 != null) {
+          const t = st.getTime();
+          const lo = Math.min(t0, t1);
+          const hi = Math.max(t0, t1);
+          if (t < lo || t > hi) return false;
+        }
+      }
+      return true;
+    });
+    setFindMatches(out);
+  }, [my, findLocation, findGround, findDate, findStart, findEnd]);
+
   const load = useCallback(async () => {
     try {
       const [a, b] = await Promise.all([getMyRecordings(), getSharedWithMe()]);
-      setMy(Array.isArray(a) ? a : []);
-      setShared(Array.isArray(b) ? b : []);
+      setMy(a);
+      setShared(b);
     } catch {
       setMy([]);
       setShared([]);
@@ -109,30 +132,46 @@ export default function FieldflixRecordingsScreen() {
   const myRows =
     my.length > 0
       ? my.map((s: any, i: number) => {
-          const h = s?.highlights_count ?? s?.highlight_count ?? s?.highlights;
-          const highlights = typeof h === 'number' ? h : h != null ? Number(h) : null;
+          const h = highlightCountFromRecording(s);
           return {
             id: String(s?.id ?? i),
+            recordingId: s?.id ? String(s.id) : null,
             title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? 'Recording',
-            location: s?.turf?.city ?? s?.location ?? '',
-            when: s?.created_at ? String(s.created_at) : '',
-            duration: s?.duration ?? '—',
-            highlights: Number.isFinite(highlights as number) ? (highlights as number) : null,
+            location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? '',
+            when: formatRecordingListWhen(s?.startTime),
+            duration: recordingDurationLabel(s),
+            thumbUrl: recordingThumbUrl(s),
+            highlights: h > 0 ? h : null,
+            status: String(s?.status ?? '').toLowerCase(),
+            isReady: recordingIsReady(s),
             tags: [] as string[],
             moreTags: 0,
           };
         })
-      : MY_RECORDINGS_MOCK;
+      : [];
 
   const sharedRows =
     shared.length > 0
-      ? shared.map((s: any, i: number) => ({
-          id: String(s?.id ?? i),
-          title: s?.recording?.name ?? s?.name ?? `Recording #${i + 1}`,
-          highlights: s?.highlights_count ?? 0,
-          shareWith: s?.share_with ?? s?.shareWith ?? 0,
-        }))
-      : SHARED_MOCK;
+      ? shared.map((s: any, i: number) => {
+          const rec = s?.recording;
+          const td = rec?.turf_detail;
+          const loc = [td?.city, td?.state].filter(Boolean).join(', ') || td?.address_line || '';
+          return {
+            id: String(s?.id ?? i),
+            recordingId: rec?.id ? String(rec.id) : null,
+            shareToken: s?.share_token ?? rec?.share_token ?? null,
+            title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
+            highlights: Array.isArray(rec?.recordingHighlights) ? rec.recordingHighlights.length : 0,
+            shareWith: s?.shared_with_user_name || '—',
+            ownerName: rec?.owner_name ?? '',
+            location: loc,
+            thumbUrl: recordingThumbUrl(rec),
+            duration: recordingDurationLabel(rec),
+          };
+        })
+      : [];
+
+  const { state: readyState, dismiss: dismissReady } = useRecordingReadyToast();
 
   return (
     <WebShell backgroundColor={REC_BG}>
@@ -176,6 +215,50 @@ export default function FieldflixRecordingsScreen() {
           </View>
         </View>
 
+        {readyState.kind !== 'idle' ? (
+          <View style={styles.readyToast}>
+            <View style={styles.readyToastDot} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.readyToastTitle} numberOfLines={1}>
+                {readyState.kind === 'ready'
+                  ? 'Your recording is ready'
+                  : readyState.kind === 'failed'
+                    ? 'Recording failed to process'
+                    : 'Processing your recording…'}
+              </Text>
+              <Text style={styles.readyToastBody} numberOfLines={2}>
+                {readyState.kind === 'ready'
+                  ? 'Open Highlights to watch the preview and unlock the full match.'
+                  : readyState.kind === 'failed'
+                    ? 'Something went wrong on our side. Please try again.'
+                    : 'Hang tight — we\'ll let you know the moment it\'s ready.'}
+              </Text>
+            </View>
+            {readyState.kind === 'ready' ? (
+              <Pressable
+                style={styles.readyToastCta}
+                onPress={() => {
+                  router.push({
+                    pathname: Paths.highlights,
+                    params: { id: readyState.recordingId },
+                  });
+                  void dismissReady();
+                }}
+              >
+                <Text style={styles.readyToastCtaText}>Open</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              style={styles.readyToastClose}
+              hitSlop={10}
+              onPress={() => void dismissReady()}
+              accessibilityLabel="Dismiss"
+            >
+              <Text style={styles.readyToastCloseText}>×</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <ScrollView
           style={styles.flex}
           contentContainerStyle={styles.main}
@@ -183,17 +266,42 @@ export default function FieldflixRecordingsScreen() {
         >
           {tab === 'my' && (
             <View style={styles.myList}>
+              {myRows.length === 0 ? (
+                <Text style={styles.emptyList}>
+                  No recordings yet. Scan a court QR and start a session to build your library.
+                </Text>
+              ) : null}
               {myRows.map((row) => (
-                <View key={row.id} style={styles.myRow}>
+                <Pressable
+                  key={row.id}
+                  style={styles.myRow}
+                  onPress={() => {
+                    if (!row.recordingId) return;
+                    router.push({
+                      pathname: Paths.highlights,
+                      params: { id: row.recordingId },
+                    });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${row.title} highlights`}
+                >
                   <View style={styles.thumb}>
-                    <Image source={BG.arena} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    <Image
+                      source={row.thumbUrl ? { uri: row.thumbUrl } : BG.arena}
+                      style={StyleSheet.absoluteFillObject}
+                      resizeMode="cover"
+                    />
                     <View style={styles.thumbBar} />
                     <View style={styles.thumbDur}>
                       <Text style={styles.thumbDurText}>{row.duration}</Text>
                     </View>
                     <Pressable
                       style={styles.thumbShare}
-                      onPress={() => onShareRecording(row.title)}
+                      onPress={() => {
+                        if (row.recordingId) {
+                          void onShareRecording(row.recordingId, row.title);
+                        }
+                      }}
                       accessibilityLabel="Share recording"
                       hitSlop={8}
                     >
@@ -227,31 +335,51 @@ export default function FieldflixRecordingsScreen() {
                         <Text style={styles.myLineAccent}>{row.highlights} Highlights</Text>
                       </View>
                     ) : null}
-                    {row.tags.length > 0 || row.moreTags > 0 ? (
-                      <View style={styles.tagRow}>
-                        {row.tags.map((t) => (
-                          <View key={t} style={styles.tag}>
-                            <Text style={styles.tagText}>{t}</Text>
-                          </View>
-                        ))}
-                        {row.moreTags > 0 ? (
-                          <View style={[styles.tag, styles.tagMore]}>
-                            <Text style={styles.tagMoreText}>+{row.moreTags}</Text>
-                          </View>
-                        ) : null}
+                    {!row.isReady ? (
+                      <View style={styles.myLine}>
+                        <Text style={styles.myLineProcessing} numberOfLines={1}>
+                          Processing — your highlights will appear here shortly.
+                        </Text>
                       </View>
                     ) : null}
                   </View>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}
 
           {tab === 'shared' && (
             <View style={styles.sharedList}>
+              {sharedRows.length === 0 ? (
+                <Text style={styles.emptyList}>
+                  Nothing shared with you yet. When someone shares a recording, it will show here.
+                </Text>
+              ) : null}
               {sharedRows.map((card) => (
-                <View key={card.id} style={styles.sharedCard}>
-                  <Image source={BG.arena} style={styles.sharedMedia} resizeMode="cover" />
+                <Pressable
+                  key={card.id}
+                  style={styles.sharedCard}
+                  onPress={() => {
+                    if (card.recordingId) {
+                      router.push({
+                        pathname: Paths.highlights,
+                        params: { id: card.recordingId },
+                      });
+                    } else if (card.shareToken) {
+                      router.push({
+                        pathname: Paths.sharedMedia,
+                        params: { token: card.shareToken },
+                      });
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${card.title}`}
+                >
+                  <Image
+                    source={card.thumbUrl ? { uri: card.thumbUrl } : BG.arena}
+                    style={styles.sharedMedia}
+                    resizeMode="cover"
+                  />
                   <LinearGradient
                     colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.94)']}
                     locations={[0, 0.55, 1]}
@@ -264,14 +392,16 @@ export default function FieldflixRecordingsScreen() {
                       </View>
                       <View style={styles.sharedDur}>
                         <ClockIcon color="rgba(255,255,255,0.92)" size={14} />
-                        <Text style={styles.sharedDurText}>N/A</Text>
+                        <Text style={styles.sharedDurText}>{card.duration}</Text>
                       </View>
                     </View>
                     <View style={styles.sharedMid}>
                       <Text style={styles.sharedTitle} numberOfLines={1}>
                         {card.title}
                       </Text>
-                      <Text style={styles.sharedMeta}>No location available</Text>
+                      <Text style={styles.sharedMeta} numberOfLines={2}>
+                        {card.location || 'No location available'}
+                      </Text>
                     </View>
                     <View style={styles.sharedActions}>
                       <View style={styles.sharedPills}>
@@ -280,20 +410,26 @@ export default function FieldflixRecordingsScreen() {
                           <Text style={styles.sharedPillText}>{card.highlights} Highlights</Text>
                         </View>
                         <View style={styles.sharedPill}>
-                          <Text style={styles.sharedPillText}>Share with : {card.shareWith}</Text>
+                          <Text style={styles.sharedPillText} numberOfLines={1}>
+                            From: {card.ownerName || '—'}
+                          </Text>
                         </View>
                       </View>
                       <Pressable
                         style={styles.sharedFab}
                         accessibilityLabel="Share"
-                        onPress={() => onShareRecording(card.title)}
+                        onPress={() => {
+                          if (card.recordingId) {
+                            void onShareRecording(card.recordingId, card.title);
+                          }
+                        }}
                         hitSlop={8}
                       >
                         <ShareIcon color="#0a0a0a" size={18} />
                       </Pressable>
                     </View>
                   </View>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}
@@ -417,10 +553,32 @@ export default function FieldflixRecordingsScreen() {
                 </View>
               </View>
 
-              <Pressable style={styles.findCta}>
+              <Pressable style={styles.findCta} onPress={runFindInMyRecordings}>
                 <PlayIcon color="#fff" size={18} />
                 <Text style={styles.findCtaText}>Find My Game</Text>
               </Pressable>
+
+              {findMatches !== null ? (
+                <View style={styles.findResults}>
+                  <Text style={styles.findResultsTitle}>
+                    {findMatches.length === 0
+                      ? 'No matches in your recordings for those details.'
+                      : `${findMatches.length} match${findMatches.length === 1 ? '' : 'es'} in your library`}
+                  </Text>
+                  {findMatches.map((r: any) => {
+                    const title = r?.turf?.name ?? r?.name ?? 'Recording';
+                    const when = formatRecordingListWhen(r?.startTime);
+                    return (
+                      <View key={String(r.id)} style={styles.findResultRow}>
+                        <Text style={styles.findResultName} numberOfLines={2}>
+                          {title}
+                        </Text>
+                        <Text style={styles.findResultWhen}>{when}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
 
               <View style={[styles.findPanel, styles.findPanelVerify]}>
                 <View style={styles.findVerifyTitle}>
@@ -745,6 +903,66 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     color: ACCENT,
+  },
+  myLineProcessing: {
+    flex: 1,
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    lineHeight: 16,
+    color: 'rgba(234,179,8,0.95)',
+  },
+  readyToast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(34,197,94,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.45)',
+  },
+  readyToastDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: ACCENT,
+  },
+  readyToastTitle: {
+    fontFamily: FF.bold,
+    fontSize: 13,
+    color: '#fff',
+  },
+  readyToastBody: {
+    marginTop: 2,
+    fontFamily: FF.regular,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.78)',
+  },
+  readyToastCta: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: ACCENT,
+  },
+  readyToastCtaText: {
+    fontFamily: FF.bold,
+    fontSize: 12,
+    color: '#fff',
+  },
+  readyToastClose: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readyToastCloseText: {
+    fontFamily: FF.bold,
+    fontSize: 22,
+    lineHeight: 26,
+    color: 'rgba(255,255,255,0.7)',
   },
   tagRow: {
     marginTop: 4,
@@ -1118,6 +1336,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
     color: '#fff',
+  },
+  findResults: {
+    width: '100%',
+    maxWidth: 331,
+    alignSelf: 'center',
+    marginTop: 20,
+    gap: 10,
+  },
+  findResultsTitle: {
+    fontFamily: FF.semiBold,
+    fontSize: 14,
+    color: MUTED,
+    marginBottom: 4,
+  },
+  findResultRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  findResultName: {
+    fontFamily: FF.semiBold,
+    fontSize: 15,
+    color: '#fff',
+  },
+  findResultWhen: {
+    marginTop: 4,
+    fontFamily: FF.regular,
+    fontSize: 13,
+    color: MUTED,
+  },
+  emptyList: {
+    fontFamily: FF.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center',
+    marginBottom: 12,
   },
 
   findVerifyTitle: {

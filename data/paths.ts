@@ -16,6 +16,13 @@ export const Paths = {
   recordingActive: '/recording-active',
   flixshorts: '/flixshorts',
   recordings: '/recordings',
+  /**
+   * Expo Router file route is `app/highlights/[id]/index.tsx` — the pathname must
+   * include the dynamic segment, e.g. `router.push({ pathname: Paths.highlights, params: { id } })`.
+   */
+  highlights: '/highlights/[id]',
+  /** Matches `app/shared/media/[token]/index.tsx` — use `params: { token }`. */
+  sharedMedia: '/shared/media/[token]',
   profile: '/profile',
   profileNotificationSettings: '/profile/notification-settings',
   profileAppSettings: '/profile/app-settings',

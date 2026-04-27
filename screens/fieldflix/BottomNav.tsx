@@ -2,17 +2,23 @@ import { Paths } from '@/data/paths';
 import { FF } from '@/screens/fieldflix/fonts';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import type { ImageSourcePropType } from 'react-native';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 const QR = require('@/assets/fieldflix-web/qr.png');
+const NAV_HOME = require('@/Home.png');
+const NAV_SESSION = require('@/Session.png');
+const NAV_FLICKSHORTS = require('@/Flickshorts.png');
+const NAV_RECORDINGS = require('@/Recordings.png');
 
 const ACCENT = '#22C55E';
 const ACCENT_DEEP = '#14532d';
 const BAR_BG = '#384553';
 const INACTIVE = 'rgba(255,255,255,0.72)';
+/** Solid tint for inactive Home (asset is green fill); outline tabs use native gray from PNG when idle. */
+const INACTIVE_HOME_TINT = '#9ca3af';
 
 type Tab = 'home' | 'sessions' | 'flix' | 'recordings';
 
@@ -41,13 +47,17 @@ export function FieldflixBottomNav({
             label="Home"
             active={active === 'home'}
             onPress={() => router.push(Paths.home)}
-            icon={(on) => <HomeIcon active={on} />}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_HOME} active={on} variant="home" />
+            )}
           />
           <NavItem
             label="Sessions"
             active={active === 'sessions'}
             onPress={() => router.push(Paths.sessions)}
-            icon={(on) => <SessionsIcon active={on} />}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_SESSION} active={on} variant="outline" />
+            )}
           />
           {/* spacer for the QR FAB */}
           <View style={styles.centerSpacer} />
@@ -55,13 +65,17 @@ export function FieldflixBottomNav({
             label="FlickShorts"
             active={active === 'flix'}
             onPress={() => router.push(Paths.flixshorts)}
-            icon={(on) => <PlayIcon active={on} />}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_FLICKSHORTS} active={on} variant="outline" />
+            )}
           />
           <NavItem
             label="Recordings"
             active={active === 'recordings'}
             onPress={() => router.push(Paths.recordings)}
-            icon={(on) => <ShutterIcon active={on} />}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_RECORDINGS} active={on} variant="outline" />
+            )}
           />
         </View>
       </View>
@@ -106,61 +120,31 @@ function NavItem({
     </Pressable>
   );
 }
-/* pill layout: vertical stack (icon on top, label below) */
 
-function HomeIcon({ active }: { active: boolean }) {
-  const c = active ? '#fff' : INACTIVE;
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M3 11.5L12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-8.5z"
-        stroke={c}
-        strokeWidth={1.9}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
+function NavRasterIcon({
+  source,
+  active,
+  variant,
+}: {
+  source: ImageSourcePropType;
+  active: boolean;
+  variant: 'home' | 'outline';
+}) {
+  const tintColor =
+    variant === 'home'
+      ? active
+        ? undefined
+        : INACTIVE_HOME_TINT
+      : active
+        ? ACCENT
+        : undefined;
 
-function SessionsIcon({ active }: { active: boolean }) {
-  const c = active ? '#fff' : INACTIVE;
   return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Rect x={3} y={7} width={12} height={10} rx={2} stroke={c} strokeWidth={1.9} />
-      <Path
-        d="M15 10.5l5-2.4a.6.6 0 0 1 .9.5v6.8a.6.6 0 0 1-.9.5L15 13.5"
-        stroke={c}
-        strokeWidth={1.9}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-function PlayIcon({ active }: { active: boolean }) {
-  const c = active ? '#fff' : INACTIVE;
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={9} stroke={c} strokeWidth={1.8} />
-      <Path d="M10 8.5l6 3.5-6 3.5v-7z" fill={c} />
-    </Svg>
-  );
-}
-
-function ShutterIcon({ active }: { active: boolean }) {
-  const c = active ? '#fff' : INACTIVE;
-  return (
-    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={8.25} stroke={c} strokeWidth={1.9} />
-      <Path
-        d="M12 3.75c2 3 2 12.5 0 16.5M3.75 12c3-2 12.5-2 16.5 0M6.2 6.2c3.3.3 10 7 11.6 11.6M6.2 17.8c.3-3.3 7-10 11.6-11.6"
-        stroke={c}
-        strokeWidth={1.4}
-        strokeLinecap="round"
-      />
-    </Svg>
+    <Image
+      source={source}
+      style={[styles.navIcon, tintColor != null ? { tintColor } : null]}
+      contentFit="contain"
+    />
   );
 }
 
@@ -213,10 +197,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   iconBox: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  navIcon: {
+    width: 24,
+    height: 24,
   },
   label: {
     fontFamily: FF.semiBold,

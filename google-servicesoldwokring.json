@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "350089393900",
+    "project_id": "fieldflicksproduction",
+    "storage_bucket": "fieldflicksproduction.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:350089393900:android:7bda3c60ded47f948917c9",
+        "android_client_info": {
+          "package_name": "com.fieldflicks"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "350089393900-k9dpb15frqb94lfrsusgavfmv7ak21rv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.fieldflicks",
+            "certificate_hash": "c6a7f60e159ef996238907e1151b2851da861f59"
+          }
+        },
+        {
+          "client_id": "350089393900-28gotib243itoj4tlt1tmklcoctjisoa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXrXXoznaX02RV8j-nYTZTuPsmbUT87vU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "350089393900-28gotib243itoj4tlt1tmklcoctjisoa.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "350089393900-s615t02m6d1mnc4vja4e9ndd753ti3s3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.h16sahu.fieldflicksmobilelatest"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:350089393900:android:167278253714d62c8917c9",
+        "android_client_info": {
+          "package_name": "com.h16sahu.fieldflicksmobilelatest"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "350089393900-sn4skqkn583qbi21sphfgak4r3udlmk6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.h16sahu.fieldflicksmobilelatest",
+            "certificate_hash": "d0cee9814ed58089caa921dd10de54226105a430"
+          }
+        },
+        {
+          "client_id": "350089393900-28gotib243itoj4tlt1tmklcoctjisoa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXrXXoznaX02RV8j-nYTZTuPsmbUT87vU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "350089393900-28gotib243itoj4tlt1tmklcoctjisoa.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "350089393900-s615t02m6d1mnc4vja4e9ndd753ti3s3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.h16sahu.fieldflicksmobilelatest"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

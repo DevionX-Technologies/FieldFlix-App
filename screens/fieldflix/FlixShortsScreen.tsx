@@ -17,8 +17,9 @@ import {
 } from 'react-native';
 
 const WIN = Dimensions.get('window');
-const TOPBAR = 56;
-const REEL_H = WIN.height - TOPBAR;
+const TOPBAR_H = 56;
+const SPORT_TILES_H = 46;
+const REEL_H = WIN.height - TOPBAR_H - SPORT_TILES_H;
 
 /** Same order as web `REEL_IMAGES`: images23, 21, 19, 18 */
 const REEL_IMAGES = [
@@ -26,6 +27,29 @@ const REEL_IMAGES = [
   require('@/assets/fieldflix-web/reels/images21.jpg'),
   require('@/assets/fieldflix-web/reels/images19.jpg'),
   require('@/assets/fieldflix-web/reels/images18.jpg'),
+] as const;
+
+const SPORT_TILES = [
+  {
+    id: 'pickleball',
+    label: 'Pickleball',
+    icon: require('@/assets/fieldflix-web/pickleball.png'),
+  },
+  {
+    id: 'padel',
+    label: 'Padel',
+    icon: require('@/assets/fieldflix-web/padel.png'),
+  },
+  {
+    id: 'cricket',
+    label: 'Cricket',
+    icon: require('@/assets/fieldflix-web/coming-soon.png'),
+  },
+  {
+    id: 'all',
+    label: 'View All\nTab',
+    icon: null,
+  },
 ] as const;
 
 /**
@@ -51,6 +75,16 @@ export default function FieldflixFlixShortsScreen() {
           </Pressable>
           <Text style={styles.topTitle}>FlickShorts</Text>
           <View style={{ width: 36 }} />
+        </View>
+        <View style={styles.sportsStrip}>
+          {SPORT_TILES.map((tile) => (
+            <Pressable key={tile.id} style={styles.sportTile} onPress={() => {}}>
+              {tile.icon ? (
+                <Image source={tile.icon} style={styles.sportIcon} resizeMode="contain" />
+              ) : null}
+              <Text style={styles.sportTileLabel}>{tile.label}</Text>
+            </Pressable>
+          ))}
         </View>
 
         <FlatList
@@ -138,7 +172,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   list: { flex: 1 },
   topBar: {
-    height: 56,
+    height: TOPBAR_H,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -157,6 +191,40 @@ const styles = StyleSheet.create({
     fontFamily: FF.bold,
     fontSize: 18,
     color: WEB.white,
+  },
+  sportsStrip: {
+    height: SPORT_TILES_H,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#030712',
+  },
+  sportTile: {
+    width: 72,
+    height: 34,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    gap: 1,
+  },
+  sportIcon: {
+    width: 14,
+    height: 14,
+  },
+  sportTileLabel: {
+    fontFamily: FF.medium,
+    fontSize: 9,
+    lineHeight: 10,
+    color: 'rgba(255,255,255,0.92)',
+    textAlign: 'center',
   },
   reel: {
     width: '100%',

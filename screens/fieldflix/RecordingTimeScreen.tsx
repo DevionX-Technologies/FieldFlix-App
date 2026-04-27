@@ -41,6 +41,8 @@ export type RecordingTimeParams = {
   turfId?: string;
   cameraId?: string;
   GroundDescription?: string;
+  /** Court / ground index from QR (`GroundNumber`) */
+  GroundNumber?: string;
 };
 
 /** Mirrors `web/src/screens/RecordingTimeScreen.tsx` + `recordingTimeScreen.css`. */
@@ -50,6 +52,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
 
   const venueName = params.Name?.trim() || 'TGS Sports Arena';
   const venueAddress = params.GroundLocation?.trim() || 'Andheri West, Mumbai';
+  const groundLabel = params.GroundNumber?.trim() || params.GroundDescription?.trim() || 'Court 1';
   const scanned =
     [params.GroundDescription, params.turfId, params.cameraId].filter(Boolean).join(' · ') || '';
 
@@ -130,7 +133,9 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
 
             <Pressable style={styles.court} accessibilityRole="button">
               <GridIcon />
-              <Text style={styles.courtText}>Court 1</Text>
+              <Text style={styles.courtText} numberOfLines={1}>
+                {groundLabel.startsWith('Court') ? groundLabel : `Court ${groundLabel}`}
+              </Text>
             </Pressable>
 
             <View style={styles.timerRow}>

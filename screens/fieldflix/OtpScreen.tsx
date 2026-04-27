@@ -128,11 +128,30 @@ export default function FieldflixOtpScreen() {
   };
 
   const onChangeDigit = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+    const digits = value.replace(/\D/g, '');
+    // Paste / SMS autofill / "suggest strong password" can deliver several digits at once.
+    // Do NOT use maxLength={1} on TextInput — it truncates paste before onChangeText runs.
+    if (digits.length > 1) {
+      const chars = digits.slice(0, 6).split('');
+      const next = ['', '', '', '', '', ''] as string[];
+      for (let i = 0; i < 6; i++) next[i] = chars[i] ?? '';
+      setOtp(next);
+      const focusAt = Math.min(Math.max(chars.length - 1, 0), 5);
+      setTimeout(() => refs.current[focusAt]?.focus(), 0);
+      const joined = next.join('');
+      if (joined.length === 6 && !smsSending) void submit(joined);
+      return;
+    }
+    if (digits.length === 0) {
+      const next = [...otp];
+      next[index] = '';
+      setOtp(next);
+      return;
+    }
     const next = [...otp];
-    next[index] = value.slice(-1);
+    next[index] = digits[0] ?? '';
     setOtp(next);
-    if (value && index < 5) refs.current[index + 1]?.focus();
+    if (index < 5) refs.current[index + 1]?.focus();
     const joined = next.join('');
     if (joined.length === 6 && !smsSending) void submit(joined);
   };
@@ -199,7 +218,10 @@ export default function FieldflixOtpScreen() {
                     }
                   }}
                   keyboardType="number-pad"
-                  maxLength={1}
+                  {...(Platform.OS === 'android' && i === 0 ? { autoComplete: 'sms-otp' as const } : {})}
+                  textContentType={i === 0 ? 'oneTimeCode' : 'none'}
+                  {...(Platform.OS === 'android' && i === 0 ? { importantForAutofill: 'yes' as const } : {})}
+                  // maxLength omitted on purpose: native maxLength=1 breaks multi-digit paste; see onChangeDigit.
                   selectTextOnFocus
                   style={[
                     styles.otpBox,

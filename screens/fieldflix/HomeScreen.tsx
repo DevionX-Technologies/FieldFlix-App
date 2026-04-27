@@ -1,8 +1,11 @@
 import { Paths } from '@/data/paths';
 import { getMyRecordings, getNotificationCount, getTurfsPage } from '@/lib/fieldflix-api';
 import { FF } from '@/screens/fieldflix/fonts';
-import { WEB_RECENT_SESSIONS } from '@/screens/fieldflix/homeWebParity';
 import { WebShell } from '@/screens/fieldflix/WebShell';
+import {
+  formatRecordingTimeLabel,
+  highlightCountFromRecording,
+} from '@/utils/recordingDisplay';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -12,7 +15,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
@@ -116,20 +128,18 @@ function mapTurfToArena(
 }
 
 function mapRecordingToRecent(s: any, idx: number): RecentRow {
-  const d = s?.created_at ? new Date(String(s.created_at)) : null;
+  const raw = s?.startTime ?? s?.endTime ?? s?.created_at;
+  const d = raw ? new Date(String(raw)) : null;
   const valid = d != null && !Number.isNaN(d.getTime());
   const thumbTime = valid
     ? `${String(d!.getHours()).padStart(2, '0')}:${String(d!.getMinutes()).padStart(2, '0')}`
     : '--:--';
-  const timeLabel = valid
-    ? d!.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-    : '';
-  const highlights = s?.highlights_count ?? s?.highlight_count ?? s?.highlights ?? s?.tags_count ?? 0;
-  const score = typeof highlights === 'number' ? highlights : Number(highlights) || 0;
+  const timeLabel = valid ? formatRecordingTimeLabel(d!) : '';
+  const score = highlightCountFromRecording(s);
   return {
     id: String(s?.id ?? idx),
     arenaName: s?.turf?.name ?? s?.recording_name ?? s?.name ?? 'Session',
-    location: s?.turf?.city ?? s?.turf?.address_line ?? '',
+    location: s?.turf?.city ?? s?.turf?.address_line ?? s?.turf?.location ?? '',
     timeLabel,
     thumbTime,
     score,
@@ -139,6 +149,17 @@ function mapRecordingToRecent(s: any, idx: number): RecentRow {
 /** Mirrors `web/src/screens/HomeScreen.tsx` — header, hero, sport tiles, arenas,
  *  recent sessions, auto-highlight banner, plus fixed bottom nav. */
 export default function FieldflixHomeScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const sportsPad = 20;
+  const sportsGap = 8;
+  const sportBoxSize = Math.min(
+    120,
+    Math.max(88, Math.floor((windowWidth - sportsPad * 2 - sportsGap * 2) / 3)),
+  );
+  const sportIconMain = Math.min(48, Math.round(sportBoxSize * 0.4));
+  const sportIconCricketW = Math.min(68, Math.round(sportBoxSize * 0.55));
+  const sportIconCricketH = Math.min(60, Math.round(sportBoxSize * 0.5));
+
   const router = useRouter();
   const [sport, setSport] = useState<'pickleball' | 'padel' | 'cricket'>('pickleball');
   const [turfs, setTurfs] = useState<TurfRow[]>([]);
@@ -152,7 +173,13 @@ export default function FieldflixHomeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const { status: existing } = await Location.getForegroundPermissionsAsync();
+        if (cancelled) return;
+        let status = existing;
+        if (status === 'undetermined') {
+          const r = await Location.requestForegroundPermissionsAsync();
+          status = r.status;
+        }
         if (cancelled) return;
         if (status !== 'granted') {
           setLocationLabel('Location access denied');
@@ -231,10 +258,10 @@ export default function FieldflixHomeScreen() {
     [turfs, userCoords],
   );
 
-  const recentRows: RecentRow[] = useMemo(() => {
-    if (sessions.length > 0) return sessions.map(mapRecordingToRecent);
-    return WEB_RECENT_SESSIONS.map((r) => ({ ...r }));
-  }, [sessions]);
+  const recentRows: RecentRow[] = useMemo(
+    () => (sessions as any[]).map(mapRecordingToRecent),
+    [sessions],
+  );
 
   const navReserve = 96;
 
@@ -253,7 +280,12 @@ export default function FieldflixHomeScreen() {
               </View>
               <View style={styles.locationCol}>
                 <Text style={styles.locationKicker}>Your Location</Text>
-                <Text style={styles.locationValue} numberOfLines={1}>
+                <Text
+                  style={styles.locationValue}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                >
                   {locationLabel}
                 </Text>
               </View>
@@ -320,32 +352,37 @@ export default function FieldflixHomeScreen() {
             </View>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.sportsRow}
-            style={styles.sportsScroll}
-          >
-            <SportCard
-              label="Pickleball"
-              selected={sport === 'pickleball'}
-              onPress={() => setSport('pickleball')}
-              icon={<Image source={PICKLE} style={{ width: 52, height: 52 }} />}
-            />
-            <SportCard
-              label="Padel"
-              selected={sport === 'padel'}
-              onPress={() => setSport('padel')}
-              icon={<Image source={PADEL} style={{ width: 52, height: 52 }} />}
-            />
-            <SportCard
-              label="Cricket"
-              selected={sport === 'cricket'}
-              onPress={() => setSport('cricket')}
-              comingSoon
-              icon={<Image source={COMING} style={{ width: 80, height: 72, resizeMode: 'contain' }} />}
-            />
-          </ScrollView>
+          <View style={styles.sportsRowWrap}>
+            <View style={[styles.sportsRow, { paddingHorizontal: sportsPad, gap: sportsGap }]}>
+              <SportCard
+                size={sportBoxSize}
+                label="Pickleball"
+                selected={sport === 'pickleball'}
+                onPress={() => setSport('pickleball')}
+                icon={<Image source={PICKLE} style={{ width: sportIconMain, height: sportIconMain }} />}
+              />
+              <SportCard
+                size={sportBoxSize}
+                label="Padel"
+                selected={sport === 'padel'}
+                onPress={() => setSport('padel')}
+                icon={<Image source={PADEL} style={{ width: sportIconMain, height: sportIconMain }} />}
+              />
+              <SportCard
+                size={sportBoxSize}
+                label="Cricket"
+                selected={sport === 'cricket'}
+                onPress={() => setSport('cricket')}
+                comingSoon
+                icon={
+                  <Image
+                    source={COMING}
+                    style={{ width: sportIconCricketW, height: sportIconCricketH, resizeMode: 'contain' }}
+                  />
+                }
+              />
+            </View>
+          </View>
 
           <ScrollView
             horizontal
@@ -367,14 +404,21 @@ export default function FieldflixHomeScreen() {
               arenaRows.map((arena) => (
                 <Pressable
                   key={arena.id}
-                  style={({ pressed }) => [styles.arenaCard, pressed && { opacity: 0.88 }]}
+                  style={({ pressed }) => [
+                    styles.arenaCard,
+                    pressed && { opacity: 0.88 },
+                  ]}
                   onPress={() => router.push(Paths.scan)}
                   accessibilityRole="button"
                   accessibilityLabel={`Open QR scan for ${arena.name}`}
                 >
-                  <Image source={BG.arena} style={styles.arenaImg} />
+                  <View style={styles.arenaImgWrap}>
+                    <Image source={BG.arena} style={styles.arenaImg} />
+                  </View>
                   <View style={styles.arenaBody}>
-                    <Text style={styles.arenaName}>{arena.name}</Text>
+                    <View style={styles.arenaNameWrap}>
+                      <Text style={styles.arenaName}>{arena.name}</Text>
+                    </View>
                     <View style={styles.arenaMetaRow}>
                       <MaterialCommunityIcons name="map-marker" size={14} color="#94a3b8" />
                       <Text style={styles.arenaMetaText}>{arena.location}</Text>
@@ -408,42 +452,48 @@ export default function FieldflixHomeScreen() {
             </View>
 
             <View style={styles.recentList}>
-              {recentRows.map((session) => (
-                <View key={session.id} style={styles.recentCard}>
-                  <View style={styles.recentThumb}>
-                    <ExpoImage
-                      source={BG.homeHero}
-                      style={StyleSheet.absoluteFillObject}
-                      contentFit="cover"
-                      contentPosition="center"
-                    />
-                    <View style={styles.recentThumbTag}>
-                      <Text style={styles.recentThumbText}>{session.thumbTime}</Text>
+              {recentRows.length === 0 ? (
+                <Text style={styles.recentEmpty}>
+                  No sessions yet. Start a recording to see your games here.
+                </Text>
+              ) : (
+                recentRows.map((session) => (
+                  <View key={session.id} style={styles.recentCard}>
+                    <View style={styles.recentThumb}>
+                      <ExpoImage
+                        source={BG.homeHero}
+                        style={StyleSheet.absoluteFillObject}
+                        contentFit="cover"
+                        contentPosition={{ top: '22%', left: '50%' }}
+                      />
+                      <View style={styles.recentThumbTag}>
+                        <Text style={styles.recentThumbText}>{session.thumbTime}</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.recentMeta}>
-                    <Text style={styles.recentArena} numberOfLines={1}>
-                      {session.arenaName}
-                    </Text>
-                    <View style={styles.recentRow}>
-                      <MaterialCommunityIcons name="map-marker" size={14} color="#22C55E" />
-                      <Text style={styles.recentRowText} numberOfLines={1}>
-                        {session.location}
+                    <View style={styles.recentMeta}>
+                      <Text style={styles.recentArena} numberOfLines={1}>
+                        {session.arenaName}
                       </Text>
+                      <View style={styles.recentRow}>
+                        <MaterialCommunityIcons name="map-marker" size={14} color="#22C55E" />
+                        <Text style={styles.recentRowText} numberOfLines={1}>
+                          {session.location || '—'}
+                        </Text>
+                      </View>
+                      <View style={styles.recentRow}>
+                        <MaterialCommunityIcons name="clock-outline" size={14} color="#22C55E" />
+                        <Text style={styles.recentRowText} numberOfLines={1}>
+                          {session.timeLabel}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.recentRow}>
-                      <MaterialCommunityIcons name="clock-outline" size={14} color="#22C55E" />
-                      <Text style={styles.recentRowText} numberOfLines={1}>
-                        {session.timeLabel}
-                      </Text>
+                    <View style={styles.recentScore}>
+                      <MaterialCommunityIcons name="trophy" size={16} color="#22C55E" />
+                      <Text style={styles.recentScoreText}>{session.score}</Text>
                     </View>
                   </View>
-                  <View style={styles.recentScore}>
-                    <MaterialCommunityIcons name="trophy" size={16} color="#22C55E" />
-                    <Text style={styles.recentScoreText}>{session.score}</Text>
-                  </View>
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </View>
 
@@ -459,12 +509,14 @@ export default function FieldflixHomeScreen() {
 }
 
 function SportCard({
+  size,
   label,
   selected,
   onPress,
   icon,
   comingSoon,
 }: {
+  size: number;
   label: string;
   selected: boolean;
   onPress: () => void;
@@ -477,6 +529,7 @@ function SportCard({
       onPress={onPress}
       style={[
         styles.sportCard,
+        { width: size, height: size, borderRadius: Math.max(18, Math.round(size * 0.19)) },
         { backgroundColor: selectedActive ? '#0a1510' : 'rgba(255,255,255,0.06)' },
         selectedActive ? styles.sportCardSelected : undefined,
       ]}
@@ -499,8 +552,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 16,
+    paddingTop: 2,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: WEB.headerBorder,
   },
@@ -528,9 +581,10 @@ const styles = StyleSheet.create({
   locationValue: {
     marginTop: 2,
     fontFamily: FF.bold,
-    fontSize: 18,
+    fontSize: 15,
+    lineHeight: 20,
     color: WEB.white,
-    letterSpacing: -0.2,
+    letterSpacing: -0.25,
   },
   headerRight: {
     flexDirection: 'row',
@@ -565,7 +619,7 @@ const styles = StyleSheet.create({
 
   heroWrap: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 6,
   },
   heroCard: {
     height: 320,
@@ -659,17 +713,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  sportsScroll: {
+  sportsRowWrap: {
+    width: '100%',
     marginTop: 24,
+    alignItems: 'center',
   },
   sportsRow: {
-    paddingHorizontal: 20,
-    gap: 14,
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
   },
   sportCard: {
-    width: 128,
-    height: 128,
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
     paddingTop: 10,
@@ -710,7 +765,7 @@ const styles = StyleSheet.create({
   arenaRow: {
     paddingHorizontal: 20,
     gap: 14,
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
   },
   arenaLoading: {
     width: 280,
@@ -731,6 +786,8 @@ const styles = StyleSheet.create({
   },
   arenaCard: {
     width: 280,
+    flexShrink: 0,
+    alignItems: 'stretch',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
@@ -742,22 +799,42 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
+  /** Fixed size image area — matches web `h-[140px] w-full` inside `w-[280px]` card (no full-bleed stretch). */
+  arenaImgWrap: {
+    width: 280,
+    height: 140,
+    overflow: 'hidden',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
   arenaImg: {
-    width: '100%',
+    width: 280,
     height: 140,
     resizeMode: 'cover',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   arenaBody: {
+    width: '100%',
+    maxWidth: 280,
     paddingTop: 14,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 18,
     gap: 6,
+    alignSelf: 'stretch',
+  },
+  /** Bounds title width so long names wrap instead of one-line ellipsize/overflow. */
+  arenaNameWrap: {
+    width: '100%',
+    maxWidth: 248,
+    alignSelf: 'stretch',
   },
   arenaName: {
     fontFamily: FF.bold,
     fontSize: 16,
-    lineHeight: 20,
+    lineHeight: 22,
     color: WEB.white,
+    width: '100%',
   },
   arenaMetaRow: {
     flexDirection: 'row',
@@ -823,6 +900,13 @@ const styles = StyleSheet.create({
     color: '#22C55E',
   },
   recentList: { gap: 12 },
+  recentEmpty: {
+    fontFamily: FF.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.55)',
+    paddingVertical: 8,
+  },
   recentCard: {
     flexDirection: 'row',
     gap: 12,

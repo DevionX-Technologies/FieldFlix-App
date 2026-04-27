@@ -1,0 +1,277 @@
+/* Recording in progress — black page, centered translucent card */
+
+.ra-page {
+  --ra-accent: #4ade80;
+  --ra-muted: #a1a1aa;
+  --ra-pause-bg: #374151;
+  position: relative;
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #fff;
+  background: #000000;
+}
+
+.ra-page *,
+.ra-page *::before,
+.ra-page *::after {
+  box-sizing: border-box;
+}
+
+.ra-back {
+  position: absolute;
+  left: 12px;
+  top: max(8px, env(safe-area-inset-top, 0px));
+  z-index: 2;
+  display: flex;
+  height: 44px;
+  width: 44px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  outline: none;
+}
+
+.ra-back:focus-visible {
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--ra-accent);
+}
+
+.ra-back svg {
+  width: 28px;
+  height: 28px;
+}
+
+.ra-scroll {
+  width: 100%;
+  max-width: 402px;
+  margin-left: auto;
+  margin-right: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: max(52px, calc(env(safe-area-inset-top, 0px) + 44px)) 16px max(28px, env(safe-area-inset-bottom, 0px));
+}
+
+.ra-card {
+  width: 100%;
+  max-width: 360px;
+  border-radius: 28px;
+  padding: 24px 20px 22px;
+  background: rgba(30, 30, 30, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.45);
+}
+
+.ra-location {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.ra-location__pin {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.ra-location__name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.ra-location__addr {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ra-muted);
+  line-height: 1.35;
+}
+
+.ra-location__qr {
+  margin: 8px 0 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(161, 161, 170, 0.95);
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.ra-court {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: 999px;
+  background: var(--ra-accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ra-court svg {
+  opacity: 0.95;
+}
+
+.ra-timer-row {
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.ra-step {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+
+.ra-step span {
+  transform: translateY(-1px);
+}
+
+.ra-step:focus-visible {
+  box-shadow: 0 0 0 2px #1e1e1e, 0 0 0 4px var(--ra-accent);
+}
+
+.ra-dial-wrap {
+  position: relative;
+  width: min(180px, 48vw);
+  height: min(180px, 48vw);
+  flex-shrink: 0;
+}
+
+.ra-dial-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ra-dial-track {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+
+.ra-dial-progress {
+  stroke: var(--ra-accent);
+  transition: stroke-dashoffset 0.35s ease;
+}
+
+.ra-dial-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  pointer-events: none;
+}
+
+.ra-dial__time {
+  font-size: clamp(22px, 6vw, 28px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: #fff;
+  line-height: 1.1;
+}
+
+.ra-recording-pill {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(127, 29, 29, 0.55);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: #fff;
+}
+
+.ra-recording-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.8);
+  flex-shrink: 0;
+}
+
+.ra-actions {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ra-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px;
+  border: none;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+  color: #fff;
+}
+
+.ra-btn svg {
+  flex-shrink: 0;
+}
+
+.ra-btn--pause {
+  background: var(--ra-pause-bg);
+}
+
+.ra-btn--pause:focus-visible {
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px rgba(55, 65, 81, 0.8);
+}
+
+.ra-btn--finish {
+  background: var(--ra-accent);
+  color: #fff;
+}
+
+.ra-btn--finish:focus-visible {
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px rgba(74, 222, 128, 0.45);
+}

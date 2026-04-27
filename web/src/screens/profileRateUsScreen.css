@@ -1,0 +1,168 @@
+/* Rate Us — Codia layout */
+
+.pru-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  font-family: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  color: #fff;
+  background: #020617;
+}
+
+.pru-page *,
+.pru-page *::before,
+.pru-page *::after {
+  box-sizing: border-box;
+}
+
+.pru-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: max(12px, env(safe-area-inset-top, 0px)) 16px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pru-back {
+  display: flex;
+  height: 44px;
+  width: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pru-back img {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+}
+
+.pru-back:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+}
+
+.pru-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 27px;
+}
+
+.pru-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 16px 40px;
+}
+
+.pru-card {
+  width: 100%;
+  max-width: 332px;
+  min-height: 296px;
+  padding: 28px 20px 24px;
+  border-radius: 20px;
+  background-color: #0c1218;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.pru-card__title {
+  margin: 0;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 27px;
+}
+
+.pru-stars {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.pru-star-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 8px;
+}
+
+.pru-star-btn:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+}
+
+.pru-star-btn img {
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  opacity: 0.42;
+  transition: opacity 0.15s ease;
+}
+
+.pru-star-btn--on img {
+  opacity: 1;
+}
+
+.pru-sub {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.pru-submit {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  margin: 20px auto 0;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 20px;
+  background: #22c55e;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pru-submit:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.pru-later {
+  display: block;
+  margin: 18px auto 0;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: #94a3b8;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pru-later:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+  border-radius: 8px;
+}

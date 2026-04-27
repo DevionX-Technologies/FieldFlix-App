@@ -1,4 +1,6 @@
-// API base — override with EXPO_PUBLIC_BASE_URL in `.env`. LAN example: http://192.168.x.x:8000. Emulator: http://10.0.2.2:8000
+
+
+// API base — override with EXPO_PUBLIC_BASE_URL in `.env`. Default is production; for local dev set e.g. http://192.168.x.x:8000.
 // For ngrok: use https://YOUR_SUBDOMAIN.ngrok-free.app with NO :8000 (ngrok edge is :443; :8000 will fail with ERR_NETWORK).
 
 function normalizeApiBaseUrl(raw: string): string {
@@ -17,7 +19,7 @@ function normalizeApiBaseUrl(raw: string): string {
 }
 
 export const BASE_URL = normalizeApiBaseUrl(
-  process.env.EXPO_PUBLIC_BASE_URL ?? "https://cheerful-apparent-hound.ngrok-free.app",
+  process.env.EXPO_PUBLIC_BASE_URL ?? "https://api.devionx.com",
 );
 
 export const GOOGLE_WEB_CLIENT_ID =
@@ -30,8 +32,14 @@ export const TIME_GROUNDLOCATION = "groundLocation";
 export const RECORDING_CAMERA_ID = "recordingCameraID";
 export const TIME_TOTAL = "totalTime";
 export const TURF_ID = "turfId";
+/** SecureStore key tracking the most recently stopped recording — drives the post-stop "ready" toast on Recordings. */
+export const LAST_STOPPED_RECORDING_ID = "fieldflicks-last-stopped-recording-id";
 
 export const TOKEN_KEY = 'fcmToken';
+
+/** Razorpay publishable key (Dashboard → API keys) — used by native Checkout only; never the secret. */
+export const RAZORPAY_KEY_ID =
+  process.env.EXPO_PUBLIC_RAZORPAY_KEY_ID ?? "";
 
 // Mux API Credentials
 export const MUX_TOKEN_ID =

@@ -17,6 +17,7 @@ export default function FieldflixScanQrScreen() {
       router.push({
         pathname: Paths.recordingTime,
         params: {
+          GroundNumber: valid.GroundNumber ?? '',
           GroundDescription: valid.GroundDescription ?? '',
           Name: valid.Name ?? '',
           GroundLocation: valid.GroundLocation ?? '',

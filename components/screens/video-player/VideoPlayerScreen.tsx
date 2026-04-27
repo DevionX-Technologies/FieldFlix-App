@@ -14,9 +14,7 @@ interface VideoPlayerScreenParams {
 export default function VideoPlayerScreen() {
   const params = useLocalSearchParams() as VideoPlayerScreenParams;
   const { source, filename, recordingHighlights: recordingHighlightsParam } = params;
-  
-  console.log("VideoPlayerScreen source: HARSHIT", recordingHighlightsParam);
-  
+
   // Parse recordingHighlights from JSON string
   let recordingHighlights: RecordingHighlight[] = [];
   if (recordingHighlightsParam) {
@@ -47,26 +45,4 @@ export default function VideoPlayerScreen() {
   );
 }
 
-export function extractMuxStreamId(url: string): string | null {
-  try {
-    if (!url || typeof url !== 'string') {
-      return null;
-    }
-
-    const { pathname } = new URL(url);
-    // pathname might be "/<id>.m3u8"
-    const segments = pathname.split("/");
-    const last = segments.pop() || "";
-    
-    if (!last.toLowerCase().endsWith(".m3u8")) {
-      return null;
-    }
-    
-    // Strip the extension
-    const streamId = last.slice(0, -".m3u8".length);
-    return streamId.length > 0 ? streamId : null;
-  } catch (error) {
-    console.warn("Failed to extract Mux stream ID from URL:", url, error);
-    return null;
-  }
-}
+export { extractMuxStreamId } from "@/utils/muxStreamId";

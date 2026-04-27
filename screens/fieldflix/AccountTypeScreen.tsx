@@ -28,6 +28,8 @@ export default function FieldflixAccountTypeScreen() {
   const shellW = useShellWidth();
   /** Width available inside horizontal padding: cap at design max. */
   const columnW = Math.min(DESIGN_W, shellW - 2 * SCROLL_H_PAD);
+  /** Match prior `flex:1` split without flex rounding — row content width equals `columnW`. */
+  const cardW = (columnW - 16) / 2;
   const [selected, setSelected] = useState<'public' | 'private'>('public');
   const [saving, setSaving] = useState(false);
 
@@ -92,17 +94,21 @@ export default function FieldflixAccountTypeScreen() {
               <Text style={styles.subtitle}>Select your preference</Text>
             </View>
 
-            <View style={styles.cardsRow}>
-              <AccountCard
-                variant="public"
-                selected={selected === 'public'}
-                onPress={() => setSelected('public')}
-              />
-              <AccountCard
-                variant="private"
-                selected={selected === 'private'}
-                onPress={() => setSelected('private')}
-              />
+            <View style={styles.cardsRowWrap} pointerEvents="box-none">
+              <View style={[styles.cardsRow, { width: columnW }]}>
+                <AccountCard
+                  variant="public"
+                  cardWidth={cardW}
+                  selected={selected === 'public'}
+                  onPress={() => setSelected('public')}
+                />
+                <AccountCard
+                  variant="private"
+                  cardWidth={cardW}
+                  selected={selected === 'private'}
+                  onPress={() => setSelected('private')}
+                />
+              </View>
             </View>
 
             <View style={styles.ctaBlock}>
@@ -136,10 +142,12 @@ export default function FieldflixAccountTypeScreen() {
 
 function AccountCard({
   variant,
+  cardWidth,
   selected,
   onPress,
 }: {
   variant: 'public' | 'private';
+  cardWidth: number;
   selected: boolean;
   onPress: () => void;
 }) {
@@ -153,6 +161,7 @@ function AccountCard({
       accessibilityLabel={isPublic ? 'Public account' : 'Private account'}
       style={({ pressed }) => [
         styles.card,
+        { width: cardWidth },
         selected ? styles.cardSelectedShadow : null,
         pressed && { transform: [{ scale: 0.98 }] },
       ]}
@@ -291,14 +300,18 @@ const styles = StyleSheet.create({
     color: '#e5e5e5',
     textAlign: 'center',
   },
+  cardsRowWrap: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   cardsRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
+    justifyContent: 'center',
     gap: 16,
-    width: '100%',
   },
   card: {
-    flex: 1,
     height: 236,
     minWidth: 0,
     borderRadius: 40,

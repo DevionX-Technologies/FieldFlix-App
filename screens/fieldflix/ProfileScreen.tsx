@@ -83,6 +83,7 @@ export default function FieldflixProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [draftPhone, setDraftPhone] = useState('');
+  const [draftEmail, setDraftEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -145,6 +146,7 @@ export default function FieldflixProfileScreen() {
   const onStartEdit = () => {
     setDraftName(vm.name);
     setDraftPhone(vm.phone.replace(/\s+/g, ''));
+    setDraftEmail(vm.email ?? '');
     setEditing(true);
   };
 
@@ -152,15 +154,31 @@ export default function FieldflixProfileScreen() {
     setEditing(false);
     setDraftName('');
     setDraftPhone('');
+    setDraftEmail('');
   };
+
+  const isValidEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
   const onSaveEdit = async () => {
     const patch: Record<string, unknown> = {};
     const trimmedName = draftName.trim();
     const trimmedPhone = draftPhone.trim();
+    const trimmedEmail = draftEmail.trim();
+    const prevEmail = (vm.email ?? '').trim();
     if (trimmedName && trimmedName !== vm.name) patch.name = trimmedName;
     if (trimmedPhone && trimmedPhone !== vm.phone.replace(/\s+/g, '')) {
       patch.phone_number = trimmedPhone;
+    }
+    if (trimmedEmail !== prevEmail) {
+      if (trimmedEmail) {
+        if (!isValidEmail(trimmedEmail)) {
+          Alert.alert('Invalid email', 'Please enter a valid email address.');
+          return;
+        }
+        patch.email = trimmedEmail;
+      } else {
+        patch.email = null;
+      }
     }
     if (Object.keys(patch).length === 0) {
       setEditing(false);
@@ -346,10 +364,14 @@ export default function FieldflixProfileScreen() {
                   placeholder="+91 ..."
                   keyboardType="phone-pad"
                 />
-                <DetailField
+                <EditField
                   label="Email Address"
-                  value={vm.email || 'Not set'}
+                  value={draftEmail}
+                  onChangeText={setDraftEmail}
                   icon="email"
+                  placeholder="you@example.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
                 />
               </>
             ) : (
@@ -487,13 +509,17 @@ function EditField({
   icon,
   placeholder,
   keyboardType,
+  editable = true,
+  autoCapitalize = 'words',
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   placeholder?: string;
-  keyboardType?: 'default' | 'phone-pad';
+  keyboardType?: 'default' | 'phone-pad' | 'email-address';
+  editable?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }) {
   return (
     <View style={styles.field}>
@@ -508,8 +534,10 @@ function EditField({
           placeholder={placeholder}
           placeholderTextColor="rgba(255,255,255,0.35)"
           keyboardType={keyboardType ?? 'default'}
-          style={styles.fieldInput}
-          autoCapitalize="words"
+          style={[styles.fieldInput, !editable && styles.fieldInputReadonly]}
+          autoCapitalize={autoCapitalize}
+          editable={editable}
+          selectTextOnFocus={editable}
         />
       </View>
     </View>
@@ -728,6 +756,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(74, 222, 128, 0.35)',
     backgroundColor: 'rgba(2,6,23,0.6)',
+  },
+  fieldInputReadonly: {
+    color: 'rgba(255,255,255,0.72)',
+    borderColor: 'rgba(100, 116, 139, 0.45)',
   },
   aboutHead: {
     marginBottom: 10,

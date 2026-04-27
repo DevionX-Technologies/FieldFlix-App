@@ -5,13 +5,22 @@ import { WEB } from '@/screens/fieldflix/webDesign';
 import { BackHeader } from '@/screens/fieldflix/profile/BackHeader';
 import { ToggleSwitch } from '@/screens/fieldflix/profile/ToggleSwitch';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SWITCH_ON = '#22c55e';
 
-/** Mirrors `web/src/screens/ProfileAppSettingsScreen.tsx`. */
+const APP_SETTINGS_KEY = 'fieldflix_app_settings_v1';
+
+type AppSettingsSnapshot = {
+  showStats: boolean;
+  showLocation: boolean;
+  dataTracking: boolean;
+};
+
+/** Mirrors `web/src/screens/ProfileAppSettingsScreen.tsx` — toggles persist in AsyncStorage. */
 export default function FieldflixProfileAppSettingsScreen() {
   const insets = useSafeAreaInsets();
   const [visibility, setVisibility] = useState({
@@ -20,20 +29,53 @@ export default function FieldflixProfileAppSettingsScreen() {
     showLocation: false,
   });
   const [dataTracking, setDataTracking] = useState(false);
+  const settingsReady = useRef(false);
 
-  // Hydrate "Public Profile" from the stored account type (chosen at sign-up).
+  // Hydrate public profile (SecureStore) + other toggles (AsyncStorage).
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const v = await getAccountType();
-      if (!cancelled && v) {
+      const [v, raw] = await Promise.all([getAccountType(), AsyncStorage.getItem(APP_SETTINGS_KEY)]);
+      if (cancelled) return;
+      if (v) {
         setVisibility((s) => ({ ...s, publicProfile: v === 'public' }));
       }
+      if (raw) {
+        try {
+          const p = JSON.parse(raw) as Partial<AppSettingsSnapshot>;
+          setVisibility((s) => ({
+            ...s,
+            showStats: typeof p.showStats === 'boolean' ? p.showStats : s.showStats,
+            showLocation: typeof p.showLocation === 'boolean' ? p.showLocation : s.showLocation,
+          }));
+          if (typeof p.dataTracking === 'boolean') setDataTracking(p.dataTracking);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (cancelled) return;
+      settingsReady.current = true;
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsReady.current) return;
+    void (async () => {
+      const snap: AppSettingsSnapshot = {
+        showStats: visibility.showStats,
+        showLocation: visibility.showLocation,
+        dataTracking,
+      };
+      try {
+        await AsyncStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(snap));
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [visibility.showStats, visibility.showLocation, dataTracking]);
 
   const onTogglePublic = (v: boolean) => {
     setVisibility((s) => ({ ...s, publicProfile: v }));

@@ -1,21 +1,50 @@
-# FieldFlicks (Fieldflix)
+# Welcome to your Expo app 👋
 
-Expo (React Native) app for iOS and Android, using `expo-router`.
+This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-## Setup
+## Get started
 
-1. **Install:** `npm install`
-2. **Env:** copy `.env.example` to `.env` and set `EXPO_PUBLIC_BASE_URL` to your API origin (no trailing slash).
-3. **Run:** `npx expo start` then open in Expo Go, an emulator, or a development build.
+1. Install dependencies
 
-## Android / iOS native folders
+   ```bash
+   npm install
+   ```
 
-`android/` and `ios/` are included for local builds. If you use **EAS Build** only, you can remove them and run `npx expo prebuild` when needed. Build outputs are gitignored (see `.gitignore`).
+2. Start the app
 
-## This repository
+   ```bash
+   npx expo start
+   ```
 
-This repo contains **only the mobile app** (no `web/`, no Nest backend). Pair it with your own API or the FieldFlicks backend from your infrastructure.
+In the output, you'll find options to open the app in a
 
-## Release builds
+- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
+- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
+- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-`EXPO_PUBLIC_*` values are baked in at build time. After changing `.env`, run a new `eas build` or `npx expo run:android` / `run:ios` as appropriate.
+You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+
+## Get a fresh project
+
+When you're ready, run:
+
+```bash
+npm run reset-project
+```
+
+This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+
+## Learn more
+
+To learn more about developing your project with Expo, look at the following resources:
+
+- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
+- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+
+## Join the community
+
+Join our community of developers creating universal apps.
+
+- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
+- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.

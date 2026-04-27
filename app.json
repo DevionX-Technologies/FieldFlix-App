@@ -5,7 +5,7 @@
     "version": "1.1.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "fieldflicksmobilelatest",
+    "scheme": ["fieldflicks", "fieldflicksmobilelatest"],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -13,6 +13,11 @@
       "bundleIdentifier": "com.fieldflicks",
       "googleServicesFile": "./GoogleService-Info.plist",
       "usesAppleSignIn": true,
+      "associatedDomains": [
+        "applinks:fieldflix.app",
+        "applinks:www.fieldflix.app",
+        "applinks:api.devionx.com"
+      ],
       "infoPlist": {
         "GMSApiKey": "AIzaSyCr-EoENqIoMq9ftiQKsuNUpWNUEHtM0d4",
         "NSCameraUsageDescription": "FieldFlicks needs access to your camera so you can scan QR codes and capture photos directly in the app.",
@@ -47,7 +52,31 @@
         "googleMaps": {
           "apiKey": "AIzaSyCr-EoENqIoMq9ftiQKsuNUpWNUEHtM0d4"
         }
-      }
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "fieldflix.app",
+              "pathPrefix": "/shared/media"
+            },
+            {
+              "scheme": "https",
+              "host": "www.fieldflix.app",
+              "pathPrefix": "/shared/media"
+            },
+            {
+              "scheme": "https",
+              "host": "api.devionx.com",
+              "pathPrefix": "/shared/media"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "splash": {
       "image": "./assets/images/splash-icon.png",
