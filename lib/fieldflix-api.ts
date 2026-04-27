@@ -532,3 +532,110 @@ export async function getNotifications(page = 1, limit = 50) {
   }
   return [];
 }
+
+/** `GET /users` — for admin stats (all authenticated users can call per current API). */
+export async function getAllUsers(): Promise<FieldflixUser[]> {
+  const { data } = await axiosInstance.get<unknown>('/users');
+  if (Array.isArray(data)) return data as FieldflixUser[];
+  return [];
+}
+
+export type FlickShortDto = {
+  id: string;
+  recordingId: string;
+  sport: 'pickleball' | 'padel' | 'cricket' | string;
+  title: string;
+  topText: string;
+  bottomText: string;
+  aspect: '9:16' | '16:9';
+  muxPlaybackId: string;
+  /** HLS time window: playback loops inside [startSec, endSec); must be ≤ 15s. */
+  startSec: number;
+  endSec: number;
+  approved: boolean;
+  likesCount: number;
+  comments: { id: string; userName: string | null; text: string; createdAt: string }[];
+  createdAt: string;
+};
+
+/** Server + DB admin list; also see {@link getMyAdminStatus}. */
+export async function getMyAdminStatus(): Promise<{ isAdmin: boolean }> {
+  const { data } = await axiosInstance.get<{ isAdmin: boolean }>('/admin/me');
+  return data as { isAdmin: boolean };
+}
+
+export type AdminPhoneRow = {
+  id: string;
+  phoneLast10: string;
+  createdAt: string;
+};
+
+export async function getAdminPhoneList(): Promise<AdminPhoneRow[]> {
+  const { data } = await axiosInstance.get<{ phones: AdminPhoneRow[] }>('/admin/phones');
+  const p = (data as { phones?: AdminPhoneRow[] })?.phones;
+  return Array.isArray(p) ? p : [];
+}
+
+export async function addAdminByPhone(phone: string): Promise<AdminPhoneRow> {
+  const { data } = await axiosInstance.post<AdminPhoneRow>('/admin/phones', { phone });
+  return data as AdminPhoneRow;
+}
+
+export async function removeAdminPhone(phoneLast10: string): Promise<void> {
+  const last = String(phoneLast10).replace(/\D/g, '');
+  const id = last.length >= 10 ? last.slice(-10) : last;
+  await axiosInstance.delete(`/admin/phones/${encodeURIComponent(id)}`);
+}
+
+/** Public approved shorts. Use `sport=all` or omit for every sport. */
+export async function getPublicFlickShorts(sport?: string): Promise<FlickShortDto[]> {
+  const { data } = await axiosInstance.get<FlickShortDto[]>('/flick-shorts/public', {
+    params: sport && sport !== 'all' ? { sport } : {},
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getAdminFlickShorts(): Promise<FlickShortDto[]> {
+  const { data } = await axiosInstance.get<FlickShortDto[]>('/flick-shorts/admin');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createFlickShort(body: {
+  recordingId: string;
+  sport: 'pickleball' | 'padel' | 'cricket';
+  title: string;
+  topText: string;
+  bottomText: string;
+  aspect: '9:16' | '16:9';
+  /** Optional; default 0 → 15s clip. Window length must be ≤ 15s. */
+  startSec?: number;
+  endSec?: number;
+}): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.post<FlickShortDto>('/flick-shorts', body);
+  return data as FlickShortDto;
+}
+
+export async function approveFlickShort(
+  id: string,
+  approved: boolean = true,
+): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.patch<FlickShortDto>(`/flick-shorts/${id}/approve`, {
+    approved,
+  });
+  return data as FlickShortDto;
+}
+
+export async function likeFlickShort(id: string): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.post<FlickShortDto>(`/flick-shorts/${id}/like`, {});
+  return data as FlickShortDto;
+}
+
+export async function commentOnFlickShort(
+  id: string,
+  text: string,
+): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.post<FlickShortDto>(`/flick-shorts/${id}/comment`, {
+    text,
+  });
+  return data as FlickShortDto;
+}

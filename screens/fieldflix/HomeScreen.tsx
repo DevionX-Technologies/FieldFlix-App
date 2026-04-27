@@ -1,4 +1,5 @@
 import { Paths } from '@/data/paths';
+import { useIsAdminRole } from '@/hooks/useIsAdminRole';
 import { getMyRecordings, getNotificationCount, getTurfsPage } from '@/lib/fieldflix-api';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
@@ -173,6 +174,7 @@ export default function FieldflixHomeScreen() {
   const [turfs, setTurfs] = useState<TurfRow[]>([]);
   const [sessions, setSessions] = useState<unknown[]>([]);
   const [notifCount, setNotifCount] = useState(0);
+  const { isAdmin: isAdminRole } = useIsAdminRole();
   const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationLabel, setLocationLabel] = useState('Locating…');
   const [turfsLoading, setTurfsLoading] = useState(true);
@@ -311,6 +313,15 @@ export default function FieldflixHomeScreen() {
               </View>
             </View>
             <View style={styles.headerRight}>
+              {isAdminRole ? (
+                <Pressable
+                  onPress={() => router.push(Paths.admin)}
+                  style={styles.iconBtn}
+                  hitSlop={8}
+                >
+                  <MaterialCommunityIcons name="shield-crown-outline" size={24} color={WEB.greenBright} />
+                </Pressable>
+              ) : null}
               <Pressable
                 onPress={() => router.push(Paths.notifications)}
                 style={styles.iconBtn}
