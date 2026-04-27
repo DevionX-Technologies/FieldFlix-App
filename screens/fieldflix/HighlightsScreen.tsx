@@ -1,7 +1,6 @@
 import { Paths } from '@/data/paths';
 import { BASE_URL } from '@/data/constants';
 import {
-  createShareLink,
   getFieldflixApiErrorDebug,
   getRecordingById,
   getRecordingHighlights,
@@ -23,6 +22,7 @@ import {
   recordingThumbUrl,
   sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
+import { buildHighlightsAppLink } from '@/utils/highlightsAppLink';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -345,10 +345,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const onShareHero = useCallback(async () => {
     if (!recordingId) return;
     try {
-      const { shareableLink } = await createShareLink(recordingId);
+      const appLink = buildHighlightsAppLink(recordingId);
       await Share.share({
-        message: `Watch my game on FieldFlicks: ${shareableLink}`,
-        url: shareableLink,
+        message: `Watch my highlights on FieldFlicks — open in the app:\n${appLink}`,
       });
     } catch {
       // user dismissed or share failed — silent

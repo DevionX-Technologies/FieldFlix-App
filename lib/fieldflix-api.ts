@@ -596,6 +596,9 @@ export type AdminMuxReadyRecording = {
   endTime: string | null;
   recording_name: string | null;
   turfName: string | null;
+  /** Derived from turf `sports_supported` — server also uses this on create. */
+  flick_sport: 'pickleball' | 'padel' | 'cricket';
+  turf_sports_supported: string[];
 };
 
 export async function getAdminMuxReadyRecordings(): Promise<AdminMuxReadyRecording[]> {
@@ -641,6 +644,11 @@ export async function approveFlickShort(
     approved,
   });
   return data as FlickShortDto;
+}
+
+/** Admin-only: remove a pending (non-approved) FlickShort. */
+export async function deleteFlickShort(id: string): Promise<void> {
+  await axiosInstance.delete(`/flick-shorts/${id}`);
 }
 
 export async function likeFlickShort(id: string): Promise<FlickShortDto> {
