@@ -587,6 +587,24 @@ export async function removeAdminPhone(phoneLast10: string): Promise<void> {
   await axiosInstance.delete(`/admin/phones/${encodeURIComponent(id)}`);
 }
 
+/** Mux-ready recordings for admin FlickShort picker (`GET /admin/recordings-for-flickshorts`). */
+export type AdminMuxReadyRecording = {
+  id: string;
+  mux_playback_id: string;
+  status: string;
+  startTime: string;
+  endTime: string | null;
+  recording_name: string | null;
+  turfName: string | null;
+};
+
+export async function getAdminMuxReadyRecordings(): Promise<AdminMuxReadyRecording[]> {
+  const { data } = await axiosInstance.get<AdminMuxReadyRecording[]>(
+    '/admin/recordings-for-flickshorts',
+  );
+  return Array.isArray(data) ? data : [];
+}
+
 /** Public approved shorts. Use `sport=all` or omit for every sport. */
 export async function getPublicFlickShorts(sport?: string): Promise<FlickShortDto[]> {
   const { data } = await axiosInstance.get<FlickShortDto[]>('/flick-shorts/public', {
