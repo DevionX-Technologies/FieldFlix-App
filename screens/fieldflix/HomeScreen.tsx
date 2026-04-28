@@ -34,15 +34,10 @@ import Svg, { Path } from "react-native-svg";
 import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
-const NOTIF = require("@/assets/fieldflix-web/notification.png");
-const PROFILE = require("@/assets/fieldflix-web/Profile icon.png");
 const PICKLE = require("@/assets/fieldflix-web/pickleball.png");
 const PADEL = require("@/assets/fieldflix-web/padel.png");
-const COMING = require("@/assets/fieldflix-web/coming-soon.png");
-const ACTIVITY = require("@/assets/fieldflix-web/Activity.png");
 const AUTO_H = require("@/assets/fieldflix-web/autohiglhight.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
-const RECENT_SESSION_ICON = require("@/assets/fieldflix-web/recentsession.png");
 
 type TurfRow = {
   id: string;
@@ -172,8 +167,6 @@ export default function FieldflixHomeScreen() {
     Math.max(88, Math.floor((windowWidth - sportsPad * 2 - sportsGap * 2) / 3)),
   );
   const sportIconMain = Math.min(48, Math.round(sportBoxSize * 0.4));
-  const sportIconCricketW = Math.min(68, Math.round(sportBoxSize * 0.55));
-  const sportIconCricketH = Math.min(60, Math.round(sportBoxSize * 0.5));
 
   const router = useRouter();
   const [sport, setSport] = useState<"pickleball" | "padel" | "cricket">(
@@ -294,53 +287,60 @@ export default function FieldflixHomeScreen() {
   return (
     <WebShell backgroundColor={WEB.homeBg}>
       <View style={styles.flex}>
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.logoWrap}>
+              <Image source={LOGO} style={styles.logoImg} />
+            </View>
+            <View style={styles.locationCol}>
+              <Text style={styles.locationKicker}>Your Location</Text>
+              <Text
+                style={styles.locationValue}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              >
+                {locationLabel}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.headerRight}>
+            <Pressable
+              onPress={() => router.push(Paths.notifications)}
+              style={styles.iconBtn}
+              hitSlop={8}
+            >
+              <MaterialCommunityIcons
+                name="bell-outline"
+                size={24}
+                color={WEB.white}
+              />
+              {notifCount > 0 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {notifCount > 9 ? "9+" : notifCount}
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+            <Pressable
+              onPress={() => router.push(Paths.profile)}
+              style={styles.iconBtn}
+              hitSlop={8}
+            >
+              <MaterialCommunityIcons
+                name="account-circle-outline"
+                size={24}
+                color={WEB.white}
+              />
+            </Pressable>
+          </View>
+        </View>
         <ScrollView
           style={styles.flex}
           contentContainerStyle={{ paddingBottom: navReserve + 24 }}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <View style={styles.headerLeft}>
-              <View style={styles.logoWrap}>
-                <Image source={LOGO} style={styles.logoImg} />
-              </View>
-              <View style={styles.locationCol}>
-                <Text style={styles.locationKicker}>Your Location</Text>
-                <Text
-                  style={styles.locationValue}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                >
-                  {locationLabel}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.headerRight}>
-              <Pressable
-                onPress={() => router.push(Paths.notifications)}
-                style={styles.iconBtn}
-                hitSlop={8}
-              >
-                <Image source={NOTIF} style={{ width: 24, height: 24 }} />
-                {notifCount > 0 ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>
-                      {notifCount > 9 ? "9+" : notifCount}
-                    </Text>
-                  </View>
-                ) : null}
-              </Pressable>
-              <Pressable
-                onPress={() => router.push(Paths.profile)}
-                style={styles.iconBtn}
-                hitSlop={8}
-              >
-                <Image source={PROFILE} style={{ width: 24, height: 24 }} />
-              </Pressable>
-            </View>
-          </View>
-
           <View style={styles.heroWrap}>
             <View style={styles.heroCard}>
               <ExpoImage
@@ -392,6 +392,15 @@ export default function FieldflixHomeScreen() {
           </View>
 
           <View style={styles.sportsRowWrap}>
+            <View style={styles.sportsHead}>
+              <View style={styles.sportsHeadLeft}>
+                <View style={styles.sportsAccent} />
+                <Text style={styles.sportsTitle}>Choose Your Sport</Text>
+              </View>
+              <Pressable hitSlop={8}>
+                <Text style={styles.sportsViewAll}>View all ›</Text>
+              </Pressable>
+            </View>
             <View
               style={[
                 styles.sportsRow,
@@ -403,10 +412,15 @@ export default function FieldflixHomeScreen() {
                 label="Pickleball"
                 selected={sport === "pickleball"}
                 onPress={() => setSport("pickleball")}
+                status="Active"
                 icon={
                   <Image
                     source={PICKLE}
-                    style={{ width: sportIconMain, height: sportIconMain }}
+                    style={{
+                      width: Math.round(sportIconMain * 0.95),
+                      height: Math.round(sportIconMain * 0.95),
+                      resizeMode: "contain",
+                    }}
                   />
                 }
               />
@@ -415,10 +429,15 @@ export default function FieldflixHomeScreen() {
                 label="Padel"
                 selected={sport === "padel"}
                 onPress={() => setSport("padel")}
+                status="Active"
                 icon={
                   <Image
                     source={PADEL}
-                    style={{ width: sportIconMain, height: sportIconMain }}
+                    style={{
+                      width: Math.round(sportIconMain * 0.95),
+                      height: Math.round(sportIconMain * 0.95),
+                      resizeMode: "contain",
+                    }}
                   />
                 }
               />
@@ -429,101 +448,140 @@ export default function FieldflixHomeScreen() {
                 onPress={() => setSport("cricket")}
                 comingSoon
                 icon={
-                  <Image
-                    source={COMING}
-                    style={{
-                      width: sportIconCricketW,
-                      height: sportIconCricketH,
-                      resizeMode: "contain",
-                    }}
+                  <MaterialCommunityIcons
+                    name="cricket"
+                    size={Math.round(sportIconMain * 0.95)}
+                    color={WEB.white}
                   />
                 }
               />
             </View>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.arenaRow}
-            style={styles.arenaScroll}
-          >
-            {turfsLoading ? (
-              <View style={styles.arenaLoading}>
-                <ActivityIndicator size="large" color="#22c55e" />
+          <View style={styles.venuesWrap}>
+            <View style={styles.venuesHead}>
+              <View style={styles.venuesHeadLeft}>
+                <View style={styles.sportsAccent} />
+                <Text style={styles.venuesTitle}>Nearby Venues</Text>
               </View>
-            ) : arenaRows.length === 0 ? (
-              <View style={styles.arenaEmptyWrap}>
-                <Text style={styles.arenaEmptyText}>
-                  No arenas for this sport{userCoords ? " near you" : ""} yet.
-                </Text>
-              </View>
-            ) : (
-              arenaRows.map((arena) => (
-                <Pressable
-                  key={arena.id}
-                  style={({ pressed }) => [
-                    styles.arenaCard,
-                    pressed && { opacity: 0.88 },
-                  ]}
-                  onPress={() => router.push(Paths.scan)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open QR scan for ${arena.name}`}
-                >
-                  <View style={styles.arenaImgWrap}>
-                    <Image source={BG.arena} style={styles.arenaImg} />
-                  </View>
-                  <View style={styles.arenaBody}>
-                    <View style={styles.arenaNameWrap}>
-                      <Text style={styles.arenaName}>{arena.name}</Text>
-                    </View>
-                    <View style={styles.arenaMetaRow}>
-                      <MaterialCommunityIcons
-                        name="map-marker"
-                        size={14}
-                        color="#94a3b8"
+              <Pressable onPress={() => router.push(Paths.scan)} hitSlop={8}>
+                <Text style={styles.venuesViewAll}>View all ›</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.arenaRow}
+              style={styles.arenaScroll}
+            >
+              {turfsLoading ? (
+                <View style={styles.arenaLoading}>
+                  <ActivityIndicator size="large" color="#22c55e" />
+                </View>
+              ) : arenaRows.length === 0 ? (
+                <View style={styles.arenaEmptyWrap}>
+                  <Text style={styles.arenaEmptyText}>
+                    No arenas for this sport{userCoords ? " near you" : ""} yet.
+                  </Text>
+                </View>
+              ) : (
+                arenaRows.map((arena) => (
+                  <Pressable
+                    key={arena.id}
+                    style={({ pressed }) => [
+                      styles.arenaCard,
+                      pressed && styles.arenaCardPressed,
+                    ]}
+                    onPress={() => router.push(Paths.scan)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open QR scan for ${arena.name}`}
+                  >
+                    <View style={styles.arenaImgWrap}>
+                      <Image source={BG.arena} style={styles.arenaImg} />
+                      <LinearGradient
+                        colors={[
+                          "rgba(2,6,23,0)",
+                          "rgba(2,6,23,0.18)",
+                          "rgba(2,6,23,0.7)",
+                        ]}
+                        locations={[0, 0.55, 1]}
+                        style={styles.arenaImgOverlay}
                       />
-                      <Text style={styles.arenaMetaText}>{arena.location}</Text>
-                    </View>
-                    <Text style={styles.arenaStatus}>{arena.status}</Text>
-                    <View style={styles.arenaChipRow}>
-                      <View style={styles.arenaChip}>
+                      <View style={styles.arenaTag}>
                         <MaterialCommunityIcons
-                          name="star"
+                          name="check-circle"
                           size={12}
-                          color="#fbbf24"
+                          color="#22C55E"
                         />
-                        <Text style={styles.arenaChipText}>{arena.rating}</Text>
+                        <Text style={styles.arenaTagText}>Open now</Text>
                       </View>
-                      <Text style={styles.arenaDot}>•</Text>
-                      <Text style={styles.arenaChipText}>
-                        {arena.distanceKm} km
-                      </Text>
-                      <Text style={styles.arenaDot}>•</Text>
-                      <Text style={styles.arenaChipText}>
-                        ₹{arena.pricePerHr}/hr
-                      </Text>
                     </View>
-                  </View>
-                </Pressable>
-              ))
-            )}
-          </ScrollView>
+                    <View style={styles.arenaBody}>
+                      <View style={styles.arenaNameWrap}>
+                        <Text style={styles.arenaName}>{arena.name}</Text>
+                      </View>
+                      <View style={styles.arenaMetaRow}>
+                        <MaterialCommunityIcons
+                          name="map-marker"
+                          size={14}
+                          color="#94a3b8"
+                        />
+                        <Text style={styles.arenaMetaText}>
+                          {arena.location}
+                        </Text>
+                      </View>
+                      <Text style={styles.arenaStatus}>{arena.status}</Text>
+                      <View style={styles.arenaChipRow}>
+                        <View style={styles.arenaChip}>
+                          <MaterialCommunityIcons
+                            name="star"
+                            size={12}
+                            color="#fbbf24"
+                          />
+                          <Text style={styles.arenaChipText}>
+                            {arena.rating}
+                          </Text>
+                        </View>
+                        <View style={styles.arenaChip}>
+                          <MaterialCommunityIcons
+                            name="map-marker-distance"
+                            size={12}
+                            color="#22C55E"
+                          />
+                          <Text style={styles.arenaChipText}>
+                            {arena.distanceKm} km
+                          </Text>
+                        </View>
+                        <View style={styles.arenaChip}>
+                          <MaterialCommunityIcons
+                            name="currency-inr"
+                            size={12}
+                            color="#22C55E"
+                          />
+                          <Text style={styles.arenaChipText}>
+                            {arena.pricePerHr}/hr
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
 
           <View style={styles.recentWrap}>
             <View style={styles.recentHead}>
               <View style={styles.recentHeadLeft}>
-                <Image
-                  source={RECENT_SESSION_ICON}
-                  style={{ width: 28, height: 28 }}
-                />
+                <View style={styles.sportsAccent} />
                 <Text style={styles.recentTitle}>Recent Sessions</Text>
               </View>
               <Pressable
                 onPress={() => router.push(Paths.sessions)}
                 hitSlop={8}
               >
-                <Text style={styles.recentViewAll}>View all &gt;</Text>
+                <Text style={styles.recentViewAll}>View all ›</Text>
               </Pressable>
             </View>
 
@@ -589,8 +647,16 @@ export default function FieldflixHomeScreen() {
             </View>
           </View>
 
-          <View style={styles.bannerWrap}>
-            <Image source={AUTO_H} style={styles.banner} resizeMode="cover" />
+          <View style={styles.bannerSection}>
+            <View style={styles.bannerHead}>
+              <View style={styles.venuesHeadLeft}>
+                <View style={styles.sportsAccent} />
+                <Text style={styles.venuesTitle}>Coming Soon</Text>
+              </View>
+            </View>
+            <View style={styles.bannerWrap}>
+              <Image source={AUTO_H} style={styles.banner} resizeMode="cover" />
+            </View>
           </View>
         </ScrollView>
 
@@ -606,6 +672,7 @@ function SportCard({
   selected,
   onPress,
   icon,
+  status,
   comingSoon,
 }: {
   size: number;
@@ -613,6 +680,7 @@ function SportCard({
   selected: boolean;
   onPress: () => void;
   icon: ReactNode;
+  status?: string;
   comingSoon?: boolean;
 }) {
   const selectedActive = selected && !comingSoon;
@@ -636,8 +704,20 @@ function SportCard({
     >
       <View style={styles.sportIconWrap}>{icon}</View>
       <View style={styles.sportLabelRow}>
-        <Text style={styles.sportLabel}>{label}</Text>
-        <Image source={ACTIVITY} style={{ width: 14, height: 14 }} />
+        <Text style={[styles.sportLabel, comingSoon && styles.sportLabelMuted]}>
+          {label}
+        </Text>
+      </View>
+      <View style={styles.sportStatusRow}>
+        {comingSoon ? null : <View style={styles.sportActiveDot} />}
+        <Text
+          style={[
+            styles.sportStatusText,
+            comingSoon ? styles.sportStatusSoon : styles.sportStatusActive,
+          ]}
+        >
+          {comingSoon ? "Coming soon" : (status ?? "Active")}
+        </Text>
       </View>
     </Pressable>
   );
@@ -652,10 +732,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     paddingHorizontal: 20,
-    paddingTop: 2,
+    paddingTop: 6,
     paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: WEB.headerBorder,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
+    backgroundColor: "rgba(2, 10, 24, 0.72)",
   },
   headerLeft: {
     flex: 1,
@@ -689,31 +774,36 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 14,
+    gap: 10,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   badge: {
     position: "absolute",
-    top: 2,
-    right: 2,
+    top: 3,
+    right: 3,
     minWidth: 16,
     height: 16,
     paddingHorizontal: 3,
     borderRadius: 8,
-    backgroundColor: "#22C55E",
+    backgroundColor: "#EF4444",
+    borderWidth: 1,
+    borderColor: "#0B1220",
     alignItems: "center",
     justifyContent: "center",
   },
   badgeText: {
     fontFamily: FF.bold,
     fontSize: 10,
-    color: "#000",
+    color: "#fff",
     textAlign: "center",
   },
 
@@ -818,6 +908,38 @@ const styles = StyleSheet.create({
     marginTop: 24,
     alignItems: "center",
   },
+  sportsHead: {
+    width: "100%",
+    paddingHorizontal: 20,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  sportsHeadLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  sportsAccent: {
+    width: 3,
+    height: 16,
+    borderRadius: 2,
+    backgroundColor: "#22C55E",
+  },
+  sportsTitle: {
+    fontFamily: FF.bold,
+    fontSize: 12,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: WEB.white,
+  },
+  sportsViewAll: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "#22C55E",
+    letterSpacing: 0.2,
+  },
   sportsRow: {
     flexDirection: "row",
     flexWrap: "nowrap",
@@ -826,9 +948,9 @@ const styles = StyleSheet.create({
   sportCard: {
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    paddingTop: 10,
-    paddingBottom: 8,
+    borderColor: "rgba(34,197,94,0.35)",
+    paddingTop: 8,
+    paddingBottom: 10,
     alignItems: "center",
     justifyContent: "space-between",
     overflow: "hidden",
@@ -845,6 +967,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     width: "100%",
+    marginTop: 4,
   },
   sportLabelRow: {
     flexDirection: "row",
@@ -854,13 +977,70 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   sportLabel: {
+    fontFamily: FF.bold,
+    fontSize: 15,
+    color: WEB.white,
+  },
+  sportLabelMuted: {
+    color: "rgba(203,213,225,0.95)",
+  },
+  sportStatusRow: {
+    minHeight: 22,
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  sportActiveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#22C55E",
+  },
+  sportStatusText: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    letterSpacing: 0.2,
+  },
+  sportStatusActive: {
+    color: "#22C55E",
+  },
+  sportStatusSoon: {
+    color: "rgba(148,163,184,0.92)",
+  },
+  venuesWrap: {
+    marginTop: 24,
+  },
+  venuesHead: {
+    width: "100%",
+    paddingHorizontal: 20,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  venuesHeadLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  venuesTitle: {
+    fontFamily: FF.bold,
+    fontSize: 12,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    color: WEB.white,
+  },
+  venuesViewAll: {
     fontFamily: FF.semiBold,
     fontSize: 13,
-    color: WEB.white,
+    color: "#22C55E",
+    letterSpacing: 0.2,
   },
 
   arenaScroll: {
-    marginTop: 28,
+    marginTop: 0,
   },
   arenaRow: {
     paddingHorizontal: 20,
@@ -889,15 +1069,19 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignItems: "stretch",
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "#0B1019",
+    borderWidth: 1.25,
+    borderColor: "rgba(34,197,94,0.35)",
+    backgroundColor: "#0A111A",
     overflow: "hidden",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  arenaCardPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.92,
   },
   /** Fixed size image area — matches web `h-[140px] w-full` inside `w-[280px]` card (no full-bleed stretch). */
   arenaImgWrap: {
@@ -913,6 +1097,29 @@ const styles = StyleSheet.create({
     resizeMode: "cover",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+  },
+  arenaImgOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  arenaTag: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.4)",
+    backgroundColor: "rgba(2,6,23,0.74)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  arenaTagText: {
+    fontFamily: FF.semiBold,
+    fontSize: 10,
+    color: "#86EFAC",
+    letterSpacing: 0.2,
   },
   arenaBody: {
     width: "100%",
@@ -947,59 +1154,62 @@ const styles = StyleSheet.create({
     color: "#94a3b8",
   },
   arenaStatus: {
-    fontFamily: FF.regular,
+    fontFamily: FF.medium,
     fontSize: 12,
-    color: "#64748b",
+    color: "#94a3b8",
   },
   arenaChipRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
     flexWrap: "wrap",
   },
   arenaChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(148,163,184,0.3)",
+    backgroundColor: "rgba(15,23,42,0.75)",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   arenaChipText: {
-    fontFamily: FF.regular,
+    fontFamily: FF.medium,
     fontSize: 11,
-    color: "#64748b",
-  },
-  arenaDot: {
-    fontFamily: FF.regular,
-    fontSize: 11,
-    color: "#475569",
+    color: "#cbd5e1",
   },
 
   recentWrap: {
     paddingHorizontal: 20,
-    marginTop: 28,
+    marginTop: 24,
   },
   recentHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   recentHeadLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
   },
   recentTitle: {
-    fontFamily: FF.semiBold,
-    fontSize: 17,
+    fontFamily: FF.bold,
+    fontSize: 12,
+    letterSpacing: 2,
+    textTransform: "uppercase",
     color: WEB.white,
-    letterSpacing: -0.2,
   },
   recentViewAll: {
-    fontFamily: FF.medium,
+    fontFamily: FF.semiBold,
     fontSize: 13,
     color: "#22C55E",
+    letterSpacing: 0.2,
   },
-  recentList: { gap: 12 },
+  recentList: { gap: 14 },
   recentEmpty: {
     fontFamily: FF.regular,
     fontSize: 14,
@@ -1010,11 +1220,11 @@ const styles = StyleSheet.create({
   recentCard: {
     flexDirection: "row",
     gap: 12,
-    padding: 12,
+    padding: 13,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "#0c1218",
+    borderColor: "rgba(34,197,94,0.22)",
+    backgroundColor: "#0B121B",
   },
   recentThumb: {
     width: 108,
@@ -1075,9 +1285,18 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
 
+  bannerSection: {
+    marginTop: 28,
+  },
+  bannerHead: {
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+  },
   bannerWrap: {
     paddingHorizontal: 20,
-    marginTop: 28,
   },
   banner: {
     width: "100%",
