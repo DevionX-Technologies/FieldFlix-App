@@ -1,40 +1,40 @@
 import { Paths } from "@/data/paths";
 import { useRecordingReadyToast } from "@/hooks/useRecordingReadyToast";
 import {
-    createShareLink,
-    getMyRecordings,
-    getSharedWithMe,
+  createShareLink,
+  getMyRecordings,
+  getPublicFlickShorts,
+  getSharedWithMe,
 } from "@/lib/fieldflix-api";
 import {
-    FIELD_FLIX_BOTTOM_NAV_SPACE,
-    FieldflixBottomNav,
+  FIELD_FLIX_BOTTOM_NAV_SPACE,
+  FieldflixBottomNav,
 } from "@/screens/fieldflix/BottomNav";
 import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { FF } from "@/screens/fieldflix/fonts";
 import { RECORDINGS_REC_LOCAL } from "@/screens/fieldflix/recordingsAssets";
-import { WEB } from "@/screens/fieldflix/webDesign";
 import {
-    formatRecordingListWhen,
-    highlightCountFromRecording,
-    recordingDurationLabel,
-    recordingIsReady,
-    recordingThumbUrl,
+  formatRecordingListWhen,
+  highlightCountFromRecording,
+  recordingDurationLabel,
+  recordingIsReady,
+  recordingThumbUrl,
 } from "@/utils/recordingDisplay";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-    Image,
-    Pressable,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
-    type ImageSourcePropType,
+  Image,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type ImageSourcePropType,
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 
@@ -63,6 +63,8 @@ export default function FieldflixRecordingsScreen() {
   const [tab, setTab] = useState<TabId>("my");
   const [my, setMy] = useState<any[]>([]);
   const [shared, setShared] = useState<any[]>([]);
+  /** Approved FlickShorts are a separate table from `recordingHighlights` — tally per recording for counts. */
+  const [shortsPerRecording, setShortsPerRecording] = useState<Record<string, number>>({});
 
   const [findLocation, setFindLocation] = useState("");
   const [findGround, setFindGround] = useState("");
@@ -133,9 +135,24 @@ export default function FieldflixRecordingsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([getMyRecordings(), getSharedWithMe()]);
+      const [a, b, flickList] = await Promise.all([
+        getMyRecordings(),
+        getSharedWithMe(),
+        getPublicFlickShorts(undefined).catch(() => []),
+      ]);
       setMy(a);
       setShared(b);
+      const tally: Record<string, number> = {};
+      const mine = Array.isArray(a)
+        ? new Set<string>(a.map((r: unknown) => String((r as { id?: string })?.id ?? '')))
+        : new Set<string>();
+      const arr = Array.isArray(flickList) ? flickList : [];
+      for (const fs of arr) {
+        const rid = String((fs as { recordingId?: string }).recordingId ?? '');
+        if (!rid || !mine.has(rid)) continue;
+        tally[rid] = (tally[rid] ?? 0) + 1;
+      }
+      setShortsPerRecording(tally);
     } catch {
       setMy([]);
       setShared([]);
@@ -149,54 +166,56 @@ export default function FieldflixRecordingsScreen() {
   const myRows =
     my.length > 0
       ? my.map((s: any, i: number) => {
-          const h = highlightCountFromRecording(s);
-          return {
-            id: String(s?.id ?? i),
-            recordingId: s?.id ? String(s.id) : null,
-            title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Recording",
-            location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? "",
-            when: formatRecordingListWhen(s?.startTime),
-            duration: recordingDurationLabel(s),
-            thumbUrl: recordingThumbUrl(s),
-            highlights: h > 0 ? h : null,
-            status: String(s?.status ?? "").toLowerCase(),
-            isReady: recordingIsReady(s),
-            tags: [] as string[],
-            moreTags: 0,
-          };
-        })
+        const hid = String(s?.id ?? '');
+        const h =
+          highlightCountFromRecording(s) + (hid ? shortsPerRecording[hid] ?? 0 : 0);
+        return {
+          id: String(s?.id ?? i),
+          recordingId: s?.id ? String(s.id) : null,
+          title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Recording",
+          location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? "",
+          when: formatRecordingListWhen(s?.startTime),
+          duration: recordingDurationLabel(s),
+          thumbUrl: recordingThumbUrl(s),
+          highlights: h > 0 ? h : null,
+          status: String(s?.status ?? "").toLowerCase(),
+          isReady: recordingIsReady(s),
+          tags: [] as string[],
+          moreTags: 0,
+        };
+      })
       : [];
 
   const sharedRows =
     shared.length > 0
       ? shared.map((s: any, i: number) => {
-          const rec = s?.recording;
-          const td = rec?.turf_detail;
-          const loc =
-            [td?.city, td?.state].filter(Boolean).join(", ") ||
-            td?.address_line ||
-            "";
-          return {
-            id: String(s?.id ?? i),
-            recordingId: rec?.id ? String(rec.id) : null,
-            shareToken: s?.share_token ?? rec?.share_token ?? null,
-            title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
-            highlights: Array.isArray(rec?.recordingHighlights)
-              ? rec.recordingHighlights.length
-              : 0,
-            shareWith: s?.shared_with_user_name || "—",
-            ownerName: rec?.owner_name ?? "",
-            location: loc,
-            thumbUrl: recordingThumbUrl(rec),
-            duration: recordingDurationLabel(rec),
-          };
-        })
+        const rec = s?.recording;
+        const td = rec?.turf_detail;
+        const loc =
+          [td?.city, td?.state].filter(Boolean).join(", ") ||
+          td?.address_line ||
+          "";
+        return {
+          id: String(s?.id ?? i),
+          recordingId: rec?.id ? String(rec.id) : null,
+          shareToken: s?.share_token ?? rec?.share_token ?? null,
+          title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
+          highlights: Array.isArray(rec?.recordingHighlights)
+            ? rec.recordingHighlights.length
+            : 0,
+          shareWith: s?.shared_with_user_name || "—",
+          ownerName: rec?.owner_name ?? "",
+          location: loc,
+          thumbUrl: recordingThumbUrl(rec),
+          duration: recordingDurationLabel(rec),
+        };
+      })
       : [];
 
   const { state: readyState, dismiss: dismissReady } = useRecordingReadyToast();
 
   return (
-      <WebShell backgroundColor={REC_BG}>
+    <WebShell backgroundColor={REC_BG}>
       <View style={styles.flex}>
         <FieldflixScreenHeader
           title="Recordings"
