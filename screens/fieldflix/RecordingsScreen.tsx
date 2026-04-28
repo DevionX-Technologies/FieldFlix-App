@@ -8,7 +8,10 @@ import {
   recordingThumbUrl,
 } from '@/utils/recordingDisplay';
 import { FF } from '@/screens/fieldflix/fonts';
-import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
+import {
+  FIELD_FLIX_BOTTOM_NAV_SPACE,
+  FieldflixBottomNav,
+} from '@/screens/fieldflix/BottomNav';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { RECORDINGS_REC_LOCAL } from '@/screens/fieldflix/recordingsAssets';
 import { WEB } from '@/screens/fieldflix/webDesign';
@@ -261,7 +264,7 @@ export default function FieldflixRecordingsScreen() {
 
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.main}
+          contentContainerStyle={[styles.main, { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE }]}
           showsVerticalScrollIndicator={false}
         >
           {tab === 'my' && (

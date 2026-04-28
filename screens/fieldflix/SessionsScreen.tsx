@@ -2,7 +2,10 @@ import { Paths } from '@/data/paths';
 import ErrorBoundary from '@/components/organisms/ErrorBoundary/ErrorBoundary';
 import { useSessionsMyRecordings, type SessionRowForUi } from '@/hooks/useSessionsMyRecordings';
 import { FF } from '@/screens/fieldflix/fonts';
-import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
+import {
+  FIELD_FLIX_BOTTOM_NAV_SPACE,
+  FieldflixBottomNav,
+} from '@/screens/fieldflix/BottomNav';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import {
@@ -109,7 +112,7 @@ export default function FieldflixSessionsScreen() {
         <View style={styles.flex}>
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE }]}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.pad}>

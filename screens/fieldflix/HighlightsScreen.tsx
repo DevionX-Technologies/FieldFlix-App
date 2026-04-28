@@ -9,7 +9,10 @@ import {
   type RecordingPlayback,
 } from '@/lib/fieldflix-api';
 import { useEntitlement } from '@/lib/fieldflix-entitlement';
-import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
+import {
+  FIELD_FLIX_BOTTOM_NAV_SPACE,
+  FieldflixBottomNav,
+} from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
@@ -421,7 +424,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.main}
+          contentContainerStyle={[styles.main, { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE }]}
           showsVerticalScrollIndicator={false}
         >
           {/* HERO */}

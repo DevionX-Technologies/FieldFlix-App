@@ -33,11 +33,12 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
-import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
+import {
+  FIELD_FLIX_BOTTOM_NAV_SPACE,
+  FieldflixBottomNav,
+} from "@/screens/fieldflix/BottomNav";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
-const PICKLE = require("@/assets/fieldflix-web/pickleball.png");
-const PADEL = require("@/assets/fieldflix-web/padel.png");
 const AUTO_H = require("@/assets/fieldflix-web/autohiglhight.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
 
@@ -251,10 +252,10 @@ export default function FieldflixHomeScreen() {
           sports_supported: sportEnum,
           ...(userCoords
             ? {
-              latitude: userCoords.latitude,
-              longitude: userCoords.longitude,
-              radiusKm: 100,
-            }
+                latitude: userCoords.latitude,
+                longitude: userCoords.longitude,
+                radiusKm: 100,
+              }
             : {}),
         }),
         getMyRecordings(),
@@ -290,7 +291,7 @@ export default function FieldflixHomeScreen() {
     [sessions],
   );
 
-  const navReserve = 96;
+  const navReserve = FIELD_FLIX_BOTTOM_NAV_SPACE;
 
   return (
     <WebShell backgroundColor={WEB.homeBg}>
@@ -359,14 +360,23 @@ export default function FieldflixHomeScreen() {
               />
               <LinearGradient
                 colors={[
-                  "rgba(0,0,0,0.55)",
-                  "rgba(0,0,0,0.25)",
-                  "rgba(0,0,0,0.95)",
+                  "rgba(2,6,23,0.68)",
+                  "rgba(2,6,23,0.3)",
+                  "rgba(2,6,23,0.9)",
                 ]}
-                locations={[0, 0.45, 1]}
+                locations={[0, 0.42, 1]}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <LinearGradient
+                colors={["rgba(34,197,94,0.16)", "rgba(0,0,0,0)"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0.7 }}
                 style={StyleSheet.absoluteFillObject}
               />
               <View style={styles.heroTextBlock}>
+                <View style={styles.heroBadge}>
+                  <Text style={styles.heroBadgeText}>Smart Capture</Text>
+                </View>
                 <Text style={styles.heroKicker}>Elevate Your</Text>
                 <Text style={styles.heroTitle}>Game Today</Text>
                 <Text style={styles.heroDesc}>
@@ -422,13 +432,10 @@ export default function FieldflixHomeScreen() {
                 onPress={() => setSport("pickleball")}
                 status="Active"
                 icon={
-                  <Image
-                    source={PICKLE}
-                    style={{
-                      width: Math.round(sportIconMain * 0.95),
-                      height: Math.round(sportIconMain * 0.95),
-                      resizeMode: "contain",
-                    }}
+                  <MaterialCommunityIcons
+                    name="table-tennis"
+                    size={Math.round(sportIconMain * 0.78)}
+                    color={WEB.white}
                   />
                 }
               />
@@ -439,13 +446,10 @@ export default function FieldflixHomeScreen() {
                 onPress={() => setSport("padel")}
                 status="Active"
                 icon={
-                  <Image
-                    source={PADEL}
-                    style={{
-                      width: Math.round(sportIconMain * 0.95),
-                      height: Math.round(sportIconMain * 0.95),
-                      resizeMode: "contain",
-                    }}
+                  <MaterialCommunityIcons
+                    name="tennis-ball"
+                    size={Math.round(sportIconMain * 0.78)}
+                    color={WEB.white}
                   />
                 }
               />
@@ -458,7 +462,7 @@ export default function FieldflixHomeScreen() {
                 icon={
                   <MaterialCommunityIcons
                     name="cricket"
-                    size={Math.round(sportIconMain * 0.95)}
+                    size={Math.round(sportIconMain * 0.78)}
                     color={WEB.white}
                   />
                 }
@@ -614,7 +618,11 @@ export default function FieldflixHomeScreen() {
                   >
                     <View style={styles.recentThumb}>
                       <ExpoImage
-                        source={session.thumbUrl ? { uri: session.thumbUrl } : BG.homeHero}
+                        source={
+                          session.thumbUrl
+                            ? { uri: session.thumbUrl }
+                            : BG.homeHero
+                        }
                         style={StyleSheet.absoluteFillObject}
                         contentFit="cover"
                         contentPosition={{ top: "22%", left: "50%" }}
@@ -834,8 +842,10 @@ const styles = StyleSheet.create({
     height: 320,
     width: "100%",
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.22)",
     overflow: "hidden",
-    backgroundColor: "#0B1019",
+    backgroundColor: "#08101A",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.45,
@@ -844,35 +854,56 @@ const styles = StyleSheet.create({
   },
   heroTextBlock: {
     position: "absolute",
-    top: 32,
+    top: 22,
     left: 24,
     right: 24,
   },
+  heroBadge: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
+    backgroundColor: "rgba(2,6,23,0.55)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  heroBadgeText: {
+    fontFamily: FF.medium,
+    fontSize: 10,
+    color: "#86EFAC",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
   heroKicker: {
-    fontFamily: FF.bold,
+    marginTop: 12,
+    fontFamily: FF.semiBold,
     fontSize: 18,
     color: WEB.white,
     lineHeight: 24,
+    letterSpacing: -0.2,
   },
   heroTitle: {
-    marginTop: 6,
+    marginTop: 4,
     fontFamily: FF.extraBold,
-    fontSize: 32,
-    lineHeight: 36,
-    letterSpacing: -0.8,
+    fontSize: 44,
+    lineHeight: 46,
+    letterSpacing: -0.9,
     color: "#86efac",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
   heroDesc: {
-    marginTop: 14,
-    maxWidth: 280,
+    marginTop: 12,
+    maxWidth: 300,
     fontFamily: FF.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "rgba(255,255,255,0.92)",
+    fontSize: 15,
+    lineHeight: 22,
+    color: "rgba(255,255,255,0.9)",
   },
   heroCtaWrap: {
     position: "absolute",
-    bottom: 24,
+    bottom: 16,
     left: 12,
     right: 12,
     alignItems: "center",
@@ -880,44 +911,48 @@ const styles = StyleSheet.create({
   ctaPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     width: "100%",
     maxWidth: 340,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    minHeight: 62,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: "#FFFFFF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
+    backgroundColor: "rgba(2,6,23,0.72)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
+    shadowOpacity: 0.26,
     shadowRadius: 14,
     elevation: 8,
   },
   ctaCam: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     marginLeft: 2,
     resizeMode: "contain",
   },
   ctaTextCol: { flex: 1, minWidth: 0 },
   ctaTitle: {
     fontFamily: FF.bold,
-    fontSize: 15,
-    lineHeight: 18,
-    color: "#0f172a",
+    fontSize: 16,
+    lineHeight: 20,
+    color: WEB.white,
+    letterSpacing: -0.2,
   },
   ctaSub: {
-    marginTop: 2,
+    marginTop: 1,
     fontFamily: FF.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: "#6b7280",
+    color: "rgba(255,255,255,0.78)",
   },
   ctaChevron: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#22C55E",
     alignItems: "center",
     justifyContent: "center",
   },
