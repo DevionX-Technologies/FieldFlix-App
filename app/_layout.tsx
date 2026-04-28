@@ -8,24 +8,24 @@ import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
 import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
 import { routeFromNotificationData } from "@/utils/notificationRouting";
 import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  Inter_800ExtraBold,
-  Inter_800ExtraBold_Italic,
-  useFonts,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+    Inter_800ExtraBold_Italic,
+    useFonts,
 } from "@expo-google-fonts/inter";
 import Entypo from "@expo/vector-icons/Entypo";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Font from "expo-font";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
-import { Slot, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef } from "react";
-import { StatusBar } from "react-native";
+import { Platform, StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -119,7 +119,7 @@ export default function RootLayout() {
           setupFcmTokenRefreshListener();
         } else {
         }
-      } catch (error) { }
+      } catch (error) {}
     };
     void checkTokenAndSetupListener();
   }, []);
@@ -284,7 +284,7 @@ export default function RootLayout() {
           .then((remoteMessage) => {
             if (remoteMessage) handleFcmTap(remoteMessage, router);
           })
-          .catch(() => { });
+          .catch(() => {});
       } catch {
         // ignore
       }
@@ -316,7 +316,28 @@ export default function RootLayout() {
           <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
             <ThemeProvider>
               <StatusBar barStyle="light-content" />
-              <Slot />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  animation: Platform.select({
+                    ios: "ios_from_right",
+                    android: "simple_push",
+                    default: "simple_push",
+                  }),
+                  animationDuration: Platform.select({
+                    ios: 340,
+                    android: 280,
+                    default: 280,
+                  }),
+                  animationTypeForReplace: "push",
+                  gestureEnabled: true,
+                  fullScreenGestureEnabled: true,
+                  animationMatchesGesture: true,
+                  customAnimationOnGesture: true,
+                  presentation: "card",
+                  contentStyle: { backgroundColor: "#000000" },
+                }}
+              />
               <ModalComponent />
             </ThemeProvider>
           </SafeAreaView>
@@ -325,7 +346,6 @@ export default function RootLayout() {
     </GluestackUIProvider>
   );
 }
-
 
 function showModal(arg0: string, arg1: any, arg2: any) {
   throw new Error("Function not implemented.");
