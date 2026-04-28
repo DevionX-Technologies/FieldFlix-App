@@ -1,7 +1,7 @@
 import { Paths } from "@/data/paths";
 import {
   getMyRecordings,
-  getNotificationCount,
+  getNotifications,
   getPublicFlickShorts,
   getTurfsPage,
 } from "@/lib/fieldflix-api";
@@ -9,6 +9,7 @@ import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { FF } from "@/screens/fieldflix/fonts";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { WebShell } from "@/screens/fieldflix/WebShell";
+import { getUnreadApiNotificationCount } from "@/utils/localNotificationReadStore";
 import {
   formatRecordingTimeLabel,
   highlightCountFromRecording,
@@ -16,6 +17,7 @@ import {
   recordingThumbUrl,
 } from "@/utils/recordingDisplay";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useFocusEffect } from "@react-navigation/native";
 import { Image as ExpoImage } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
@@ -30,6 +32,7 @@ import {
   type NativeSyntheticEvent,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,7 +52,7 @@ const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
 /** Static promos (3) until the API supplies Coming Soon assets. */
 const COMING_SOON_CAROUSEL_IMAGES = [
   AUTO_H,
-  require("@/assets/fieldflix-web/image51.png"),
+  require("@/assets/fieldflix-web/image515.png"),
   require("@/assets/fieldflix-web/image151.png"),
 ] as const;
 const COMING_SOON_CARD_HEIGHT = 158;
@@ -155,7 +158,11 @@ function mapTurfToArena(
   };
 }
 
-function mapRecordingToRecent(s: any, idx: number): RecentRow {
+function mapRecordingToRecent(
+  s: any,
+  idx: number,
+  extraHighlights = 0,
+): RecentRow {
   const recordingId = String(s?.id ?? idx);
   const raw = s?.startTime ?? s?.endTime ?? s?.created_at;
   const d = raw ? new Date(String(raw)) : null;
@@ -182,7 +189,8 @@ function mapRecordingToRecent(s: any, idx: number): RecentRow {
  *  recent sessions, auto-highlight banner, plus fixed bottom nav. */
 export default function FieldflixHomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
-  const sportsPad = 20;
+  const sidePad = 16;
+  const sportsPad = sidePad;
   const sportsGap = 8;
   const sportBoxSize = Math.min(
     120,
@@ -196,7 +204,9 @@ export default function FieldflixHomeScreen() {
   );
   const [turfs, setTurfs] = useState<TurfRow[]>([]);
   const [sessions, setSessions] = useState<unknown[]>([]);
-  const [shortsPerRecording, setShortsPerRecording] = useState<Record<string, number>>({});
+  const [shortsPerRecording, setShortsPerRecording] = useState<
+    Record<string, number>
+  >({});
   const [notifCount, setNotifCount] = useState(0);
   const [userCoords, setUserCoords] = useState<{
     latitude: number;
@@ -204,6 +214,7 @@ export default function FieldflixHomeScreen() {
   } | null>(null);
   const [locationLabel, setLocationLabel] = useState("Locating…");
   const [turfsLoading, setTurfsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -266,14 +277,14 @@ export default function FieldflixHomeScreen() {
           sports_supported: sportEnum,
           ...(userCoords
             ? {
-              latitude: userCoords.latitude,
-              longitude: userCoords.longitude,
-              radiusKm: 100,
-            }
+                latitude: userCoords.latitude,
+                longitude: userCoords.longitude,
+                radiusKm: 100,
+              }
             : {}),
         }),
         getMyRecordings(),
-        getNotificationCount(),
+        getNotifications(1, 50).catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
       ]);
       const items = Array.isArray(turfRes)
@@ -290,7 +301,10 @@ export default function FieldflixHomeScreen() {
         tally[rid] = (tally[rid] ?? 0) + 1;
       }
       setShortsPerRecording(tally);
-      setNotifCount(typeof n === "number" ? n : 0);
+      const unread = await getUnreadApiNotificationCount(
+        Array.isArray(n) ? n : [],
+      );
+      setNotifCount(unread);
     } catch {
       setTurfs([]);
       setSessions([]);
@@ -302,6 +316,21 @@ export default function FieldflixHomeScreen() {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const onRefreshHome = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
 
   const arenaRows: ArenaRow[] = useMemo(
@@ -323,7 +352,7 @@ export default function FieldflixHomeScreen() {
 
   const navReserve = FIELD_FLIX_BOTTOM_NAV_SPACE;
 
-  const bannerSidePad = 20;
+  const bannerSidePad = sidePad;
   const comingSoonGap = 12;
   /** Floor so slide + separators never exceed screen due to fractional layout px. */
   const carouselW = Math.max(0, Math.floor(windowWidth - bannerSidePad * 2));
@@ -422,6 +451,15 @@ export default function FieldflixHomeScreen() {
           style={styles.flex}
           contentContainerStyle={{ paddingBottom: navReserve + 24 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefreshHome}
+              tintColor={WEB.green}
+              colors={[WEB.green]}
+              progressBackgroundColor="#0B1220"
+            />
+          }
         >
           <View style={styles.heroWrap}>
             <View style={styles.heroCard}>
@@ -433,26 +471,19 @@ export default function FieldflixHomeScreen() {
               />
               <LinearGradient
                 colors={[
-                  "rgba(4,13,26,0.82)",
-                  "rgba(5,21,43,0.38)",
-                  "rgba(2,12,31,0.92)",
+                  "rgba(0,0,0,0.56)",
+                  "rgba(0,0,0,0.2)",
+                  "rgba(0,0,0,0.72)",
                 ]}
                 locations={[0, 0.46, 1]}
-                style={StyleSheet.absoluteFillObject}
-              />
-              {/* Cool edge tint — aligns with slate + emerald brand */}
-              <LinearGradient
-                colors={["rgba(16,185,129,0.14)", "rgba(0,0,0,0)"]}
-                start={{ x: 0.15, y: 0 }}
-                end={{ x: 0.92, y: 0.85 }}
                 style={StyleSheet.absoluteFillObject}
               />
               {/* Left band: anchors headline + description on one readable tone */}
               <LinearGradient
                 colors={[
-                  "rgba(3,17,38,0.94)",
-                  "rgba(4,26,54,0.62)",
-                  "rgba(2,14,38,0.05)",
+                  "rgba(7,45,24,0.9)",
+                  "rgba(9,56,30,0.5)",
+                  "rgba(6,34,18,0.08)",
                   "transparent",
                 ]}
                 locations={[0, 0.28, 0.58, 1]}
@@ -906,7 +937,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 6,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -983,7 +1014,7 @@ const styles = StyleSheet.create({
   },
 
   heroWrap: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 6,
   },
   heroCard: {
@@ -1119,7 +1150,7 @@ const styles = StyleSheet.create({
   },
   sportsHead: {
     width: "100%",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -1223,7 +1254,7 @@ const styles = StyleSheet.create({
   },
   venuesHead: {
     width: "100%",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -1252,7 +1283,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   arenaRow: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     gap: 14,
     alignItems: "flex-start",
   },
@@ -1391,7 +1422,7 @@ const styles = StyleSheet.create({
   },
 
   recentWrap: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginTop: 24,
   },
   recentHead: {
@@ -1516,14 +1547,14 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   bannerHead: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 12,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
   },
   bannerWrap: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     overflow: "hidden",
   },
   bannerFlatList: {

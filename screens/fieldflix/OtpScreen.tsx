@@ -10,6 +10,7 @@ import { FF } from "@/screens/fieldflix/fonts";
 import { ms, s, SCREEN_H, sf, vs } from "@/screens/fieldflix/scale";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { useShellWidth, WebShell } from "@/screens/fieldflix/WebShell";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -77,6 +78,7 @@ export default function FieldflixOtpScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
   const [smsSending, setSmsSending] = useState(true);
+  const [verifyPressed, setVerifyPressed] = useState(false);
   /** Blocks a second mount-triggered send for the same `mobile` until the countdown finishes (then use Resend). */
   const mountSendIssuedRef = useRef(false);
   const prevMobileParam = useRef<string | undefined>(undefined);
@@ -285,6 +287,9 @@ export default function FieldflixOtpScreen() {
             <View style={{ height: topSpacer }} />
 
             <View style={[styles.panel, { maxWidth: panelMax }]}>
+              <View style={styles.verifyPill}>
+                <Text style={styles.verifyPillText}>Secure Verification</Text>
+              </View>
               <View style={styles.header}>
                 <Text style={styles.kicker}>Mobile Number Verification</Text>
                 <Text style={styles.title}>Enter OTP</Text>
@@ -363,19 +368,34 @@ export default function FieldflixOtpScreen() {
 
               <Pressable
                 onPress={() => submit(value)}
+                onPressIn={() => {
+                  if (
+                    !submitting &&
+                    !smsSending &&
+                    value.length === CELL_COUNT
+                  ) {
+                    setVerifyPressed(true);
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                }}
+                onPressOut={() => setVerifyPressed(false)}
                 disabled={
                   submitting || smsSending || value.length !== CELL_COUNT
                 }
                 style={({ pressed }) => [
                   styles.verifyOuter,
                   { maxWidth: otpRowMax },
-                  pressed && { transform: [{ scale: 0.98 }] },
+                  (pressed || verifyPressed) && styles.verifyPressed,
                   (submitting || smsSending || value.length !== CELL_COUNT) &&
-                  styles.verifyDisabled,
+                    styles.verifyDisabled,
                 ]}
               >
                 <LinearGradient
-                  colors={["#22c55e", "#16a34a"]}
+                  colors={
+                    verifyPressed
+                      ? ["#16a34a", "#15803d"]
+                      : ["#22c55e", "#16a34a"]
+                  }
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={styles.verifyGradient}
@@ -395,6 +415,13 @@ export default function FieldflixOtpScreen() {
                 <Pressable
                   onPress={onResend}
                   disabled={timer > 0 || resending}
+                  onPressIn={() => {
+                    if (timer <= 0 && !resending) {
+                      void Haptics.impactAsync(
+                        Haptics.ImpactFeedbackStyle.Light,
+                      );
+                    }
+                  }}
                   style={styles.resendWrap}
                 >
                   {resending ? (
@@ -435,8 +462,8 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: ms(WEB.cardRadius, 0.45),
     borderWidth: 1.5,
-    borderColor: "rgba(34, 197, 94, 0.45)",
-    backgroundColor: "rgba(4, 10, 22, 0.58)",
+    borderColor: "rgba(110,231,183,0.35)",
+    backgroundColor: "rgba(4, 10, 22, 0.64)",
     paddingTop: vs(26),
     paddingBottom: vs(22),
     paddingHorizontal: s(18),
@@ -450,6 +477,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: s(8),
     marginBottom: vs(6),
+  },
+  verifyPill: {
+    alignSelf: "center",
+    marginBottom: vs(10),
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(167,243,208,0.35)",
+    backgroundColor: "rgba(13, 26, 34, 0.65)",
+    paddingHorizontal: s(14),
+    paddingVertical: vs(5),
+  },
+  verifyPillText: {
+    fontFamily: FF.semiBold,
+    fontSize: sf(11),
+    color: "rgba(187,247,208,0.92)",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   kicker: {
     fontFamily: FF.medium,
@@ -563,6 +607,12 @@ const styles = StyleSheet.create({
   },
   verifyDisabled: {
     opacity: 0.72,
+  },
+  verifyPressed: {
+    transform: [{ scale: 0.975 }, { translateY: 1 }],
+    shadowOpacity: 0.4,
+    shadowRadius: s(8),
+    elevation: 3,
   },
   verifyGradient: {
     minHeight: s(WEB.verifyBtnH),

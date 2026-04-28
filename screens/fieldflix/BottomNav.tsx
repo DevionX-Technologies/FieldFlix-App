@@ -24,9 +24,9 @@ type BarRoute = "home" | "sessions" | "flix" | "recordings";
 
 const DUMMY = () => null;
 const TAB_WIDTH = Dimensions.get("window").width;
-const BAR_HEIGHT = 80;
+const BAR_HEIGHT = 68;
 const FAB_SIZE = 68;
-export const FIELD_FLIX_BOTTOM_NAV_SPACE = 124;
+export const FIELD_FLIX_BOTTOM_NAV_SPACE = 110;
 
 const ROUTE_CONFIG: {
   key: BarRoute;
@@ -200,8 +200,8 @@ const styles = StyleSheet.create({
   navigatorShell: {
     borderWidth: 1,
     borderColor: COLORS.barInner,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 18,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     overflow: "hidden",
@@ -219,9 +219,9 @@ const styles = StyleSheet.create({
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    gap: 3,
-    paddingTop: 6,
-    paddingBottom: 10,
+    gap: 2,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   tabLabel: {
     fontSize: 11,

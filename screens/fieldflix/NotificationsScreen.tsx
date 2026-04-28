@@ -7,6 +7,12 @@ import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { hrefFromNotificationData } from '@/utils/notificationRouting';
 import { getLocalNotifications } from '@/utils/localNotificationStore';
+import {
+  getUnreadApiNotificationCount,
+  markAllApiNotificationsRead,
+  markNotificationReadLocally,
+} from '@/utils/localNotificationReadStore';
+import * as Haptics from "expo-haptics";
 import { useRouter, type Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
@@ -131,9 +137,12 @@ export default function FieldflixNotificationsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<{ label: string; items: NotificationItemWithHref[] }[]>([]);
+  const [apiRowsForRead, setApiRowsForRead] = useState<{ id?: string; created_at?: string }[]>([]);
+  const [markingRead, setMarkingRead] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const markReadUnavailable =
-    loading || sections.length === 0;
+    loading || markingRead || unreadCount <= 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,6 +165,19 @@ export default function FieldflixNotificationsScreen() {
         row.dedupeKey = dedupeKeyForRow(row);
         return row;
       });
+      setApiRowsForRead(
+        (Array.isArray(raw) ? raw : []).map((e: any) => ({
+          id: e?.id != null ? String(e.id) : undefined,
+          created_at: typeof e?.created_at === "string" ? e.created_at : undefined,
+        })),
+      );
+      const unread = await getUnreadApiNotificationCount(
+        (Array.isArray(raw) ? raw : []).map((e: any) => ({
+          id: e?.id != null ? String(e.id) : undefined,
+          created_at: typeof e?.created_at === "string" ? e.created_at : undefined,
+        })),
+      );
+      setUnreadCount(unread);
 
       const local = await getLocalNotifications();
       const localRows: MergedRow[] = local.map((e) => {
@@ -198,6 +220,7 @@ export default function FieldflixNotificationsScreen() {
       );
     } catch {
       setSections([]);
+      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
@@ -216,7 +239,24 @@ export default function FieldflixNotificationsScreen() {
           title="Notifications"
           rightAccessory={
             <Pressable
-              onPress={() => {}}
+              onPressIn={() => {
+                if (!markReadUnavailable) {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+              }}
+              onPress={async () => {
+                if (markReadUnavailable) return;
+                setMarkingRead(true);
+                try {
+                  await markAllApiNotificationsRead(apiRowsForRead);
+                  await load();
+                  void Haptics.notificationAsync(
+                    Haptics.NotificationFeedbackType.Success,
+                  );
+                } finally {
+                  setMarkingRead(false);
+                }
+              }}
               disabled={markReadUnavailable}
               style={({ pressed }) => [
                 styles.markReadBtn,
@@ -227,7 +267,18 @@ export default function FieldflixNotificationsScreen() {
               accessibilityLabel="Mark all notifications as read"
               hitSlop={6}
             >
-              <Text style={styles.markReadBtnText}>Mark as read</Text>
+              {markingRead ? (
+                <ActivityIndicator size="small" color={WEB.greenBright} />
+              ) : (
+                <Text
+                  style={[
+                    styles.markReadBtnText,
+                    markReadUnavailable ? styles.markReadBtnTextDisabled : null,
+                  ]}
+                >
+                  Mark as read
+                </Text>
+              )}
             </Pressable>
           }
         />
@@ -256,7 +307,16 @@ export default function FieldflixNotificationsScreen() {
                     <NotificationCard
                       key={n.id}
                       item={n}
-                      onPress={n.href ? () => router.push(n.href as Href) : undefined}
+                      onPress={
+                        n.href
+                          ? async () => {
+                              await markNotificationReadLocally(n.id);
+                              router.push(n.href as Href);
+                            }
+                          : async () => {
+                              await markNotificationReadLocally(n.id);
+                            }
+                      }
                     />
                   ))}
                 </View>
@@ -347,6 +407,9 @@ const styles = StyleSheet.create({
     color: WEB.greenBright,
     letterSpacing: -0.1,
     textAlign: "center",
+  },
+  markReadBtnTextDisabled: {
+    color: "rgba(148,163,184,0.75)",
   },
   main: {
     flex: 1,
