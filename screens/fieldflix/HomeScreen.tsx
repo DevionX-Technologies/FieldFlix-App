@@ -1,5 +1,6 @@
 import { Paths } from "@/data/paths";
 import {
+  getPublicFlickShorts,
   getMyRecordings,
   getNotificationCount,
   getTurfsPage,
@@ -154,7 +155,7 @@ function mapTurfToArena(
   };
 }
 
-function mapRecordingToRecent(s: any, idx: number): RecentRow {
+function mapRecordingToRecent(s: any, idx: number, extraHighlights = 0): RecentRow {
   const raw = s?.startTime ?? s?.endTime ?? s?.created_at;
   const d = raw ? new Date(String(raw)) : null;
   const valid = d != null && !Number.isNaN(d.getTime());
@@ -162,7 +163,7 @@ function mapRecordingToRecent(s: any, idx: number): RecentRow {
     ? `${String(d!.getHours()).padStart(2, "0")}:${String(d!.getMinutes()).padStart(2, "0")}`
     : "--:--";
   const timeLabel = valid ? formatRecordingTimeLabel(d!) : "";
-  const score = highlightCountFromRecording(s);
+  const score = highlightCountFromRecording(s) + Math.max(0, extraHighlights);
   return {
     id: String(s?.id ?? idx),
     recordingId: "",
@@ -194,6 +195,7 @@ export default function FieldflixHomeScreen() {
   );
   const [turfs, setTurfs] = useState<TurfRow[]>([]);
   const [sessions, setSessions] = useState<unknown[]>([]);
+  const [shortsPerRecording, setShortsPerRecording] = useState<Record<string, number>>({});
   const [notifCount, setNotifCount] = useState(0);
   const [userCoords, setUserCoords] = useState<{
     latitude: number;
@@ -258,7 +260,7 @@ export default function FieldflixHomeScreen() {
     setTurfsLoading(true);
     try {
       const sportEnum = homeSportToApiEnum(sport);
-      const [turfRes, recRes, n] = await Promise.all([
+      const [turfRes, recRes, n, flickList] = await Promise.all([
         getTurfsPage(1, 24, {
           sports_supported: sportEnum,
           ...(userCoords
@@ -271,6 +273,7 @@ export default function FieldflixHomeScreen() {
         }),
         getMyRecordings(),
         getNotificationCount(),
+        getPublicFlickShorts(undefined).catch(() => []),
       ]);
       const items = Array.isArray(turfRes)
         ? turfRes
@@ -279,10 +282,18 @@ export default function FieldflixHomeScreen() {
           : [];
       setTurfs(items as TurfRow[]);
       setSessions(Array.isArray(recRes) ? recRes.slice(0, 6) : []);
+      const tally: Record<string, number> = {};
+      for (const fs of Array.isArray(flickList) ? flickList : []) {
+        const rid = String((fs as { recordingId?: string }).recordingId ?? "");
+        if (!rid) continue;
+        tally[rid] = (tally[rid] ?? 0) + 1;
+      }
+      setShortsPerRecording(tally);
       setNotifCount(typeof n === "number" ? n : 0);
     } catch {
       setTurfs([]);
       setSessions([]);
+      setShortsPerRecording({});
     } finally {
       setTurfsLoading(false);
     }
@@ -298,8 +309,15 @@ export default function FieldflixHomeScreen() {
   );
 
   const recentRows: RecentRow[] = useMemo(
-    () => (sessions as any[]).map(mapRecordingToRecent),
-    [sessions],
+    () =>
+      (sessions as any[]).map((s, i) =>
+        mapRecordingToRecent(
+          s,
+          i,
+          shortsPerRecording[String((s as { id?: string })?.id ?? "")] ?? 0,
+        ),
+      ),
+    [sessions, shortsPerRecording],
   );
 
   const navReserve = FIELD_FLIX_BOTTOM_NAV_SPACE;
