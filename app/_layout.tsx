@@ -25,8 +25,18 @@ import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useRef } from "react";
-import { Alert, AppState, BackHandler, Platform, StatusBar } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+    AppState,
+    BackHandler,
+    Modal,
+    Platform,
+    Pressable,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -98,6 +108,7 @@ export default function RootLayout() {
   const { ModalComponent, showModal } = useCustomModal();
   const router = useRouter();
   const pathname = usePathname();
+  const [exitConfirmVisible, setExitConfirmVisible] = useState(false);
 
   const [interLoaded] = useFonts({
     Inter_400Regular,
@@ -317,15 +328,16 @@ export default function RootLayout() {
     const onHardwareBackPress = () => {
       // Keep default back behavior throughout nested screens.
       // Only intercept at top-level destinations where Android would exit the app.
-      const topLevelExitPaths = new Set([Paths.home, Paths.login, Paths.signup]);
+      const topLevelExitPaths = new Set([
+        Paths.home,
+        Paths.login,
+        Paths.signup,
+      ]);
       if (!topLevelExitPaths.has(pathname)) {
         return false;
       }
 
-      Alert.alert("Exit app", "Do you want to exit?", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Exit", style: "destructive", onPress: () => BackHandler.exitApp() },
-      ]);
+      setExitConfirmVisible(true);
       return true;
     };
 
@@ -394,6 +406,38 @@ export default function RootLayout() {
                 }}
               />
               <ModalComponent />
+              <Modal
+                transparent
+                animationType="fade"
+                visible={exitConfirmVisible}
+                onRequestClose={() => setExitConfirmVisible(false)}
+              >
+                <View style={styles.confirmOverlay}>
+                  <View style={styles.confirmCard}>
+                    <Text style={styles.confirmTitle}>Exit App</Text>
+                    <Text style={styles.confirmMessage}>
+                      Are you sure you want to exit?
+                    </Text>
+                    <View style={styles.confirmActions}>
+                      <Pressable
+                        style={styles.confirmCancelBtn}
+                        onPress={() => setExitConfirmVisible(false)}
+                      >
+                        <Text style={styles.confirmCancelText}>Cancel</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.confirmLogoutBtn}
+                        onPress={() => {
+                          setExitConfirmVisible(false);
+                          BackHandler.exitApp();
+                        }}
+                      >
+                        <Text style={styles.confirmLogoutText}>Exit</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </Modal>
             </ThemeProvider>
           </SafeAreaView>
         </GestureHandlerRootView>
@@ -401,6 +445,73 @@ export default function RootLayout() {
     </GluestackUIProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(2, 6, 23, 0.75)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  confirmCard: {
+    width: "100%",
+    maxWidth: 340,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(13,21,31,0.98)",
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+  },
+  confirmTitle: {
+    fontSize: 18,
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  confirmMessage: {
+    marginTop: 8,
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#94a3b8",
+  },
+  confirmActions: {
+    marginTop: 18,
+    flexDirection: "row",
+    gap: 10,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmCancelText: {
+    fontSize: 14,
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+  confirmLogoutBtn: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(248,113,113,0.45)",
+    backgroundColor: "rgba(127,29,29,0.38)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  confirmLogoutText: {
+    fontSize: 14,
+    color: "#FCA5A5",
+    fontWeight: "700",
+  },
+});
 // async function registerForPushNotificationsAsync() {
 //   let token;
 //   if (Constants.isDevice) {
