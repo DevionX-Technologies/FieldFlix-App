@@ -22,7 +22,11 @@ import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Font from "expo-font";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
-import { Stack, usePathname, useRouter } from "expo-router";
+import {
+  Stack,
+  usePathname,
+  useRouter,
+} from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
@@ -124,7 +128,9 @@ export default function RootLayout() {
   useEffect(() => {
     const checkTokenAndSetupListener = async () => {
       try {
-        await Notifications.requestPermissionsAsync();
+        if (canUseExpoNotificationsInCurrentRuntime) {
+          await Notifications.requestPermissionsAsync();
+        }
         const token = await SecureStore.getItemAsync("token");
         console.log("SecureStore token:", token);
 
@@ -326,17 +332,35 @@ export default function RootLayout() {
     if (Platform.OS !== "android") return;
 
     const onHardwareBackPress = () => {
-      // Keep default back behavior throughout nested screens.
-      // Only intercept at top-level destinations where Android would exit the app.
-      const topLevelExitPaths = new Set([
-        Paths.home,
+      // Back while modal is open should only dismiss it.
+      if (exitConfirmVisible) {
+        setExitConfirmVisible(false);
+        return true;
+      }
+
+      const publicRoutes = new Set([
+        Paths.root,
         Paths.login,
         Paths.signup,
+        Paths.otp,
       ]);
-      if (!topLevelExitPaths.has(pathname)) {
+      const isPublicRoute =
+        publicRoutes.has(pathname) ||
+        pathname.startsWith("/shared/media/") ||
+        pathname.startsWith("/shared-recording/");
+
+      // Keep default Android behavior on public/auth routes.
+      if (isPublicRoute) {
         return false;
       }
 
+      // For all in-app screens, force users to Home first.
+      if (pathname !== Paths.home) {
+        router.replace(Paths.home);
+        return true;
+      }
+
+      // Only on Home, ask for exit confirmation.
       setExitConfirmVisible(true);
       return true;
     };
@@ -347,7 +371,7 @@ export default function RootLayout() {
     );
 
     return () => subscription.remove();
-  }, [pathname]);
+  }, [pathname, router, exitConfirmVisible]);
 
   useEffect(() => {
     const publicRoutes = new Set([
@@ -362,18 +386,32 @@ export default function RootLayout() {
       pathname.startsWith("/shared/media/") ||
       pathname.startsWith("/shared-recording/");
 
+    let appStateChecksBlocked = true;
+    const unblockTimer = setTimeout(() => {
+      appStateChecksBlocked = false;
+    }, 1500);
+
     const onAppStateChange = async (state: string) => {
       if (state !== "active") return;
       if (isPublicRoute) return;
+      if (appStateChecksBlocked) return;
 
+      // Guard against transient SecureStore read glitches around reload/resume.
       const token = await SecureStore.getItemAsync("token");
-      if (!token) {
+      if (token) return;
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const tokenRetry = await SecureStore.getItemAsync("token");
+      if (!tokenRetry) {
         router.replace(Paths.login);
       }
     };
 
     const subscription = AppState.addEventListener("change", onAppStateChange);
-    return () => subscription.remove();
+    return () => {
+      clearTimeout(unblockTimer);
+      subscription.remove();
+    };
   }, [pathname, router]);
 
   return (

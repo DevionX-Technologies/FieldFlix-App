@@ -53,9 +53,16 @@ export default function FieldflixSplashScreen() {
       withTiming(0, { duration: 0 })
     );
 
-    const t = setTimeout(async () => {
-      const token = await SecureStore.getItemAsync("token");
-      router.replace(token ? Paths.home : Paths.login);
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const token = await SecureStore.getItemAsync("token");
+          router.replace(token ? Paths.home : Paths.login);
+        } catch {
+          // Never let startup routing crash the app; fail-safe to login.
+          router.replace(Paths.login);
+        }
+      })();
     }, 2500);
 
     return () => {
