@@ -307,10 +307,7 @@ export default function FieldflixHomeScreen() {
   const bannerSidePad = 20;
   const comingSoonGap = 12;
   /** Floor so slide + separators never exceed screen due to fractional layout px. */
-  const carouselW = Math.max(
-    0,
-    Math.floor(windowWidth - bannerSidePad * 2),
-  );
+  const carouselW = Math.max(0, Math.floor(windowWidth - bannerSidePad * 2));
   const [comingSoonIndex, setComingSoonIndex] = useState(0);
 
   const comingSoonSlides = useMemo(
@@ -333,9 +330,7 @@ export default function FieldflixHomeScreen() {
     (offsetX: number) => {
       if (slideW <= 0) return;
       const i = Math.round(offsetX / slideW);
-      setComingSoonIndex(
-        Math.min(comingSoonSlides.length - 1, Math.max(0, i)),
-      );
+      setComingSoonIndex(Math.min(comingSoonSlides.length - 1, Math.max(0, i)));
     },
     [slideW, comingSoonSlides.length],
   );
@@ -396,7 +391,11 @@ export default function FieldflixHomeScreen() {
               style={styles.iconBtn}
               hitSlop={8}
             >
-              <MaterialCommunityIcons name="account-outline" size={24} color={WEB.white} />
+              <MaterialCommunityIcons
+                name="account-outline"
+                size={24}
+                color={WEB.white}
+              />
             </Pressable>
           </View>
         </View>
@@ -449,8 +448,7 @@ export default function FieldflixHomeScreen() {
                 </View>
                 <Text style={styles.heroKicker}>Elevate Your</Text>
                 <Text style={styles.heroTitle}>
-                  Game{" "}
-                  <Text style={styles.heroTitleAccent}>Today</Text>
+                  Game <Text style={styles.heroTitleAccent}>Today</Text>
                 </Text>
                 <Text style={styles.heroDesc}>
                   Capture your best moments and track your improvement over time
