@@ -7,10 +7,9 @@ import {
   getSharedWithMe,
 } from "@/lib/fieldflix-api";
 import {
-  FIELD_FLIX_BOTTOM_NAV_SPACE,
   FieldflixBottomNav,
 } from "@/screens/fieldflix/BottomNav";
-import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
+
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { FF } from "@/screens/fieldflix/fonts";
@@ -24,7 +23,7 @@ import {
 } from "@/utils/recordingDisplay";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
@@ -318,7 +317,7 @@ export default function FieldflixRecordingsScreen() {
             style={styles.flex}
             contentContainerStyle={[
               styles.main,
-              { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE },
+              { paddingBottom: FieldflixBottomNav },
             ]}
             showsVerticalScrollIndicator={false}
           >
