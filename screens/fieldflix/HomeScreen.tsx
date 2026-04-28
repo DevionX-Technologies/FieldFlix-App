@@ -155,6 +155,7 @@ function mapTurfToArena(
 }
 
 function mapRecordingToRecent(s: any, idx: number): RecentRow {
+  const recordingId = String(s?.id ?? idx);
   const raw = s?.startTime ?? s?.endTime ?? s?.created_at;
   const d = raw ? new Date(String(raw)) : null;
   const valid = d != null && !Number.isNaN(d.getTime());
@@ -164,8 +165,8 @@ function mapRecordingToRecent(s: any, idx: number): RecentRow {
   const timeLabel = valid ? formatRecordingTimeLabel(d!) : "";
   const score = highlightCountFromRecording(s);
   return {
-    id: String(s?.id ?? idx),
-    recordingId: "",
+    id: recordingId,
+    recordingId,
     arenaName: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Session",
     location: s?.turf?.city ?? s?.turf?.address_line ?? s?.turf?.location ?? "",
     timeLabel,
