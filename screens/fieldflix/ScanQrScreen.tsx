@@ -3,6 +3,10 @@ import ScanOverlay from '@/components/screens/recording/components/ScanOverlay';
 import type { QrCodeDataSchema } from '@/components/screens/recording/data/recordingSchema';
 import { useQrCamera } from '@/components/screens/recording/hooks/useQRCamera';
 import { Paths } from '@/data/paths';
+import {
+  FIELD_FLIX_HEADER_HEIGHT,
+  FieldflixScreenHeader,
+} from '@/screens/fieldflix/FieldflixScreenHeader';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -33,26 +37,46 @@ export default function FieldflixScanQrScreen() {
   const { scanned, handleBarCodeScanned, resetScan } = useQrCamera(onValidQr);
 
   if (permissionInfo === null) {
-    return <View style={styles.blank} />;
+    return (
+      <View style={styles.blank}>
+        <FieldflixScreenHeader
+          title="Scan QR"
+          onBack={() => router.replace(Paths.home)}
+          backAccessibilityLabel="Back to home"
+        />
+      </View>
+    );
   }
 
   if (!permissionInfo.granted) {
     return (
-      <PermissionRequestView
-        status={permissionInfo.status}
-        onRetry={async () => {
-          await requestPermission();
-          resetScan();
-        }}
-      />
+      <View style={styles.blank}>
+        <FieldflixScreenHeader
+          title="Scan QR"
+          onBack={() => router.replace(Paths.home)}
+          backAccessibilityLabel="Back to home"
+        />
+        <PermissionRequestView
+          status={permissionInfo.status}
+          onRetry={async () => {
+            await requestPermission();
+            resetScan();
+          }}
+        />
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <FieldflixScreenHeader
+        title="Scan QR"
+        onBack={() => router.replace(Paths.home)}
+        backAccessibilityLabel="Back to home"
+      />
       {!scanned ? (
         <CameraView
-          style={StyleSheet.absoluteFill}
+          style={styles.camera}
           onBarcodeScanned={handleBarCodeScanned}
           barcodeScannerSettings={{
             barcodeTypes: ['qr'],
@@ -64,7 +88,11 @@ export default function FieldflixScanQrScreen() {
           <Text style={styles.infoText}>QR Scanned. Redirecting…</Text>
         </View>
       )}
-      {!scanned && <ScanOverlay />}
+      {!scanned ? (
+        <View pointerEvents="none" style={styles.overlayWrap}>
+          <ScanOverlay />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -77,6 +105,16 @@ const styles = StyleSheet.create({
   blank: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  camera: {
+    flex: 1,
+  },
+  overlayWrap: {
+    position: 'absolute',
+    top: FIELD_FLIX_HEADER_HEIGHT,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   centered: {
     flex: 1,

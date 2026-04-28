@@ -1,6 +1,5 @@
 import { TOKEN_KEY } from '@/data/constants';
 import { canUseReactNativeFirebase } from '@/utils/canUseReactNativeFirebase';
-import messaging from '@react-native-firebase/messaging';
 import * as SecureStore from 'expo-secure-store'; // Or AsyncStorage
 import axiosInstance from './axiosInstance';
 
@@ -9,8 +8,32 @@ let tokenRefreshSubscribed = false;
 /**
  * Get permission and fetch FCM token
  */
-export const requestAndRegisterFcmToken = async () => {
+type FirebaseMessagingModule = {
+  (): {
+    requestPermission: () => Promise<number>;
+    getToken: () => Promise<string>;
+    onTokenRefresh: (cb: (newToken: string) => void) => () => void;
+  };
+  AuthorizationStatus: {
+    AUTHORIZED: number;
+    PROVISIONAL: number;
+  };
+};
+
+function getMessagingModule(): FirebaseMessagingModule | null {
   if (!canUseReactNativeFirebase()) {
+    return null;
+  }
+  try {
+    return require('@react-native-firebase/messaging').default as FirebaseMessagingModule;
+  } catch {
+    return null;
+  }
+}
+
+export const requestAndRegisterFcmToken = async () => {
+  const messaging = getMessagingModule();
+  if (!messaging) {
     return;
   }
   try {
@@ -49,14 +72,15 @@ export const requestAndRegisterFcmToken = async () => {
  * Handle token refreshes and update backend if needed
  */
 export const setupFcmTokenRefreshListener = () => {
-  if (!canUseReactNativeFirebase() || tokenRefreshSubscribed) {
+  const messaging = getMessagingModule();
+  if (!messaging) {
     return;
   }
   tokenRefreshSubscribed = true;
   messaging().onTokenRefresh(async (newToken) => {
     try {
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-        console.log("stored token",storedToken)
+      console.log("stored token", storedToken)
       if (newToken !== storedToken) {
         console.log('🔄 FCM token refreshed. Updating backend:', newToken);
 

@@ -9,6 +9,7 @@ export default function ScanOverlay() {
 
   return (
     <Box 
+      pointerEvents="none"
       style={{
         position: 'absolute',
         top: 0,

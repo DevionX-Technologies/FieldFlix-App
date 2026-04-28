@@ -3,6 +3,7 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { NOTIFICATION_ICON_SRC } from '@/screens/fieldflix/notificationAssets';
 import type { NotificationIconId, NotificationItem } from '@/screens/fieldflix/notificationsSections';
 import { WebShell } from '@/screens/fieldflix/WebShell';
+import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { hrefFromNotificationData } from '@/utils/notificationRouting';
 import { getLocalNotifications } from '@/utils/localNotificationStore';
@@ -18,8 +19,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 
 const BG = '#050A0E';
 const CARD_BG = '#081020';
@@ -130,10 +129,11 @@ function groupNotifications(
 /** Fetches from `GET /notification`; same layout as `web/src/screens/NotificationsScreen.tsx`. */
 export default function FieldflixNotificationsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const pt = Math.max(12, insets.top);
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<{ label: string; items: NotificationItemWithHref[] }[]>([]);
+
+  const markReadUnavailable =
+    loading || sections.length === 0;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,24 +212,25 @@ export default function FieldflixNotificationsScreen() {
   return (
     <WebShell backgroundColor={BG}>
       <View style={styles.flex}>
-        <View style={[styles.header, { paddingTop: pt }]}>
-          <Pressable
-            accessibilityLabel="Go back"
-            onPress={() => router.back()}
-            style={styles.backBtn}
-          >
-            <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M15 19l-7-7 7-7"
-                stroke="#fff"
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </Pressable>
-          <Text style={styles.headerTitle}>Notifications</Text>
-        </View>
+        <FieldflixScreenHeader
+          title="Notifications"
+          rightAccessory={
+            <Pressable
+              onPress={() => {}}
+              disabled={markReadUnavailable}
+              style={({ pressed }) => [
+                styles.markReadBtn,
+                markReadUnavailable && styles.markReadBtnDisabled,
+                pressed && !markReadUnavailable ? styles.markReadBtnPressed : null,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all notifications as read"
+              hitSlop={6}
+            >
+              <Text style={styles.markReadBtnText}>Mark as read</Text>
+            </Pressable>
+          }
+        />
 
         {loading ? (
           <View style={styles.loading}>
@@ -238,7 +239,7 @@ export default function FieldflixNotificationsScreen() {
         ) : (
           <ScrollView
             style={styles.main}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+            contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
             {sections.length === 0 ? (
@@ -320,30 +321,40 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  markReadBtn: {
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 96,
+    minHeight: 36,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(34,197,94,0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
+  markReadBtnPressed: {
+    backgroundColor: "rgba(34,197,94,0.22)",
+    opacity: 0.94,
   },
-  headerTitle: {
-    fontFamily: FF.bold,
-    fontSize: 20,
-    letterSpacing: -0.3,
-    color: WEB.white,
+  markReadBtnDisabled: {
+    opacity: 0.42,
+    backgroundColor: "rgba(148,163,184,0.08)",
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  markReadBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: WEB.greenBright,
+    letterSpacing: -0.1,
+    textAlign: "center",
   },
   main: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 28,
   },
   loading: {
     flex: 1,
@@ -359,13 +370,13 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
   sectionFirst: {
-    paddingTop: 20,
+    paddingTop: 12,
   },
   sectionRest: {
-    marginTop: 28,
+    marginTop: 22,
   },
   sectionLabel: {
-    marginBottom: 12,
+    marginBottom: 10,
     fontFamily: FF.bold,
     fontSize: 13,
     letterSpacing: 1.2,
@@ -373,15 +384,16 @@ const styles = StyleSheet.create({
     color: WEB.green,
   },
   list: {
-    gap: 10,
+    gap: 8,
   },
   card: {
     flexDirection: 'row',
     gap: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    padding: 14,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
   iconWrap: {
     width: 44,

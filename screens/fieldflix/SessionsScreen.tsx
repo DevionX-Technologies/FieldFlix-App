@@ -1,10 +1,10 @@
-import { Paths } from '@/data/paths';
 import ErrorBoundary from '@/components/organisms/ErrorBoundary/ErrorBoundary';
+import { Paths } from '@/data/paths';
 import { useSessionsMyRecordings, type SessionRowForUi } from '@/hooks/useSessionsMyRecordings';
-import { FF } from '@/screens/fieldflix/fonts';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
+import { FF } from '@/screens/fieldflix/fonts';
 import {
   SESSIONS_BACK_ARROW,
   SESSIONS_ROW,
@@ -19,8 +19,9 @@ import {
   recordingThumbUrl,
   sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
-import { useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import { useCallback } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -30,7 +31,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 
 function pickTemplateForSport(sport: string): SessionRowLocal {
   const s = sport.toLowerCase();
@@ -104,73 +104,73 @@ export default function FieldflixSessionsScreen() {
     >
       <WebShell backgroundColor={WEB.sessionsBg}>
         <View style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.pad}>
-            <View style={styles.header}>
-              <View style={styles.headerStart}>
-                <Pressable
-                  onPress={() => router.push(Paths.home)}
-                  accessibilityLabel="Back to home"
-                  style={styles.backBtn}
-                >
-                  <Image source={SESSIONS_BACK_ARROW} style={{ width: 24, height: 24 }} resizeMode="cover" />
-                </Pressable>
-                <Text style={styles.headerTitle} numberOfLines={1}>
-                  Sessions
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.completedStrip}>
-                <Text style={styles.completedText}>Completed Sessions</Text>
-              </View>
-
-              {loading ? (
-                <View style={styles.loading}>
-                  <ActivityIndicator size="large" color={WEB.green} />
-                </View>
-              ) : error ? (
-                <View style={styles.errorWrap}>
-                  <Text style={styles.errorText}>{error}</Text>
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.pad}>
+              <View style={styles.header}>
+                <View style={styles.headerStart}>
                   <Pressable
-                    onPress={() => void load()}
-                    style={styles.retryBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel="Retry loading sessions"
+                    onPress={() => router.push(Paths.home)}
+                    accessibilityLabel="Back to home"
+                    style={styles.backBtn}
                   >
-                    <Text style={styles.retryBtnText}>Try again</Text>
+                    <Image source={SESSIONS_BACK_ARROW} style={{ width: 24, height: 24 }} resizeMode="cover" />
                   </Pressable>
+                  <Text style={styles.headerTitle} numberOfLines={1}>
+                    Sessions
+                  </Text>
                 </View>
-              ) : rows.length === 0 ? (
-                <Text style={styles.empty}>
-                  No completed sessions yet. Finish a recording to see it here.
-                </Text>
-              ) : (
-                <View style={styles.cards} collapsable={false}>
-                  {rows.map((row) => (
-                    <SessionRow
-                      key={row.id}
-                      row={row}
-                      onPress={() => {
-                        router.push({
-                          pathname: Paths.highlights as never,
-                          params: { id: row.recordingId },
-                        });
-                      }}
-                    />
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-        </ScrollView>
+              </View>
 
-        <FieldflixBottomNav active="sessions" />
+              <View style={styles.section}>
+                <View style={styles.completedStrip}>
+                  <Text style={styles.completedText}>Completed Sessions</Text>
+                </View>
+
+                {loading ? (
+                  <View style={styles.loading}>
+                    <ActivityIndicator size="large" color={WEB.green} />
+                  </View>
+                ) : error ? (
+                  <View style={styles.errorWrap}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <Pressable
+                      onPress={() => void load()}
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Retry loading sessions"
+                    >
+                      <Text style={styles.retryBtnText}>Try again</Text>
+                    </Pressable>
+                  </View>
+                ) : rows.length === 0 ? (
+                  <Text style={styles.empty}>
+                    No completed sessions yet. Finish a recording to see it here.
+                  </Text>
+                ) : (
+                  <View style={styles.cards} collapsable={false}>
+                    {rows.map((row) => (
+                      <SessionRow
+                        key={row.id}
+                        row={row}
+                        onPress={() => {
+                          router.push({
+                            pathname: Paths.highlights as never,
+                            params: { id: row.recordingId },
+                          });
+                        }}
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          </ScrollView>
+
+          <FieldflixBottomNav active="sessions" />
         </View>
       </WebShell>
     </ErrorBoundary>

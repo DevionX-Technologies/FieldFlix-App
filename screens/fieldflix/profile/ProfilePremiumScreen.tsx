@@ -7,6 +7,7 @@ import {
 } from '@/lib/fieldflix-api';
 import { refreshEntitlement } from '@/lib/fieldflix-entitlement';
 import { FF } from '@/screens/fieldflix/fonts';
+import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { gradientPillInner } from '@/screens/fieldflix/fieldflixUi';
 import { WEB } from '@/screens/fieldflix/webDesign';
@@ -201,22 +202,14 @@ export default function FieldflixProfilePremiumScreen() {
   return (
     <WebShell backgroundColor={BG}>
       <View style={[styles.root, { paddingBottom: insets.bottom }]}>
+        <FieldflixScreenHeader title="Premium" onBack={() => router.back()} />
         <ScrollView
           style={styles.pageScroll}
           contentContainerStyle={[styles.pageScrollContent, { paddingBottom: 28 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.max, { paddingTop: insets.top }]}>
-            <Pressable
-              onPress={() => router.back()}
-              style={styles.backBtn}
-              hitSlop={8}
-              accessibilityLabel="Go back"
-            >
-              <IconBack />
-            </Pressable>
-
+          <View style={styles.max}>
             <View style={styles.kickerRow}>
               <IconKicker />
               <Text style={styles.kicker}>Unlock your potential</Text>
@@ -390,20 +383,6 @@ export default function FieldflixProfilePremiumScreen() {
   );
 }
 
-function IconBack() {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M15 19l-7-7 7-7"
-        stroke="#fff"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
 /** Codia kicker mark (SVG in design — not AAPT-compilable as .png). */
 function IconKicker() {
   return (
@@ -458,15 +437,12 @@ const styles = StyleSheet.create({
   pageScroll: { flex: 1 },
   pageScrollContent: { flexGrow: 1 },
   max: { width: '100%', maxWidth: 402, alignSelf: 'center', alignItems: 'stretch' },
-  /** No extra 56px strip — `paddingTop: insets.top` on `max` matches web without dead space. */
-  backBtn: { position: 'absolute', top: 4, left: 16, width: 24, height: 24, zIndex: 10, alignItems: 'center', justifyContent: 'center' },
   kickerRow: {
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    /** Clears the absolute back control (24px) without the old 56px gray strip. */
-    marginTop: 28,
+    marginTop: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 20,
