@@ -174,7 +174,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         );
       }
       if (
-        hs.length === 0 &&
         rec &&
         Array.isArray((rec as { recordingHighlights?: unknown }).recordingHighlights)
       ) {
@@ -187,9 +186,19 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             const st = String(x.status ?? '').toLowerCase();
             return st === 'ready' || st === 'clip_created';
           });
-        if (embedded.length > 0) hs = embedded;
+        if (embedded.length > 0) {
+          const keyOf = (h: RecordingHighlightDto) =>
+            [h.playback_id ?? '', h.mux_public_playback_url ?? ''].join('|');
+          const seen = new Set(hs.map((h) => keyOf(h)));
+          for (const h of embedded) {
+            const k = keyOf(h);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            hs.push(h);
+          }
+        }
       }
-      if (hs.length === 0) {
+      {
         try {
           const shorts = await getPublicFlickShorts(undefined);
           const fromShorts = shorts
@@ -208,7 +217,17 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
               status: 'ready',
             }))
             .filter((h) => Boolean(h.playback_id || h.mux_public_playback_url));
-          if (fromShorts.length > 0) hs = fromShorts;
+          if (fromShorts.length > 0) {
+            const keyOf = (h: RecordingHighlightDto) =>
+              [h.playback_id ?? '', h.mux_public_playback_url ?? ''].join('|');
+            const seen = new Set(hs.map((h) => keyOf(h)));
+            for (const h of fromShorts) {
+              const k = keyOf(h);
+              if (seen.has(k)) continue;
+              seen.add(k);
+              hs.push(h);
+            }
+          }
         } catch (e) {
           debugLines.push(
             `getPublicFlickShorts:\n${getFieldflixApiErrorDebug(e)}`,
