@@ -561,13 +561,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
           {/* HIGHLIGHTS LIST */}
           <View style={styles.list}>
-            {highlights.length === 0 ? (
-              <Text style={styles.empty}>
-                {embeddedRecordingHighlightCount > 0
-                  ? 'Highlight clips exist on this recording but could not be loaded. Try opening this screen again in a moment.'
-                  : 'No highlights yet. Highlights are created from button-press moments and will appear here once clips have finished processing.'}
-              </Text>
-            ) : null}
             {highlights.map((h, idx) => (
               <HighlightRow
                 key={h.id}
