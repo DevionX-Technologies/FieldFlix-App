@@ -1,10 +1,10 @@
-import ErrorBoundary from '@/components/organisms/ErrorBoundary/ErrorBoundary';
 import { Paths } from '@/data/paths';
+import ErrorBoundary from '@/components/organisms/ErrorBoundary/ErrorBoundary';
 import { useSessionsMyRecordings, type SessionRowForUi } from '@/hooks/useSessionsMyRecordings';
+import { FF } from '@/screens/fieldflix/fonts';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
-import { FF } from '@/screens/fieldflix/fonts';
 import {
   SESSIONS_BACK_ARROW,
   SESSIONS_ROW,
@@ -19,9 +19,8 @@ import {
   recordingThumbUrl,
   sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
-import { useFocusEffect } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Image,
@@ -29,8 +28,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 function pickTemplateForSport(sport: string): SessionRowLocal {
   const s = sport.toLowerCase();
@@ -75,6 +77,11 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
 /** List layout from `web/src/screens/SessionsScreen.tsx`; rows from `GET /recording/my-recordings`. */
 export default function FieldflixSessionsScreen() {
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  /** Matches spacing used in `FieldflixBottomNav` so list clears the pill + QR FAB. */
+  const bottomNavClearance = Math.max(14, insets.bottom + 6) + 76 + 48;
+  const thumbW = Math.min(120, Math.max(88, Math.round(windowWidth * 0.28)));
   const { rows, loading, error, load } = useSessionsMyRecordings(mapRecordingToSessionRow);
 
   useFocusEffect(
@@ -104,73 +111,77 @@ export default function FieldflixSessionsScreen() {
     >
       <WebShell backgroundColor={WEB.sessionsBg}>
         <View style={styles.flex}>
-          <ScrollView
-            style={styles.flex}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.pad}>
-              <View style={styles.header}>
-                <View style={styles.headerStart}>
-                  <Pressable
-                    onPress={() => router.push(Paths.home)}
-                    accessibilityLabel="Back to home"
-                    style={styles.backBtn}
-                  >
-                    <Image source={SESSIONS_BACK_ARROW} style={{ width: 24, height: 24 }} resizeMode="cover" />
-                  </Pressable>
-                  <Text style={styles.headerTitle} numberOfLines={1}>
-                    Sessions
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.section}>
-                <View style={styles.completedStrip}>
-                  <Text style={styles.completedText}>Completed Sessions</Text>
-                </View>
-
-                {loading ? (
-                  <View style={styles.loading}>
-                    <ActivityIndicator size="large" color={WEB.green} />
-                  </View>
-                ) : error ? (
-                  <View style={styles.errorWrap}>
-                    <Text style={styles.errorText}>{error}</Text>
-                    <Pressable
-                      onPress={() => void load()}
-                      style={styles.retryBtn}
-                      accessibilityRole="button"
-                      accessibilityLabel="Retry loading sessions"
-                    >
-                      <Text style={styles.retryBtnText}>Try again</Text>
-                    </Pressable>
-                  </View>
-                ) : rows.length === 0 ? (
-                  <Text style={styles.empty}>
-                    No completed sessions yet. Finish a recording to see it here.
-                  </Text>
-                ) : (
-                  <View style={styles.cards} collapsable={false}>
-                    {rows.map((row) => (
-                      <SessionRow
-                        key={row.id}
-                        row={row}
-                        onPress={() => {
-                          router.push({
-                            pathname: Paths.highlights as never,
-                            params: { id: row.recordingId },
-                          });
-                        }}
-                      />
-                    ))}
-                  </View>
-                )}
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: bottomNavClearance + 16 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.pad}>
+            <View style={styles.header}>
+              <View style={styles.headerStart}>
+                <Pressable
+                  onPress={() => router.push(Paths.home)}
+                  accessibilityLabel="Back to home"
+                  style={styles.backBtn}
+                >
+                  <Image source={SESSIONS_BACK_ARROW} style={{ width: 24, height: 24 }} resizeMode="cover" />
+                </Pressable>
+                <Text style={styles.headerTitle} numberOfLines={1}>
+                  Sessions
+                </Text>
               </View>
             </View>
-          </ScrollView>
 
-          <FieldflixBottomNav active="sessions" />
+            <View style={styles.section}>
+              <View style={styles.completedStrip}>
+                <Text style={styles.completedText}>Completed Sessions</Text>
+              </View>
+
+              {loading ? (
+                <View style={styles.loading}>
+                  <ActivityIndicator size="large" color={WEB.green} />
+                </View>
+              ) : error ? (
+                <View style={styles.errorWrap}>
+                  <Text style={styles.errorText}>{error}</Text>
+                  <Pressable
+                    onPress={() => void load()}
+                    style={styles.retryBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading sessions"
+                  >
+                    <Text style={styles.retryBtnText}>Try again</Text>
+                  </Pressable>
+                </View>
+              ) : rows.length === 0 ? (
+                <Text style={styles.empty}>
+                  No completed sessions yet. Finish a recording to see it here.
+                </Text>
+              ) : (
+                <View style={styles.cards} collapsable={false}>
+                  {rows.map((row) => (
+                    <SessionRow
+                      key={row.id}
+                      row={row}
+                      thumbW={thumbW}
+                      onPress={() => {
+                        router.push({
+                          pathname: Paths.highlights as never,
+                          params: { id: row.recordingId },
+                        });
+                      }}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+
+        <FieldflixBottomNav active="sessions" />
         </View>
       </WebShell>
     </ErrorBoundary>
@@ -184,9 +195,11 @@ export default function FieldflixSessionsScreen() {
  */
 function SessionRow({
   row,
+  thumbW,
   onPress,
 }: {
   row: SessionRowExtended;
+  thumbW: number;
   onPress: () => void;
 }) {
   const isProcessing = !row.isReady;
@@ -212,7 +225,7 @@ function SessionRow({
         row.isReady && pressed && styles.sessionRowPressed,
       ]}
     >
-      <View style={styles.sessionThumbWrap}>
+      <View style={[styles.sessionThumbWrap, { width: thumbW, minHeight: thumbW }]}>
         <Image
           source={row.thumbUrl ? { uri: row.thumbUrl } : BG.sessionCard}
           style={StyleSheet.absoluteFillObject}
@@ -268,11 +281,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 200,
+    flexGrow: 1,
   },
   pad: {
     paddingHorizontal: 15,
-    paddingBottom: 40,
+    paddingBottom: 12,
     width: '100%',
     alignSelf: 'stretch',
   },
@@ -368,15 +381,14 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     alignItems: 'stretch',
-    gap: 16,
-    maxWidth: 420,
+    gap: 14,
   },
   sessionRowOuter: {
     flexDirection: 'row',
     alignItems: 'stretch',
     width: '100%',
     alignSelf: 'stretch',
-    minHeight: 120,
+    minHeight: 96,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
@@ -390,8 +402,6 @@ const styles = StyleSheet.create({
     opacity: 0.92,
   },
   sessionThumbWrap: {
-    width: 120,
-    minHeight: 120,
     position: 'relative',
     overflow: 'hidden',
     flexShrink: 0,
@@ -444,9 +454,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    gap: 6,
+    gap: 4,
   },
   sessionSportLine: {
     flexDirection: 'row',

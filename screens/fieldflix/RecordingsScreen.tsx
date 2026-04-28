@@ -200,9 +200,7 @@ export default function FieldflixRecordingsScreen() {
           recordingId: rec?.id ? String(rec.id) : null,
           shareToken: s?.share_token ?? rec?.share_token ?? null,
           title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
-          highlights: Array.isArray(rec?.recordingHighlights)
-            ? rec.recordingHighlights.length
-            : 0,
+          highlights: highlightCountFromRecording(rec),
           shareWith: s?.shared_with_user_name || "—",
           ownerName: rec?.owner_name ?? "",
           location: loc,
