@@ -1,5 +1,10 @@
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
-import { createShareLink, getMyRecordings, getSharedWithMe } from '@/lib/fieldflix-api';
+import {
+  createShareLink,
+  getMyRecordings,
+  getPublicFlickShorts,
+  getSharedWithMe,
+} from '@/lib/fieldflix-api';
 import {
   highlightCountFromRecording,
   formatRecordingListWhen,
@@ -55,6 +60,8 @@ export default function FieldflixRecordingsScreen() {
   const [tab, setTab] = useState<TabId>('my');
   const [my, setMy] = useState<any[]>([]);
   const [shared, setShared] = useState<any[]>([]);
+  /** Approved FlickShorts are a separate table from `recordingHighlights` — tally per recording for counts. */
+  const [shortsPerRecording, setShortsPerRecording] = useState<Record<string, number>>({});
 
   const [findLocation, setFindLocation] = useState('');
   const [findGround, setFindGround] = useState('');
@@ -116,9 +123,24 @@ export default function FieldflixRecordingsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([getMyRecordings(), getSharedWithMe()]);
+      const [a, b, flickList] = await Promise.all([
+        getMyRecordings(),
+        getSharedWithMe(),
+        getPublicFlickShorts(undefined).catch(() => []),
+      ]);
       setMy(a);
       setShared(b);
+      const tally: Record<string, number> = {};
+      const mine = Array.isArray(a)
+        ? new Set<string>(a.map((r: unknown) => String((r as { id?: string })?.id ?? '')))
+        : new Set<string>();
+      const arr = Array.isArray(flickList) ? flickList : [];
+      for (const fs of arr) {
+        const rid = String((fs as { recordingId?: string }).recordingId ?? '');
+        if (!rid || !mine.has(rid)) continue;
+        tally[rid] = (tally[rid] ?? 0) + 1;
+      }
+      setShortsPerRecording(tally);
     } catch {
       setMy([]);
       setShared([]);
@@ -132,7 +154,9 @@ export default function FieldflixRecordingsScreen() {
   const myRows =
     my.length > 0
       ? my.map((s: any, i: number) => {
-          const h = highlightCountFromRecording(s);
+          const hid = String(s?.id ?? '');
+          const h =
+            highlightCountFromRecording(s) + (hid ? shortsPerRecording[hid] ?? 0 : 0);
           return {
             id: String(s?.id ?? i),
             recordingId: s?.id ? String(s.id) : null,

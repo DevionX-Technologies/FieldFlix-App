@@ -32,9 +32,6 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 
-/** 21px / 372px — right inset for play + Completed (web `SessionsScreen.tsx`) */
-const CARD_PAD_X_PCT = (21 / 372) * 100;
-
 function pickTemplateForSport(sport: string): SessionRowLocal {
   const s = sport.toLowerCase();
   if (s.includes('cricket')) return SESSIONS_SPORT_TEMPLATES.cricket;
@@ -155,36 +152,18 @@ export default function FieldflixSessionsScreen() {
                 </Text>
               ) : (
                 <View style={styles.cards} collapsable={false}>
-                  {rows.map((row) => {
-                    const canOpen = row.isReady;
-                    return (
-                      <Pressable
-                        key={row.id}
-                        disabled={!canOpen}
-                        style={({ pressed }) => [
-                          styles.cardPressable,
-                          !canOpen && styles.cardPressableDisabled,
-                          canOpen && pressed && styles.cardPressablePressed,
-                        ]}
-                        onPress={() => {
-                          if (!canOpen) return;
-                          router.push({
-                            pathname: Paths.highlights as never,
-                            params: { id: row.recordingId },
-                          });
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: !canOpen }}
-                        accessibilityLabel={
-                          canOpen
-                            ? `Open ${row.arena} highlights`
-                            : `${row.arena} is still processing. Try again when ready.`
-                        }
-                      >
-                        <SessionCard row={row} />
-                      </Pressable>
-                    );
-                  })}
+                  {rows.map((row) => (
+                    <SessionRow
+                      key={row.id}
+                      row={row}
+                      onPress={() => {
+                        router.push({
+                          pathname: Paths.highlights as never,
+                          params: { id: row.recordingId },
+                        });
+                      }}
+                    />
+                  ))}
                 </View>
               )}
             </View>
@@ -198,99 +177,89 @@ export default function FieldflixSessionsScreen() {
   );
 }
 
-function SessionCard({ row }: { row: SessionRowExtended }) {
+/**
+ * Row layout (parity with Recordings list) avoids Android layout bugs where nested
+ * percentage-sized absolute positioning inside centred flex children collapses to a
+ * thin stripe — observed as an empty Sessions page with only a vertical line.
+ */
+function SessionRow({
+  row,
+  onPress,
+}: {
+  row: SessionRowExtended;
+  onPress: () => void;
+}) {
   const isProcessing = !row.isReady;
+
+  const handlePress = () => {
+    if (!row.isReady) return;
+    onPress();
+  };
+
   return (
-    <View style={styles.card}>
-      <Image
-        source={row.thumbUrl ? { uri: row.thumbUrl } : BG.sessionCard}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-      />
-      <View style={styles.cardScrim} />
-
-      <View
-        style={[
-          styles.frameMain,
-          {
-            top: '11.52%',
-            left: '5.11%',
-            width: '66.4%',
-            height: '75.76%',
-          },
-        ]}
-      >
-        <View style={styles.sportRow}>
-          <View style={styles.sportIconBg}>
-            <Image source={row.sportIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !row.isReady }}
+      accessibilityLabel={
+        row.isReady
+          ? `Open ${row.arena} highlights`
+          : `${row.arena} is still processing`
+      }
+      onPress={handlePress}
+      style={({ pressed }) => [
+        styles.sessionRowOuter,
+        !row.isReady && styles.sessionRowMuted,
+        row.isReady && pressed && styles.sessionRowPressed,
+      ]}
+    >
+      <View style={styles.sessionThumbWrap}>
+        <Image
+          source={row.thumbUrl ? { uri: row.thumbUrl } : BG.sessionCard}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+        />
+        <View style={styles.sessionThumbScrim} />
+        {row.playIcon ? (
+          <View style={styles.sessionPlayCircle} pointerEvents="none">
+            <Image source={row.playIcon} style={{ width: 22, height: 22 }} resizeMode="contain" />
           </View>
-          <Text style={styles.sportName} numberOfLines={1}>
-            {row.sport}
-          </Text>
-        </View>
-
-        <View style={styles.arenaRow}>
-          <Text style={styles.arenaText} numberOfLines={1}>
-            {row.arena}
-          </Text>
-        </View>
-
-        <View style={styles.metaCol}>
-          <View style={styles.metaLine}>
-            <Image source={row.pinIcon} style={styles.metaIcon} resizeMode="cover" />
-            <Text style={styles.metaText} numberOfLines={1}>
-              {row.area}
-            </Text>
-          </View>
-          <View style={styles.metaLine}>
-            <Image source={row.clockIcon} style={styles.metaIcon} resizeMode="cover" />
-            <Text style={styles.metaText} numberOfLines={1}>
-              {row.when}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {row.playIcon ? (
-        isProcessing ? (
-          <View
-            style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
-            pointerEvents="none"
-            accessibilityElementsHidden
-            importantForAccessibility="no"
-          >
-            <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
-          </View>
-        ) : (
-          <Pressable
-            style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
-            accessibilityLabel="Share or play session"
-          >
-            <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
-          </Pressable>
-        )
-      ) : null}
-
-      <View
-        style={[
-          styles.completedBadge,
-          isProcessing && styles.processingBadge,
-          {
-            bottom: `${(21 / 165) * 100}%`,
-            right: `${CARD_PAD_X_PCT}%`,
-          },
-        ]}
-      >
-        <Text
-          style={[
-            styles.completedBadgeText,
-            isProcessing && styles.processingBadgeText,
-          ]}
+        ) : null}
+        <View
+          style={[styles.sessionDurPill, isProcessing && styles.sessionDurProcessing]}
+          pointerEvents="none"
         >
-          {isProcessing ? 'Processing' : row.duration && row.duration !== '—' ? row.duration : 'Completed'}
-        </Text>
+          <Text
+            style={[styles.sessionDurText, isProcessing && styles.sessionDurProcessingText]}
+          >
+            {isProcessing ? 'Processing' : row.duration && row.duration !== '—' ? row.duration : 'Ready'}
+          </Text>
+        </View>
       </View>
-    </View>
+
+      <View style={styles.sessionBody}>
+        <View style={styles.sessionSportLine}>
+          <View style={styles.sportIconBg}>
+            <Image source={row.sportIcon} style={{ width: 22, height: 22 }} resizeMode="contain" />
+          </View>
+          <Text style={styles.sessionSport}>{row.sport}</Text>
+        </View>
+        <Text style={styles.sessionArena} numberOfLines={2}>
+          {row.arena}
+        </Text>
+        <View style={styles.sessionMetaLine}>
+          <Image source={row.pinIcon} style={styles.sessionMetaIco} resizeMode="cover" />
+          <Text style={styles.sessionMeta} numberOfLines={1}>
+            {row.area}
+          </Text>
+        </View>
+        <View style={styles.sessionMetaLine}>
+          <Image source={row.clockIcon} style={styles.sessionMetaIco} resizeMode="cover" />
+          <Text style={styles.sessionMeta} numberOfLines={1}>
+            {row.when}
+          </Text>
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
@@ -304,6 +273,8 @@ const styles = StyleSheet.create({
   pad: {
     paddingHorizontal: 15,
     paddingBottom: 40,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   header: {
     marginTop: 10,
@@ -395,131 +366,131 @@ const styles = StyleSheet.create({
   },
   cards: {
     width: '100%',
-    alignItems: 'center',
-    gap: 30,
+    alignSelf: 'stretch',
+    alignItems: 'stretch',
+    gap: 16,
+    maxWidth: 420,
   },
-  cardPressable: {
+  sessionRowOuter: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
     width: '100%',
-    maxWidth: 372,
-    alignSelf: 'center',
+    alignSelf: 'stretch',
+    minHeight: 120,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#0c1218',
+    overflow: 'hidden',
   },
-  cardPressableDisabled: {
-    opacity: 0.72,
+  sessionRowMuted: {
+    opacity: 0.78,
   },
-  cardPressablePressed: {
+  sessionRowPressed: {
     opacity: 0.92,
   },
-  card: {
+  sessionThumbWrap: {
+    width: 120,
+    minHeight: 120,
     position: 'relative',
-    height: 165,
-    width: '100%',
-    maxWidth: 372,
-    borderRadius: 20,
     overflow: 'hidden',
+    flexShrink: 0,
     backgroundColor: '#0f172a',
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.25)',
   },
-  frameMain: {
+  sessionThumbScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.35)',
+  },
+  sessionPlayCircle: {
     position: 'absolute',
-    zIndex: 1,
-    gap: 12,
+    left: '50%',
+    top: '50%',
+    marginLeft: -22,
+    marginTop: -22,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sportRow: {
+  sessionDurPill: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(34,197,94,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.45)',
+    maxWidth: '88%',
+  },
+  sessionDurProcessing: {
+    backgroundColor: 'rgba(234, 179, 8, 0.22)',
+    borderColor: 'rgba(251,191,36,0.45)',
+  },
+  sessionDurText: {
+    fontFamily: FF.semiBold,
+    fontSize: 10,
+    lineHeight: 13,
+    color: WEB.green,
+    fontVariant: ['tabular-nums'],
+  },
+  sessionDurProcessingText: {
+    color: '#facc15',
+  },
+  sessionBody: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  sessionSportLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 11,
-    height: 42,
+    gap: 8,
   },
   sportIconBg: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(34, 197, 94, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sportName: {
-    height: 27,
+  sessionSport: {
+    flex: 1,
+    minWidth: 0,
     fontFamily: FF.semiBold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: WEB.white,
-  },
-  arenaRow: {
-    height: 22,
-    width: '100%',
-    justifyContent: 'center',
-  },
-  arenaText: {
-    fontFamily: FF.semiBold,
-    fontSize: 16,
+    fontSize: 17,
     lineHeight: 22,
     color: WEB.white,
   },
-  metaCol: {
-    height: 37,
-    width: 163,
-    maxWidth: '100%',
-    gap: 5,
-    justifyContent: 'center',
+  sessionArena: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.95)',
   },
-  metaLine: {
+  sessionMetaLine: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
   },
-  metaIcon: {
-    width: 15,
-    height: 15,
+  sessionMetaIco: {
+    width: 13,
+    height: 13,
   },
-  metaText: {
+  sessionMeta: {
     flex: 1,
+    minWidth: 0,
     fontFamily: FF.semiBold,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     color: WEB.muted,
-  },
-  playBtn: {
-    position: 'absolute',
-    zIndex: 2,
-    width: 45,
-    height: 42,
-    borderRadius: 20,
-    paddingTop: 9,
-    paddingRight: 10,
-    paddingBottom: 9,
-    paddingLeft: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2,6,23,0.45)',
-  },
-  completedBadge: {
-    position: 'absolute',
-    zIndex: 2,
-    height: 29,
-    minWidth: 94,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    paddingVertical: 5,
-    backgroundColor: 'rgba(34, 197, 94, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  completedBadgeText: {
-    fontFamily: FF.semiBold,
-    fontSize: 14,
-    lineHeight: 19,
-    color: WEB.green,
-  },
-  processingBadge: {
-    backgroundColor: 'rgba(234, 179, 8, 0.22)',
-  },
-  processingBadgeText: {
-    color: '#facc15',
   },
   crashWrap: {
     flex: 1,
