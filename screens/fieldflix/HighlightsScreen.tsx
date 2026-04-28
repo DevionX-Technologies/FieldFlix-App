@@ -1,9 +1,8 @@
 import { Paths } from '@/data/paths';
 import { BASE_URL } from '@/data/constants';
 import {
-  embedToHighlightDto,
+  createShareLink,
   getFieldflixApiErrorDebug,
-  getPublicFlickShorts,
   getRecordingById,
   getRecordingHighlights,
   getRecordingPlayback,
@@ -18,14 +17,12 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import {
   formatRecordingListWhen,
-  highlightCountFromRecording,
   recordingDurationLabel,
   recordingIsReady,
   recordingPlaybackUrl,
   recordingThumbUrl,
   sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
-import { buildHighlightsAppLink } from '@/utils/highlightsAppLink';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -41,7 +38,6 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 const ACCENT = '#22C55E';
@@ -133,7 +129,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; previewOnly?: string }>();
   const recordingId = forcedRecordingId ?? (params.id as string | undefined) ?? '';
-  const { isPaid: rawIsPaid, plan, refresh } = useEntitlement();
+  const { isPaid: rawIsPaid, refresh } = useEntitlement();
   const isPaid = forcePreview ? false : rawIsPaid;
   const previewOnly = forcePreview || params.previewOnly === '1';
 
@@ -144,9 +140,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const [liked, setLiked] = useState<LikedHighlightCache[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
   const [apiDebug, setApiDebug] = useState<string | null>(null);
-  const insets = useSafeAreaInsets();
-  /** Matches `FieldflixBottomNav`: safe bottom + pill bar (76) + gap above FAB overlap. */
-  const bottomNavClearance = Math.max(14, insets.bottom + 6) + 76 + 48;
 
   const load = useCallback(async () => {
     if (!recordingId) {
@@ -167,72 +160,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         );
       }
       try {
-        hs = await getRecordingHighlights(recordingId);
+        const h = await getRecordingHighlights(recordingId);
+        hs = Array.isArray(h) ? h : [];
       } catch (e) {
         debugLines.push(
           `getRecordingHighlights:\n${getFieldflixApiErrorDebug(e)}`,
         );
-      }
-      if (
-        rec &&
-        Array.isArray((rec as { recordingHighlights?: unknown }).recordingHighlights)
-      ) {
-        const embedded = (
-          rec as { recordingHighlights: Record<string, unknown>[] }
-        ).recordingHighlights
-          .map((eh) => embedToHighlightDto(eh))
-          .filter((x): x is RecordingHighlightDto => x != null)
-          .filter((x) => {
-            const st = String(x.status ?? '').toLowerCase();
-            return st === 'ready' || st === 'clip_created';
-          });
-        if (embedded.length > 0) {
-          const keyOf = (h: RecordingHighlightDto) =>
-            [h.playback_id ?? '', h.mux_public_playback_url ?? ''].join('|');
-          const seen = new Set(hs.map((h) => keyOf(h)));
-          for (const h of embedded) {
-            const k = keyOf(h);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            hs.push(h);
-          }
-        }
-      }
-      {
-        try {
-          const shorts = await getPublicFlickShorts(undefined);
-          const fromShorts = shorts
-            .filter((s) => String(s.recordingId) === String(recordingId))
-            .map((s): RecordingHighlightDto => ({
-              id: `flick-${s.id}`,
-              relative_timestamp: `${Math.max(0, Math.round(Number(s.startSec ?? 0)))}s`,
-              button_click_timestamp: s.createdAt,
-              playback_id: s.muxPlaybackId ?? null,
-              mux_public_playback_url: s.muxPlaybackId
-                ? `https://stream.mux.com/${s.muxPlaybackId}.m3u8`
-                : null,
-              thumbnail_url: s.muxPlaybackId
-                ? `https://image.mux.com/${s.muxPlaybackId}/thumbnail.jpg?time=2`
-                : null,
-              status: 'ready',
-            }))
-            .filter((h) => Boolean(h.playback_id || h.mux_public_playback_url));
-          if (fromShorts.length > 0) {
-            const keyOf = (h: RecordingHighlightDto) =>
-              [h.playback_id ?? '', h.mux_public_playback_url ?? ''].join('|');
-            const seen = new Set(hs.map((h) => keyOf(h)));
-            for (const h of fromShorts) {
-              const k = keyOf(h);
-              if (seen.has(k)) continue;
-              seen.add(k);
-              hs.push(h);
-            }
-          }
-        } catch (e) {
-          debugLines.push(
-            `getPublicFlickShorts:\n${getFieldflixApiErrorDebug(e)}`,
-          );
-        }
       }
       try {
         pb = await getRecordingPlayback(recordingId);
@@ -254,11 +187,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       setLoading(false);
     }
   }, [recordingId]);
-
-  const embeddedRecordingHighlightCount = useMemo(
-    () => highlightCountFromRecording(recording),
-    [recording],
-  );
 
   useEffect(() => {
     void load();
@@ -322,45 +250,11 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       ? (recording.turf.sports_supported as string[])
       : undefined,
   );
-  const requiredSportPlan = useMemo<'cricket' | 'pickleball' | 'padel' | null>(() => {
-    const raw = String(sportLabel || '').toLowerCase();
-    if (raw.includes('cricket')) return 'cricket';
-    if (raw.includes('pickle')) return 'pickleball';
-    if (raw.includes('padel') || raw.includes('paddle')) return 'padel';
-    return null;
-  }, [sportLabel]);
-  const hasSportAccess = useMemo(() => {
-    if (!isPaid) return false;
-    if (!requiredSportPlan) return true;
-    if (plan === 'cricket' || plan === 'pickleball' || plan === 'padel') {
-      return plan === requiredSportPlan;
-    }
-    // Legacy paid plans still keep full access.
-    return true;
-  }, [isPaid, plan, requiredSportPlan]);
-  const planLabel =
-    requiredSportPlan === 'pickleball'
-      ? 'Pickleball'
-      : requiredSportPlan === 'cricket'
-        ? 'Cricket'
-        : requiredSportPlan === 'padel'
-          ? 'Padel'
-          : null;
 
   const onWatchHero = useCallback(() => {
     if (!recordingId) return;
     if (!isPaid && !previewOnly) {
-      router.push({
-        pathname: Paths.profilePremium,
-        params: { sport: requiredSportPlan ?? undefined },
-      });
-      return;
-    }
-    if (!hasSportAccess && !previewOnly) {
-      router.push({
-        pathname: Paths.profilePremium,
-        params: { sport: requiredSportPlan ?? undefined },
-      });
+      router.push(Paths.profilePremium);
       return;
     }
     if (!heroPlaybackUrl) {
@@ -383,7 +277,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   }, [
     recordingId,
     isPaid,
-    hasSportAccess,
     previewOnly,
     heroPlaybackUrl,
     recording,
@@ -417,9 +310,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const onShareHero = useCallback(async () => {
     if (!recordingId) return;
     try {
-      const appLink = buildHighlightsAppLink(recordingId);
+      const { shareableLink } = await createShareLink(recordingId);
       await Share.share({
-        message: `Watch my highlights on FieldFlicks — open in the app:\n${appLink}`,
+        message: `Watch my game on FieldFlicks: ${shareableLink}`,
+        url: shareableLink,
       });
     } catch {
       // user dismissed or share failed — silent
@@ -428,17 +322,11 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
   const onHighlightPress = useCallback(
     async (h: RecordingHighlightDto) => {
-      if (!isPaid || !hasSportAccess) {
-        router.push({
-          pathname: Paths.profilePremium,
-          params: { sport: requiredSportPlan ?? undefined },
-        });
+      if (!isPaid) {
+        router.push(Paths.profilePremium);
         return;
       }
-      const st = String(h.status ?? '').toLowerCase();
-      if (!h.mux_public_playback_url || (st !== 'ready' && st !== 'clip_created')) {
-        return;
-      }
+      if (!h.mux_public_playback_url || h.status !== 'ready') return;
       const titleBase = recording?.turf?.name ?? 'Recording';
       void pushLikedHighlight({
         recordingId: recordingId,
@@ -458,7 +346,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         },
       });
     },
-    [hasSportAccess, isPaid, recording, recordingId, requiredSportPlan, router],
+    [isPaid, recording, recordingId, router],
   );
 
   if (loading) {
@@ -496,10 +384,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[
-            styles.main,
-            { paddingBottom: bottomNavClearance + 24 },
-          ]}
+          contentContainerStyle={styles.main}
           showsVerticalScrollIndicator={false}
         >
           {/* HERO */}
@@ -530,31 +415,18 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                       : 'Processing'}
                   </Text>
                 </View>
-                {!hasSportAccess ? (
+                {!isPaid ? (
                   <View style={styles.previewPill}>
                     <LockIcon size={12} />
-                    <Text style={styles.previewPillText}>
-                      {isPaid && planLabel ? `${planLabel} plan required` : 'Preview only'}
-                    </Text>
+                    <Text style={styles.previewPillText}>Preview only</Text>
                   </View>
                 ) : null}
               </View>
               <Text style={styles.heroTitle} numberOfLines={2}>
                 {recording?.turf?.name ?? 'Recording'}
               </Text>
-              <Text style={styles.heroMeta} numberOfLines={2}>
-                {sportLabel}
-                <Text style={{ color: MUTED }}>{' · '}</Text>
-                <Text style={{ color: MUTED }}>
-                  Recording {recordingDurationLabel(recording)}
-                </Text>
-              </Text>
-              <Text style={styles.heroClipLine} numberOfLines={1}>
-                {highlights.length > 0
-                  ? `${highlights.length} highlight clip${highlights.length === 1 ? '' : 's'}`
-                  : embeddedRecordingHighlightCount > 0
-                    ? 'Highlight clips are still loading or processing…'
-                    : 'No highlight clips for this session yet'}
+              <Text style={styles.heroMeta} numberOfLines={1}>
+                {sportLabel} · {recordingDurationLabel(recording)}
               </Text>
               <Text style={styles.heroWhen} numberOfLines={1}>
                 {formatRecordingListWhen(recording?.startTime)}
@@ -569,10 +441,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   />
                   <PlayIcon color="#fff" size={16} />
                   <Text style={styles.watchBtnText}>
-                    {hasSportAccess ? 'Watch Now' : 'Unlock this sport'}
+                    {isPaid ? 'Watch Now' : 'Unlock Full Match'}
                   </Text>
                 </Pressable>
-                {!hasSportAccess ? (
+                {!isPaid ? (
                   <Pressable
                     style={styles.previewBtn}
                     onPress={onPreviewHero}
@@ -591,12 +463,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             <Pressable
               hitSlop={8}
               onPress={() => {
-                if (!isPaid) {
-                  router.push({
-                    pathname: Paths.profilePremium,
-                    params: { sport: requiredSportPlan ?? undefined },
-                  });
-                }
+                if (!isPaid) router.push(Paths.profilePremium);
               }}
             >
               <View style={styles.viewAllPill}>
@@ -607,12 +474,18 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
           {/* HIGHLIGHTS LIST */}
           <View style={styles.list}>
+            {highlights.length === 0 ? (
+              <Text style={styles.empty}>
+                No highlights yet. Highlights are created from button-press moments and
+                will appear here once your video has finished processing.
+              </Text>
+            ) : null}
             {highlights.map((h, idx) => (
               <HighlightRow
                 key={h.id}
                 highlight={h}
                 index={idx}
-                hasSportAccess={hasSportAccess}
+                isPaid={isPaid}
                 onPress={() => void onHighlightPress(h)}
               />
             ))}
@@ -652,7 +525,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             </View>
           ) : null}
 
-          <View style={{ height: 12 }} />
+          <View style={{ height: 40 }} />
         </ScrollView>
 
         <FieldflixBottomNav active="recordings" />
@@ -664,12 +537,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 function HighlightRow({
   highlight,
   index,
-  hasSportAccess,
+  isPaid,
   onPress,
 }: {
   highlight: RecordingHighlightDto;
   index: number;
-  hasSportAccess: boolean;
+  isPaid: boolean;
   onPress: () => void;
 }) {
   const thumb = highlight.thumbnail_url
@@ -679,7 +552,7 @@ function HighlightRow({
     <Pressable style={styles.row} onPress={onPress}>
       <View style={styles.rowThumb}>
         <Image source={thumb} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-        {!hasSportAccess ? (
+        {!isPaid ? (
           <View style={styles.rowLockBadge}>
             <LockIcon size={12} />
           </View>
@@ -695,11 +568,7 @@ function HighlightRow({
           Highlight {index + 1}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {['ready', 'clip_created'].includes(
-            String(highlight.status ?? '').toLowerCase(),
-          )
-            ? 'Ready to watch'
-            : 'Processing…'}
+          {highlight.status === 'ready' ? 'Ready to watch' : 'Processing…'}
         </Text>
         <View style={styles.rowStats}>
           <Text style={styles.rowStat}>1.2K views</Text>
@@ -797,14 +666,7 @@ const styles = StyleSheet.create({
   main: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 24,
-  },
-  heroClipLine: {
-    marginTop: 4,
-    fontFamily: FF.semiBold,
-    fontSize: 13,
-    lineHeight: 18,
-    color: 'rgba(255,255,255,0.88)',
+    paddingBottom: 140,
   },
   hero: {
     height: 240,

@@ -15,8 +15,6 @@ export const Paths = {
   recordingTime: '/recording-time',
   recordingActive: '/recording-active',
   flixshorts: '/flixshorts',
-  /** Admin dashboard (phone allowlist; see `data/adminConfig.ts`). */
-  admin: '/admin',
   recordings: '/recordings',
   /**
    * Expo Router file route is `app/highlights/[id]/index.tsx` — the pathname must

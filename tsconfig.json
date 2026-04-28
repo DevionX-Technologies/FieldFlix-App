@@ -27,7 +27,6 @@
     "**/__tests__/**",
     "_ref_fieldflixweb/**",
     "web/**",
-    "fieldflicks-backend-main/**",
-    "FieldFlix-App-clean/**"
+    "fieldflicks-backend-main/**"
   ]
 }

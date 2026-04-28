@@ -43,7 +43,7 @@ export function PaywallSheet({ visible, onClose, onUpgradePress, message }: Prop
           <Text style={styles.title}>Preview ended</Text>
           <Text style={styles.body}>
             {message ??
-              "You've watched the free preview. Unlock full match playback with a sport plan (Cricket, Pickleball, or Padel)."}
+              'You\'ve watched the free preview. Unlock the full match and all highlights with a FieldFlicks plan.'}
           </Text>
           <Pressable
             onPress={handleUpgrade}
