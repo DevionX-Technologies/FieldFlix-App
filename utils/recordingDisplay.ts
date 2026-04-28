@@ -20,8 +20,26 @@ export function formatRecordingTimeLabel(iso: string | Date | undefined | null):
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-export function highlightCountFromRecording(s: { recordingHighlights?: unknown[] } | null | undefined): number {
-  return Array.isArray(s?.recordingHighlights) ? s.recordingHighlights.length : 0;
+export function highlightCountFromRecording(
+  s: { recordingHighlights?: unknown[] } | null | undefined,
+): number {
+  const rows = Array.isArray(s?.recordingHighlights) ? s.recordingHighlights : [];
+  return rows.filter((h) => {
+    if (!h || typeof h !== 'object') return false;
+    const row = h as {
+      status?: unknown;
+      playback_id?: unknown;
+      mux_public_playback_url?: unknown;
+    };
+    const st = String(row.status ?? '').toLowerCase();
+    if (st !== 'ready' && st !== 'clip_created') return false;
+    const hasPlaybackId =
+      typeof row.playback_id === 'string' && row.playback_id.trim().length > 0;
+    const hasMuxUrl =
+      typeof row.mux_public_playback_url === 'string' &&
+      row.mux_public_playback_url.trim().length > 0;
+    return hasPlaybackId || hasMuxUrl;
+  }).length;
 }
 
 /**
