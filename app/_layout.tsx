@@ -1,5 +1,6 @@
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import { BASE_URL } from "@/data/constants";
+import { Paths } from "@/data/paths";
 import "@/global.css";
 import { useCustomModal } from "@/hooks/useCustomModal";
 import { store } from "@/store";
@@ -21,11 +22,11 @@ import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Font from "expo-font";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
-import { Stack, useRouter } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef } from "react";
-import { Platform, StatusBar } from "react-native";
+import { Alert, AppState, BackHandler, Platform, StatusBar } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -94,8 +95,9 @@ if (canUseExpoNotificationsInCurrentRuntime) {
   });
 }
 export default function RootLayout() {
-  const { ModalComponent } = useCustomModal();
+  const { ModalComponent, showModal } = useCustomModal();
   const router = useRouter();
+  const pathname = usePathname();
 
   const [interLoaded] = useFonts({
     Inter_400Regular,
@@ -309,6 +311,59 @@ export default function RootLayout() {
     return () => unsubs.forEach((u) => u?.());
   }, [router]);
 
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+
+    const onHardwareBackPress = () => {
+      // Keep default back behavior throughout nested screens.
+      // Only intercept at top-level destinations where Android would exit the app.
+      const topLevelExitPaths = new Set([Paths.home, Paths.login, Paths.signup]);
+      if (!topLevelExitPaths.has(pathname)) {
+        return false;
+      }
+
+      Alert.alert("Exit app", "Do you want to exit?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Exit", style: "destructive", onPress: () => BackHandler.exitApp() },
+      ]);
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onHardwareBackPress,
+    );
+
+    return () => subscription.remove();
+  }, [pathname]);
+
+  useEffect(() => {
+    const publicRoutes = new Set([
+      Paths.root,
+      Paths.login,
+      Paths.signup,
+      Paths.otp,
+    ]);
+
+    const isPublicRoute =
+      publicRoutes.has(pathname) ||
+      pathname.startsWith("/shared/media/") ||
+      pathname.startsWith("/shared-recording/");
+
+    const onAppStateChange = async (state: string) => {
+      if (state !== "active") return;
+      if (isPublicRoute) return;
+
+      const token = await SecureStore.getItemAsync("token");
+      if (!token) {
+        router.replace(Paths.login);
+      }
+    };
+
+    const subscription = AppState.addEventListener("change", onAppStateChange);
+    return () => subscription.remove();
+  }, [pathname, router]);
+
   return (
     <GluestackUIProvider mode="dark">
       <ReduxProvider store={store}>
@@ -345,10 +400,6 @@ export default function RootLayout() {
       </ReduxProvider>
     </GluestackUIProvider>
   );
-}
-
-function showModal(arg0: string, arg1: any, arg2: any) {
-  throw new Error("Function not implemented.");
 }
 // async function registerForPushNotificationsAsync() {
 //   let token;
