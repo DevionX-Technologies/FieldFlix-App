@@ -55,29 +55,29 @@ const TEXT_SECONDARY = "#cbd5e1";
 const PLAN_CARD_W = 170;
 const PLAN_GAP = 14;
 const PLANS_H_PAD = 16;
-/** Taller to fit 3 plan feature rows like `web/.../ProfilePremiumScreen.tsx` + `profilePremium.css`. */
-const CARD_H = 258;
+/** Reduced height since plan bullets are hidden. */
+const CARD_H = 182;
 
-const PLAN_BULLETS: Record<PlanId, [string, string, string]> = {
-  cricket: [
-    "Unlock all Cricket videos",
-    "Watch full matches",
-    "Access cricket highlights",
-  ],
-  pickleball: [
-    "Unlock all Pickleball videos",
-    "Watch full matches",
-    "Access pickleball highlights",
-  ],
-  padel: [
-    "Unlock all Padel videos",
-    "Watch full matches",
-    "Access padel highlights",
-  ],
-  pro: ["Advanced features", "Video Recording", "View AI insights"],
-  premium: ["AI features", "AI features", "Unlimited Storage"],
-  free: ["Track Sessions", "View basic Stats", "View Analytics"],
-};
+// const PLAN_BULLETS: Record<PlanId, [string, string, string]> = {
+//   cricket: [
+//     "Unlock all Cricket videos",
+//     "Watch full matches",
+//     "Access cricket highlights",
+//   ],
+//   pickleball: [
+//     "Unlock all Pickleball videos",
+//     "Watch full matches",
+//     "Access pickleball highlights",
+//   ],
+//   padel: [
+//     "Unlock all Padel videos",
+//     "Watch full matches",
+//     "Access padel highlights",
+//   ],
+//   pro: ["Advanced features", "Video Recording", "View AI insights"],
+//   premium: ["AI features", "AI features", "Unlimited Storage"],
+//   free: ["Track Sessions", "View basic Stats", "View Analytics"],
+// };
 
 type Pay = "upi" | "card" | "netbank";
 
@@ -85,31 +85,50 @@ const PLAN_ORDER: {
   id: PlanId;
   name: string;
   sub: string;
-  price: string;
+  basePrice: number;
   img: number;
 }[] = [
   {
     id: "pickleball",
     name: "Pickleball Plan",
     sub: "(Sport Access)",
-    price: "₹200",
+    basePrice: 200,
     img: RASTER.planFree,
   },
   {
     id: "padel",
     name: "Padel Plan",
     sub: "(Sport Access)",
-    price: "₹250",
+    basePrice: 250,
     img: RASTER.planPro,
   },
   {
     id: "cricket",
     name: "Cricket Plan",
     sub: "(Sport Access)",
-    price: "₹350",
+    basePrice: 350,
     img: RASTER.planPrem,
   },
 ];
+
+const GST_RATE = 0.18;
+const PLAN_BASE_PRICE: Record<PlanId, number> = {
+  pickleball: 200,
+  padel: 250,
+  cricket: 350,
+  pro: 0,
+  premium: 0,
+  free: 0,
+};
+
+function formatBasePrice(basePrice: number): string {
+  return `₹${basePrice}`;
+}
+
+function checkoutAmountInr(planId: PlanId): number {
+  const base = PLAN_BASE_PRICE[planId] ?? 0;
+  return Math.round(base * (1 + GST_RATE));
+}
 
 /**
  * Parity with `web/src/screens/ProfilePremiumScreen.tsx` + `profilePremium.css` (plan + payment art as PNG; other marks as SVG).
@@ -192,7 +211,7 @@ export default function FieldflixProfilePremiumScreen() {
           razorpay_signature?: string;
         }>;
       };
-      const amountPaise = String(Math.round(Number(order.amount) * 100));
+      const amountPaise = String(checkoutAmountInr(plan) * 100);
       // Native module exports a class: call `RazorpayCheckout.open(...)`, not `RazorpayCheckout(...)`.
       const data = await RazorpayCheckout.open({
         key: RAZORPAY_KEY_ID,
@@ -298,7 +317,6 @@ export default function FieldflixProfilePremiumScreen() {
             >
               {PLAN_ORDER.map((p) => {
                 const on = plan === p.id;
-                const bullets = PLAN_BULLETS[p.id];
                 return (
                   <Pressable
                     key={p.id}
@@ -338,6 +356,12 @@ export default function FieldflixProfilePremiumScreen() {
                           pointerEvents="none"
                         />
                       ) : null}
+                      {on ? (
+                        <View
+                          style={styles.planSelectedGlow}
+                          pointerEvents="none"
+                        />
+                      ) : null}
                       <View style={styles.planPad}>
                         <View style={styles.planHeadRow}>
                           <Text style={styles.planName} numberOfLines={1}>
@@ -347,12 +371,14 @@ export default function FieldflixProfilePremiumScreen() {
                         <Text style={styles.planSub}>{p.sub}</Text>
                         <View style={styles.priceRow}>
                           <Text style={styles.priceNum}>
-                            {p.price.replace("₹", "₹")}
+                            {formatBasePrice(p.basePrice)}
                           </Text>
                           <Text style={styles.priceMo}> /month</Text>
                         </View>
-                        <View style={styles.planDivider} />
-                        <View style={styles.planBullets}>
+                        <Text style={styles.priceGstNote}>
+                          +{Math.round(GST_RATE * 100)}% GST extra
+                        </Text>
+                        {/* <View style={styles.planBullets}>
                           {bullets.map((line, bi) => (
                             <View
                               key={`${p.id}-${bi}`}
@@ -366,7 +392,7 @@ export default function FieldflixProfilePremiumScreen() {
                               <Text style={styles.planBulletText}>{line}</Text>
                             </View>
                           ))}
-                        </View>
+                        </View> */}
                       </View>
                     </ImageBackground>
                   </Pressable>
@@ -743,6 +769,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: ACCENT,
   },
+  planSelectedGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    backgroundColor: "rgba(34,197,94,0.08)",
+  },
   planPad: { padding: 14, paddingBottom: 14, justifyContent: "flex-start" },
   planHeadRow: {
     flexDirection: "row",
@@ -756,9 +787,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: TEXT_SECONDARY,
   },
-  priceRow: { marginTop: 8, flexDirection: "row", alignItems: "baseline", gap: 1 },
-  priceNum: { fontFamily: FF.bold, fontSize: 26, color: TEXT_PRIMARY, lineHeight: 30 },
+  priceRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 1,
+  },
+  priceNum: {
+    fontFamily: FF.bold,
+    fontSize: 26,
+    color: TEXT_PRIMARY,
+    lineHeight: 30,
+  },
   priceMo: { fontFamily: FF.medium, fontSize: 11, color: TEXT_SECONDARY },
+  priceGstNote: {
+    marginTop: 2,
+    fontFamily: FF.medium,
+    fontSize: 10,
+    color: "rgba(187,247,208,0.9)",
+    letterSpacing: 0.2,
+  },
   planDivider: {
     marginTop: 8,
     marginBottom: 8,

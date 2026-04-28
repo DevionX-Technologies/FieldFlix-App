@@ -7,11 +7,14 @@ import * as SecureStore from "expo-secure-store";
 import { useEffect } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import Animated, {
+  cancelAnimation,
+  withDelay,
   Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
 } from "react-native-reanimated";
 
@@ -25,26 +28,29 @@ export default function FieldflixSplashScreen() {
 
   useEffect(() => {
     revealProgress.value = withTiming(1, {
-      duration: 1200,
+      duration: 1050,
       easing: Easing.bezier(0.22, 1, 0.36, 1),
     });
 
     ambientPulse.value = withRepeat(
       withTiming(1, {
-        duration: 3800,
-        easing: Easing.inOut(Easing.sin),
+        duration: 3600,
+        easing: Easing.inOut(Easing.quad),
       }),
       -1,
       true
     );
 
-    sheenProgress.value = withRepeat(
-      withTiming(1, {
-        duration: 3200,
-        easing: Easing.inOut(Easing.cubic),
-      }),
-      -1,
-      false
+    // One premium sweep after logo reveal (less looped feel).
+    sheenProgress.value = withSequence(
+      withDelay(
+        560,
+        withTiming(1, {
+          duration: 980,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        })
+      ),
+      withTiming(0, { duration: 0 })
     );
 
     const t = setTimeout(async () => {
@@ -52,34 +58,44 @@ export default function FieldflixSplashScreen() {
       router.replace(token ? Paths.home : Paths.login);
     }, 2500);
 
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      cancelAnimation(revealProgress);
+      cancelAnimation(ambientPulse);
+      cancelAnimation(sheenProgress);
+    };
   }, [ambientPulse, revealProgress, router, sheenProgress]);
 
   const logoStyle = useAnimatedStyle(() => {
     const opacity = interpolate(revealProgress.value, [0, 1], [0, 1]);
     const translateY = interpolate(revealProgress.value, [0, 1], [14, 0]);
-    const scale = interpolate(ambientPulse.value, [0, 1], [0.998, 1.008]);
+    const scale = interpolate(ambientPulse.value, [0, 1], [0.998, 1.006]);
     return {
       opacity,
       transform: [{ translateY }, { scale }],
     };
   });
 
-  const glowStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(ambientPulse.value, [0, 1], [0.1, 0.2]);
-    const scale = interpolate(ambientPulse.value, [0, 1], [0.96, 1.06]);
+  const sheenStyle = useAnimatedStyle(() => {
+    const translateX = interpolate(sheenProgress.value, [0, 1], [-360, 360]);
+    const opacity = interpolate(
+      sheenProgress.value,
+      [0, 0.15, 0.32, 0.52, 1],
+      [0, 0.18, 0.34, 0.12, 0]
+    );
+    const scale = interpolate(sheenProgress.value, [0, 1], [0.98, 1.03]);
     return {
       opacity,
-      transform: [{ scale }],
+      transform: [{ translateX }, { rotate: "-14deg" }, { scale }],
     };
   });
 
-  const sheenStyle = useAnimatedStyle(() => {
-    const translateX = interpolate(sheenProgress.value, [0, 1], [-250, 250]);
-    const opacity = interpolate(sheenProgress.value, [0, 0.14, 0.86, 1], [0, 0.14, 0.14, 0]);
+  const logoAuraStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(ambientPulse.value, [0, 1], [0.14, 0.24]);
+    const scaleX = interpolate(ambientPulse.value, [0, 1], [0.96, 1.03]);
     return {
       opacity,
-      transform: [{ translateX }, { rotate: "-11deg" }],
+      transform: [{ scaleX }],
     };
   });
 
@@ -87,19 +103,18 @@ export default function FieldflixSplashScreen() {
     <WebShell backgroundColor={WEB.splashBg}>
       <View style={styles.container}>
         <LinearGradient
-          colors={["#01040B", "#041327", "#020A18", "#01040B"]}
+          colors={["#03060D", "#061321", "#031019", "#03060D"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
         <LinearGradient
-          colors={["rgba(0,0,0,0.35)", "rgba(0,0,0,0)", "rgba(0,0,0,0.45)"]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
+          colors={["rgba(34,197,94,0.08)", "rgba(0,0,0,0)", "rgba(34,197,94,0.06)"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <Animated.View style={[styles.glow, glowStyle]} />
-
+        <Animated.View style={[styles.logoAura, logoAuraStyle]} />
         <Animated.View style={[styles.logoWrap, logoStyle]}>
           <Image source={WORD_LOGO} resizeMode="contain" style={styles.logo} accessibilityLabel="FieldFlix" />
           <Animated.View style={[styles.sheen, sheenStyle]} />
@@ -116,17 +131,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#01060F",
   },
-  glow: {
-    position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: "#3A8CFF",
-    shadowColor: "#3A8CFF",
-    shadowOpacity: 0.32,
-    shadowRadius: 36,
-    shadowOffset: { width: 0, height: 10 },
-  },
   logoWrap: {
     width: "88%",
     maxWidth: 360,
@@ -134,20 +138,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
+  logoAura: {
+    position: "absolute",
+    width: "76%",
+    maxWidth: 320,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "rgba(34,197,94,0.35)",
+    shadowColor: "#22c55e",
+    shadowOpacity: 0.34,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 0 },
+  },
   logo: {
     width: "100%",
     height: "100%",
-    shadowColor: "#FFFFFF",
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
+    shadowColor: "#86efac",
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 2 },
   },
   sheen: {
     position: "absolute",
-    top: -10,
-    width: 72,
-    height: 96,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.88)",
+    top: -16,
+    width: 64,
+    height: 124,
+    borderRadius: 12,
+    backgroundColor: "rgba(220,252,231,0.96)",
   },
 });
