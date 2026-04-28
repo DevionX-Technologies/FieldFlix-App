@@ -12,8 +12,8 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import { gradientPillInner } from '@/screens/fieldflix/fieldflixUi';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -56,6 +56,9 @@ const PLANS_H_PAD = 16;
 const CARD_H = 258;
 
 const PLAN_BULLETS: Record<PlanId, [string, string, string]> = {
+  cricket: ['Unlock all Cricket videos', 'Watch full matches', 'Access cricket highlights'],
+  pickleball: ['Unlock all Pickleball videos', 'Watch full matches', 'Access pickleball highlights'],
+  padel: ['Unlock all Padel videos', 'Watch full matches', 'Access padel highlights'],
   pro: ['Advanced features', 'Video Recording', 'View AI insights'],
   premium: ['AI features', 'AI features', 'Unlimited Storage'],
   free: ['Track Sessions', 'View basic Stats', 'View Analytics'],
@@ -64,9 +67,9 @@ const PLAN_BULLETS: Record<PlanId, [string, string, string]> = {
 type Pay = 'upi' | 'card' | 'netbank';
 
 const PLAN_ORDER: { id: PlanId; name: string; sub: string; price: string; img: number }[] = [
-  { id: 'free', name: 'Free Plan', sub: '(Basic)', price: '₹149', img: RASTER.planFree },
-  { id: 'pro', name: 'Pro Plan', sub: '(Recommended)', price: '₹199', img: RASTER.planPro },
-  { id: 'premium', name: 'Premium Plan', sub: '(Elite)', price: '₹399', img: RASTER.planPrem },
+  { id: 'pickleball', name: 'Pickleball Plan', sub: '(Sport Access)', price: '₹200', img: RASTER.planFree },
+  { id: 'padel', name: 'Padel Plan', sub: '(Sport Access)', price: '₹250', img: RASTER.planPro },
+  { id: 'cricket', name: 'Cricket Plan', sub: '(Sport Access)', price: '₹350', img: RASTER.planPrem },
 ];
 
 /**
@@ -75,21 +78,50 @@ const PLAN_ORDER: { id: PlanId; name: string; sub: string; price: string; img: n
  */
 export default function FieldflixProfilePremiumScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ sport?: string }>();
   const insets = useSafeAreaInsets();
   const [pay, setPay] = useState<Pay>('upi');
-  const [plan, setPlan] = useState<PlanId>('pro');
+  const [plan, setPlan] = useState<PlanId>('padel');
   const [submitting, setSubmitting] = useState(false);
   const planScroll = useRef<ScrollView | null>(null);
   const planScrollViewportW = useRef(0);
   const planScrollContentW = useRef(0);
 
-  const scrollPlansToProCenter = (contentW: number, viewportW: number) => {
+  const scrollPlansToCenter = (contentW: number, viewportW: number) => {
     const el = planScroll.current as unknown as { scrollTo: (o: { x: number; animated: boolean }) => void } | null;
     if (!el?.scrollTo) return;
     if (viewportW <= 0 || contentW <= 0) return;
-    const maxX = Math.max(0, contentW - viewportW);
-    el.scrollTo({ x: maxX / 2, animated: false });
+    const selectedIndex = PLAN_ORDER.findIndex((p) => p.id === plan);
+    if (selectedIndex < 0) return;
+    const targetCenter =
+      PLANS_H_PAD +
+      selectedIndex * (PLAN_CARD_W + PLAN_GAP) +
+      PLAN_CARD_W / 2;
+    const x = Math.max(0, Math.min(contentW - viewportW, targetCenter - viewportW / 2));
+    el.scrollTo({ x, animated: false });
   };
+
+  useEffect(() => {
+    const raw = String(params.sport ?? '').toLowerCase();
+    const preferred: PlanId | null =
+      raw.includes('cricket')
+        ? 'cricket'
+        : raw.includes('pickle')
+          ? 'pickleball'
+          : raw.includes('padel') || raw.includes('paddle')
+            ? 'padel'
+            : null;
+    if (preferred) {
+      setPlan(preferred);
+    }
+  }, [params.sport]);
+
+  useEffect(() => {
+    scrollPlansToCenter(
+      planScrollContentW.current,
+      planScrollViewportW.current,
+    );
+  }, [plan]);
 
   const onUpgrade = async () => {
     if (!RAZORPAY_KEY_ID) {
@@ -184,7 +216,7 @@ export default function FieldflixProfilePremiumScreen() {
             </View>
 
             <Text style={styles.heroTitle}>Upgrade Your Game</Text>
-            <Text style={styles.heroSub}>Unlock advanced features and insights</Text>
+            <Text style={styles.heroSub}>Choose a sport plan to unlock that sport's videos</Text>
 
             <ScrollView
               ref={planScroll}
@@ -194,11 +226,11 @@ export default function FieldflixProfilePremiumScreen() {
               onLayout={(e) => {
                 const vw = e.nativeEvent.layout.width;
                 planScrollViewportW.current = vw;
-                scrollPlansToProCenter(planScrollContentW.current, vw);
+                scrollPlansToCenter(planScrollContentW.current, vw);
               }}
               onContentSizeChange={(w) => {
                 planScrollContentW.current = w;
-                scrollPlansToProCenter(w, planScrollViewportW.current);
+                scrollPlansToCenter(w, planScrollViewportW.current);
               }}
               contentContainerStyle={styles.plansScroll}
             >
@@ -211,7 +243,7 @@ export default function FieldflixProfilePremiumScreen() {
                     onPress={() => setPlan(p.id)}
                     style={[styles.planPress, { width: PLAN_CARD_W }]}
                   >
-                    {p.id === 'pro' ? (
+                    {p.id === 'padel' ? (
                       <View style={styles.popularOnPro} pointerEvents="none">
                         <LinearGradient
                           colors={['#22c55e', '#16a34a']}
@@ -257,19 +289,19 @@ export default function FieldflixProfilePremiumScreen() {
                 <Text style={styles.featListTitle}>Feature List</Text>
                 <View style={styles.fLine}>
                   <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
-                  <Text style={styles.fText}>Advanced Analytics</Text>
+                  <Text style={styles.fText}>Sport-specific video access lock</Text>
                 </View>
                 <View style={styles.fLine}>
                   <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
-                  <Text style={styles.fText}>Video Recording & Replays</Text>
+                  <Text style={styles.fText}>Full match playback for your selected sport</Text>
                 </View>
                 <View style={styles.fLine}>
                   <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
-                  <Text style={styles.fText}>AI-Powered Performance Insights</Text>
+                  <Text style={styles.fText}>Highlights unlocked for that sport</Text>
                 </View>
                 <View style={styles.fLine}>
                   <Image source={RASTER.featureTick} style={styles.tickFeature} resizeMode="contain" />
-                  <Text style={styles.fText}>Unlimited Data Storage</Text>
+                  <Text style={styles.fText}>Instant entitlement after successful payment</Text>
                 </View>
               </View>
             </View>

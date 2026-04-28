@@ -1,4 +1,3 @@
-import { Paths } from '@/data/paths';
 import { getNotifications } from '@/lib/fieldflix-api';
 import { FF } from '@/screens/fieldflix/fonts';
 import { NOTIFICATION_ICON_SRC } from '@/screens/fieldflix/notificationAssets';
@@ -6,8 +5,11 @@ import type { NotificationIconId, NotificationItem } from '@/screens/fieldflix/n
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { WEB } from '@/screens/fieldflix/webDesign';
+import { hrefFromNotificationData } from '@/utils/notificationRouting';
+import { getLocalNotifications } from '@/utils/localNotificationStore';
 import { useRouter, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -25,35 +27,15 @@ const MUTED = '#a8b0bc';
 function iconForNotificationType(t: string | null | undefined): NotificationIconId {
   const u = String(t || '').toUpperCase();
   if (u.includes('WELCOME')) return 'bulb';
+  if (u.includes('PAYMENT')) return 'trophy';
   if (u.includes('COMPLETE')) return 'trophy';
   if (u.includes('STOP')) return 'video';
   if (u.includes('RECORD')) return 'video';
   return 'trophy';
 }
 
-/**
- * Resolves a notification's tap-target. Currently routes `RECORDING_COMPLETE`
- * straight to the per-recording Highlights screen using the recording id stored
- * inside the JSONB `data` column on the backend (see
- * `recording-highlight.service.ts#sendRecordingCompleteNotification`).
- */
-function notificationHref(
-  type: string | null | undefined,
-  data: any,
-): Href | null {
-  const u = String(type || '').toUpperCase();
-  if (u === 'RECORDING_COMPLETE') {
-    const first = Array.isArray(data) ? data[0] : data;
-    const recordingId = first?.recordingId ?? first?.recording_id;
-    if (recordingId) {
-      return { pathname: Paths.highlights, params: { id: String(recordingId) } };
-    }
-    return Paths.recordings as Href;
-  }
-  if (u === 'RECORDING_STOP' || u === 'RECORDING_START') {
-    return Paths.recordings as Href;
-  }
-  return null;
+function notificationHref(type: string | null | undefined, data: any): Href | null {
+  return hrefFromNotificationData(data, type);
 }
 
 function formatNotifTime(iso: string | Date | undefined): string {
@@ -79,6 +61,22 @@ function startOfLocalDay(d: Date): number {
 }
 
 type NotificationItemWithHref = NotificationItem & { href: Href | null };
+
+type MergedRow = {
+  id: string;
+  title: string;
+  body: string;
+  time: string;
+  icon: NotificationIconId;
+  at: number;
+  href: Href | null;
+  dedupeKey: string;
+};
+
+function dedupeKeyForRow(row: { title: string; body: string; at: number }): string {
+  const bucket = Math.floor(row.at / 120_000);
+  return `${row.title}|${row.body}|${bucket}`;
+}
 
 function groupNotifications(
   list: {
@@ -138,19 +136,63 @@ export default function FieldflixNotificationsScreen() {
     setLoading(true);
     try {
       const raw = await getNotifications(1, 50);
-      const list = (Array.isArray(raw) ? raw : []).map((e: any) => {
+      const serverRows: MergedRow[] = (Array.isArray(raw) ? raw : []).map((e: any) => {
         const at = e?.created_at ? new Date(e.created_at).getTime() : 0;
-        return {
+        const title = String(e?.title ?? 'Notification');
+        const body = String(e?.body ?? '');
+        const row: MergedRow = {
           id: String(e?.id ?? ''),
-          title: String(e?.title ?? 'Notification'),
-          body: String(e?.body ?? ''),
+          title,
+          body,
           time: formatNotifTime(e?.created_at),
           icon: iconForNotificationType(e?.notification_type),
           at,
           href: notificationHref(e?.notification_type, e?.data),
+          dedupeKey: '',
         };
+        row.dedupeKey = dedupeKeyForRow(row);
+        return row;
       });
-      setSections(groupNotifications(list));
+
+      const local = await getLocalNotifications();
+      const localRows: MergedRow[] = local.map((e) => {
+        const at = new Date(e.created_at).getTime();
+        const title = e.title;
+        const body = e.body;
+        const row: MergedRow = {
+          id: e.id,
+          title,
+          body,
+          time: formatNotifTime(e.created_at),
+          icon: iconForNotificationType(e.notification_type),
+          at,
+          href: notificationHref(e.notification_type, e.data),
+          dedupeKey: '',
+        };
+        row.dedupeKey = dedupeKeyForRow(row);
+        return row;
+      });
+
+      const seen = new Set<string>();
+      const merged: MergedRow[] = [];
+      for (const r of serverRows) {
+        if (!seen.has(r.dedupeKey)) {
+          seen.add(r.dedupeKey);
+          merged.push(r);
+        }
+      }
+      for (const r of localRows) {
+        if (!seen.has(r.dedupeKey)) {
+          seen.add(r.dedupeKey);
+          merged.push(r);
+        }
+      }
+      merged.sort((a, b) => b.at - a.at);
+      setSections(
+        groupNotifications(
+          merged.map(({ dedupeKey: _, ...rest }) => rest),
+        ),
+      );
     } catch {
       setSections([]);
     } finally {
@@ -158,9 +200,11 @@ export default function FieldflixNotificationsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   return (
     <WebShell backgroundColor={BG}>

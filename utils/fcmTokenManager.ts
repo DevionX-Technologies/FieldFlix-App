@@ -3,7 +3,7 @@ import { canUseReactNativeFirebase } from '@/utils/canUseReactNativeFirebase';
 import * as SecureStore from 'expo-secure-store'; // Or AsyncStorage
 import axiosInstance from './axiosInstance';
 
-
+let tokenRefreshSubscribed = false;
 
 /**
  * Get permission and fetch FCM token
@@ -48,18 +48,20 @@ export const requestAndRegisterFcmToken = async () => {
     }
 
     const currentToken = await messaging().getToken();
-    const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+    if (!currentToken) {
+      console.warn('FCM: no device token from Firebase');
+      return;
+    }
 
-    if (currentToken && currentToken !== storedToken) {
-      console.log('📲 Sending new FCM token to backend:', currentToken);
-
+    // Always upsert on the server so the userDevices row exists (phone login, reinstall, same token).
+    try {
       await axiosInstance.put('/users/register/deviceId', {
         deviceId: currentToken,
       });
-
       await SecureStore.setItemAsync(TOKEN_KEY, currentToken);
-    } else {
-      console.log('✅ FCM token already registered or unchanged');
+      console.log('✅ FCM device id registered with backend');
+    } catch (e) {
+      console.error('FCM: failed to register device with backend (not logged in yet?)', e);
     }
   } catch (error) {
     console.error('❌ FCM token registration error:', error);
@@ -74,10 +76,11 @@ export const setupFcmTokenRefreshListener = () => {
   if (!messaging) {
     return;
   }
+  tokenRefreshSubscribed = true;
   messaging().onTokenRefresh(async (newToken) => {
     try {
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-        console.log("stored token",storedToken)
+      console.log("stored token", storedToken)
       if (newToken !== storedToken) {
         console.log('🔄 FCM token refreshed. Updating backend:', newToken);
 

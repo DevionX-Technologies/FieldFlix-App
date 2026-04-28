@@ -351,7 +351,13 @@ export async function uploadProfilePicture(params: {
   return text.replace(/^"|"$/g, '');
 }
 
-export type PlanId = 'free' | 'pro' | 'premium';
+export type PlanId =
+  | 'cricket'
+  | 'pickleball'
+  | 'padel'
+  | 'free'
+  | 'pro'
+  | 'premium';
 
 export type PlanOrderResponse = {
   id: string;
@@ -384,7 +390,7 @@ export async function verifyRazorpayPayment(body: {
 
 export type ActivePlan = {
   active: boolean;
-  plan: 'free' | 'pro' | 'premium' | null;
+  plan: PlanId | null;
   paid_at: string | null;
   expires_at: string | null;
   payment_id: string | null;
@@ -525,4 +531,137 @@ export async function getNotifications(page = 1, limit = 50) {
     return Array.isArray(items) ? items : [];
   }
   return [];
+}
+
+/** `GET /users` — for admin stats (all authenticated users can call per current API). */
+export async function getAllUsers(): Promise<FieldflixUser[]> {
+  const { data } = await axiosInstance.get<unknown>('/users');
+  if (Array.isArray(data)) return data as FieldflixUser[];
+  return [];
+}
+
+export type FlickShortDto = {
+  id: string;
+  recordingId: string;
+  sport: 'pickleball' | 'padel' | 'cricket' | string;
+  title: string;
+  topText: string;
+  bottomText: string;
+  aspect: '9:16' | '16:9';
+  muxPlaybackId: string;
+  /** HLS time window: playback loops inside [startSec, endSec); must be ≤ 15s. */
+  startSec: number;
+  endSec: number;
+  approved: boolean;
+  likesCount: number;
+  comments: { id: string; userName: string | null; text: string; createdAt: string }[];
+  createdAt: string;
+};
+
+/** Server + DB admin list; also see {@link getMyAdminStatus}. */
+export async function getMyAdminStatus(): Promise<{ isAdmin: boolean }> {
+  const { data } = await axiosInstance.get<{ isAdmin: boolean }>('/admin/me');
+  return data as { isAdmin: boolean };
+}
+
+export type AdminPhoneRow = {
+  id: string;
+  phoneLast10: string;
+  createdAt: string;
+};
+
+export async function getAdminPhoneList(): Promise<AdminPhoneRow[]> {
+  const { data } = await axiosInstance.get<{ phones: AdminPhoneRow[] }>('/admin/phones');
+  const p = (data as { phones?: AdminPhoneRow[] })?.phones;
+  return Array.isArray(p) ? p : [];
+}
+
+export async function addAdminByPhone(phone: string): Promise<AdminPhoneRow> {
+  const { data } = await axiosInstance.post<AdminPhoneRow>('/admin/phones', { phone });
+  return data as AdminPhoneRow;
+}
+
+export async function removeAdminPhone(phoneLast10: string): Promise<void> {
+  const last = String(phoneLast10).replace(/\D/g, '');
+  const id = last.length >= 10 ? last.slice(-10) : last;
+  await axiosInstance.delete(`/admin/phones/${encodeURIComponent(id)}`);
+}
+
+/** Mux-ready recordings for admin FlickShort picker (`GET /admin/recordings-for-flickshorts`). */
+export type AdminMuxReadyRecording = {
+  id: string;
+  mux_playback_id: string;
+  status: string;
+  startTime: string;
+  endTime: string | null;
+  recording_name: string | null;
+  turfName: string | null;
+  /** Derived from turf `sports_supported` — server also uses this on create. */
+  flick_sport: 'pickleball' | 'padel' | 'cricket';
+  turf_sports_supported: string[];
+};
+
+export async function getAdminMuxReadyRecordings(): Promise<AdminMuxReadyRecording[]> {
+  const { data } = await axiosInstance.get<AdminMuxReadyRecording[]>(
+    '/admin/recordings-for-flickshorts',
+  );
+  return Array.isArray(data) ? data : [];
+}
+
+/** Public approved shorts. Use `sport=all` or omit for every sport. */
+export async function getPublicFlickShorts(sport?: string): Promise<FlickShortDto[]> {
+  const { data } = await axiosInstance.get<FlickShortDto[]>('/flick-shorts/public', {
+    params: sport && sport !== 'all' ? { sport } : {},
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+export async function getAdminFlickShorts(): Promise<FlickShortDto[]> {
+  const { data } = await axiosInstance.get<FlickShortDto[]>('/flick-shorts/admin');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function createFlickShort(body: {
+  recordingId: string;
+  sport: 'pickleball' | 'padel' | 'cricket';
+  title: string;
+  topText: string;
+  bottomText: string;
+  aspect: '9:16' | '16:9';
+  /** Optional; default 0 → 15s clip. Window length must be ≤ 15s. */
+  startSec?: number;
+  endSec?: number;
+}): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.post<FlickShortDto>('/flick-shorts', body);
+  return data as FlickShortDto;
+}
+
+export async function approveFlickShort(
+  id: string,
+  approved: boolean = true,
+): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.patch<FlickShortDto>(`/flick-shorts/${id}/approve`, {
+    approved,
+  });
+  return data as FlickShortDto;
+}
+
+/** Admin-only: remove a pending (non-approved) FlickShort. */
+export async function deleteFlickShort(id: string): Promise<void> {
+  await axiosInstance.delete(`/flick-shorts/${id}`);
+}
+
+export async function likeFlickShort(id: string): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.post<FlickShortDto>(`/flick-shorts/${id}/like`, {});
+  return data as FlickShortDto;
+}
+
+export async function commentOnFlickShort(
+  id: string,
+  text: string,
+): Promise<FlickShortDto> {
+  const { data } = await axiosInstance.post<FlickShortDto>(`/flick-shorts/${id}/comment`, {
+    text,
+  });
+  return data as FlickShortDto;
 }

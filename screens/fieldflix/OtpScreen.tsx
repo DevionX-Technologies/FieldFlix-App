@@ -371,7 +371,7 @@ export default function FieldflixOtpScreen() {
                   { maxWidth: otpRowMax },
                   pressed && { transform: [{ scale: 0.98 }] },
                   (submitting || smsSending || value.length !== CELL_COUNT) &&
-                    styles.verifyDisabled,
+                  styles.verifyDisabled,
                 ]}
               >
                 <LinearGradient

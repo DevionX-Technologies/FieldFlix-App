@@ -11,6 +11,8 @@ import { WebShell } from "@/screens/fieldflix/WebShell";
 import {
   formatRecordingTimeLabel,
   highlightCountFromRecording,
+  recordingDurationLabel,
+  recordingThumbUrl,
 } from "@/utils/recordingDisplay";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { Image as ExpoImage } from "expo-image";
@@ -61,10 +63,13 @@ type ArenaRow = {
 
 type RecentRow = {
   id: string;
+  recordingId: string;
   arenaName: string;
   location: string;
   timeLabel: string;
   thumbTime: string;
+  thumbUrl: string | null;
+  duration: string;
   score: number;
 };
 
@@ -148,10 +153,13 @@ function mapRecordingToRecent(s: any, idx: number): RecentRow {
   const score = highlightCountFromRecording(s);
   return {
     id: String(s?.id ?? idx),
+    recordingId: "",
     arenaName: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Session",
     location: s?.turf?.city ?? s?.turf?.address_line ?? s?.turf?.location ?? "",
     timeLabel,
     thumbTime,
+    thumbUrl: recordingThumbUrl(s, 6),
+    duration: recordingDurationLabel(s),
     score,
   };
 }
@@ -243,10 +251,10 @@ export default function FieldflixHomeScreen() {
           sports_supported: sportEnum,
           ...(userCoords
             ? {
-                latitude: userCoords.latitude,
-                longitude: userCoords.longitude,
-                radiusKm: 100,
-              }
+              latitude: userCoords.latitude,
+              longitude: userCoords.longitude,
+              radiusKm: 100,
+            }
             : {}),
         }),
         getMyRecordings(),
@@ -592,10 +600,21 @@ export default function FieldflixHomeScreen() {
                 </Text>
               ) : (
                 recentRows.map((session) => (
-                  <View key={session.id} style={styles.recentCard}>
+                  <Pressable
+                    key={session.id}
+                    style={styles.recentCard}
+                    onPress={() =>
+                      router.push({
+                        pathname: Paths.highlights,
+                        params: { id: session.recordingId },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${session.arenaName} highlights`}
+                  >
                     <View style={styles.recentThumb}>
                       <ExpoImage
-                        source={BG.homeHero}
+                        source={session.thumbUrl ? { uri: session.thumbUrl } : BG.homeHero}
                         style={StyleSheet.absoluteFillObject}
                         contentFit="cover"
                         contentPosition={{ top: "22%", left: "50%" }}
@@ -641,7 +660,7 @@ export default function FieldflixHomeScreen() {
                         {session.score}
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 ))
               )}
             </View>
