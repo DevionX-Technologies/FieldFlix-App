@@ -1,8 +1,9 @@
 import { Paths } from "@/data/paths";
+import { useCustomModal } from "@/hooks/useCustomModal";
 import {
-  getFieldflixApiErrorMessage,
-  sendOtp,
-  verifyOtp,
+    getFieldflixApiErrorMessage,
+    sendOtp,
+    verifyOtp,
 } from "@/lib/fieldflix-api";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { gradientPillInner } from "@/screens/fieldflix/fieldflixUi";
@@ -16,21 +17,22 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  ImageBackground,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    ImageBackground,
+    Keyboard,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    StyleSheet,
+    Text,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
 import {
-  CodeField,
-  Cursor,
-  useBlurOnFulfill,
-  useClearByFocusCell,
+    CodeField,
+    Cursor,
+    useBlurOnFulfill,
+    useClearByFocusCell,
 } from "react-native-confirmation-code-field";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -67,6 +69,7 @@ function maskIndianMobile(mobile: string | undefined): string {
 /** Mirrors `web/src/screens/OtpScreen.tsx` — `/image16.png` background + vignette. */
 export default function FieldflixOtpScreen() {
   const router = useRouter();
+  const { ModalComponent, showError, showAlert } = useCustomModal();
   const insets = useSafeAreaInsets();
   const { mobile, isSignup } = useLocalSearchParams<{
     mobile: string;
@@ -89,11 +92,11 @@ export default function FieldflixOtpScreen() {
     setValue,
   });
 
-  const panelMax = Math.min(s(WEB.cardMaxW), shellW - s(40));
+  const panelMax = Math.min(WEB.cardMaxW, shellW - s(40));
   /** Panel outer width when full-bleed inside `content` horizontal padding. */
   const panelOuterW = Math.min(panelMax, shellW - s(48));
   /** Inner width for OTP row (panel horizontal padding `styles.panel`). */
-  const panelPadX = s(18) * 2;
+  const panelPadX = s(16) * 2;
   const otpRowInnerW = Math.max(0, panelOuterW - panelPadX);
   const maxGap = s(8);
   const idealBoxW = s(WEB.otpBoxW);
@@ -117,11 +120,11 @@ export default function FieldflixOtpScreen() {
   }
   const otpRowMax = CELL_COUNT * boxW + cellGap * (CELL_COUNT - 1);
   const boxH = Math.round(boxW * (WEB.otpBoxH / WEB.otpBoxW));
-  const topSpacer = SCREEN_H * 0.12;
+  const topSpacer = Math.min(SCREEN_H * 0.1, vs(74));
 
   useEffect(() => {
     if (timer <= 0) return;
-    const id = setInterval(() => setTimer((t) => t - 1), 1000);
+    const id = setInterval(() => setTimer((t) => Math.max(0, t - 1)), 1000);
     return () => clearInterval(id);
   }, [timer]);
 
@@ -153,7 +156,7 @@ export default function FieldflixOtpScreen() {
         await sendOtp(mobile);
       } catch (e: unknown) {
         if (!cancelled) {
-          Alert.alert(
+          showError(
             "Phone verification",
             getFieldflixApiErrorMessage(e, "Could not send SMS"),
           );
@@ -166,7 +169,7 @@ export default function FieldflixOtpScreen() {
     return () => {
       cancelled = true;
     };
-  }, [mobile]);
+  }, [mobile, showError]);
 
   useEffect(() => {
     if (smsSending) return;
@@ -184,12 +187,13 @@ export default function FieldflixOtpScreen() {
 
   const submit = async (code: string) => {
     if (code.length !== CELL_COUNT) return;
+    if (submitting) return;
     if (!mobile) {
-      Alert.alert("Session expired", "Go back and enter your number again.");
+      showError("Session expired", "Go back and enter your number again.");
       return;
     }
     if (smsSending) {
-      Alert.alert("Please wait", "Sending SMS…");
+      showAlert("Please wait", "Sending verification SMS…");
       return;
     }
     setSubmitting(true);
@@ -202,9 +206,12 @@ export default function FieldflixOtpScreen() {
         router.replace(Paths.home);
       }
     } catch (e: unknown) {
-      Alert.alert(
-        "Error",
-        getFieldflixApiErrorMessage(e, "Verification failed"),
+      showError(
+        "Verification failed",
+        getFieldflixApiErrorMessage(
+          e,
+          "Invalid or expired OTP. Please try again.",
+        ),
       );
     } finally {
       setSubmitting(false);
@@ -214,7 +221,9 @@ export default function FieldflixOtpScreen() {
   const onCodeChange = (text: string) => {
     const digits = text.replace(/\D/g, "").slice(0, CELL_COUNT);
     setValue(digits);
-    if (digits.length === CELL_COUNT && !smsSending) void submit(digits);
+    if (digits.length === CELL_COUNT && !smsSending && !submitting) {
+      void submit(digits);
+    }
   };
 
   const onResend = async () => {
@@ -233,9 +242,12 @@ export default function FieldflixOtpScreen() {
         }
       });
     } catch (e: unknown) {
-      Alert.alert(
-        "Error",
-        getFieldflixApiErrorMessage(e, "Could not resend SMS"),
+      showError(
+        "Resend failed",
+        getFieldflixApiErrorMessage(
+          e,
+          "Could not resend OTP. Please try again.",
+        ),
       );
     } finally {
       setResending(false);
@@ -249,6 +261,7 @@ export default function FieldflixOtpScreen() {
           source={BG.otp}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
+          imageStyle={styles.bgImage}
         >
           <LinearGradient
             colors={[
@@ -277,170 +290,189 @@ export default function FieldflixOtpScreen() {
           style={styles.flex}
           keyboardVerticalOffset={Platform.OS === "ios" ? insets.top + 8 : 0}
         >
-          <View
-            style={[
-              styles.flex,
-              styles.content,
-              { paddingBottom: Math.max(vs(16), insets.bottom + vs(10)) },
-            ]}
+          <TouchableWithoutFeedback
+            onPress={Keyboard.dismiss}
+            accessible={false}
           >
-            <View style={{ height: topSpacer }} />
+            <View
+              style={[
+                styles.flex,
+                styles.content,
+                { paddingBottom: Math.max(vs(22), insets.bottom + vs(18)) },
+              ]}
+            >
+              <View style={{ height: topSpacer }} />
 
-            <View style={[styles.panel, { maxWidth: panelMax }]}>
-              <View style={styles.verifyPill}>
-                <Text style={styles.verifyPillText}>Secure Verification</Text>
-              </View>
-              <View style={styles.header}>
-                <Text style={styles.kicker}>Mobile Number Verification</Text>
-                <Text style={styles.title}>Enter OTP</Text>
-                <Text style={styles.sub}>
-                  We have sent a one-time password{"\n"}to{" "}
-                  <Text style={styles.subStrong}>
-                    {maskIndianMobile(mobile)}
-                  </Text>
-                </Text>
-              </View>
-
-              <View style={[styles.bannerSlot, { maxWidth: otpRowMax }]}>
-                {smsSending ? (
-                  <View style={styles.sendingBanner}>
-                    <ActivityIndicator color={WEB.green} />
-                    <Text style={styles.sendingText}>
-                      Sending verification code…
+              <View style={[styles.panelShell, { maxWidth: panelMax }]}>
+                <View style={styles.panel}>
+                  <View style={styles.verifyPill}>
+                    <Text style={styles.verifyPillText}>
+                      Secure Verification
                     </Text>
                   </View>
-                ) : null}
-              </View>
-
-              <CodeField
-                ref={ref}
-                {...clearProps}
-                value={value}
-                onChangeText={onCodeChange}
-                cellCount={CELL_COUNT}
-                keyboardType="number-pad"
-                textContentType="oneTimeCode"
-                autoComplete={
-                  Platform.OS === "android" ? "sms-otp" : "one-time-code"
-                }
-                {...(Platform.OS === "android"
-                  ? { importantForAutofill: "yes" as const }
-                  : {})}
-                editable={!smsSending}
-                rootStyle={[
-                  styles.codeFieldRoot,
-                  { maxWidth: otpRowMax, gap: cellGap },
-                ]}
-                renderCell={({ index, symbol, isFocused }) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.otpCell,
-                      {
-                        width: boxW,
-                        height: boxH,
-                        borderRadius: ms(WEB.otpBoxRadius, 0.4),
-                      },
-                      symbol ? styles.otpCellFilled : styles.otpCellEmpty,
-                      isFocused && !symbol && styles.otpCellFocused,
-                    ]}
-                    onLayout={getCellOnLayoutHandler(index)}
-                  >
-                    <Text
-                      style={[
-                        styles.otpCellText,
-                        {
-                          fontSize: Math.min(sf(24), boxW * 0.44),
-                          lineHeight: Math.min(sf(28), boxW * 0.52),
-                        },
-                      ]}
-                    >
-                      {symbol || (isFocused ? <Cursor cursorSymbol="|" /> : "")}
+                  <View style={styles.header}>
+                    <Text style={styles.kicker}>
+                      Mobile Number Verification
+                    </Text>
+                    <Text style={styles.title}>Enter OTP</Text>
+                    <Text style={styles.sub}>
+                      We have sent a one-time password{"\n"}to{" "}
+                      <Text style={styles.subStrong}>
+                        {maskIndianMobile(mobile)}
+                      </Text>
                     </Text>
                   </View>
-                )}
-              />
 
-              <View style={styles.timerBlock}>
-                <Text style={styles.timerLabel}>Code expires in</Text>
-                <Text style={styles.timer}>{formatTime(timer)}</Text>
-              </View>
+                  <View style={[styles.bannerSlot, { maxWidth: otpRowMax }]}>
+                    {smsSending ? (
+                      <View style={styles.sendingBanner}>
+                        <ActivityIndicator color={WEB.green} />
+                        <Text style={styles.sendingText}>
+                          Sending verification code…
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
 
-              <Pressable
-                onPress={() => submit(value)}
-                onPressIn={() => {
-                  if (
-                    !submitting &&
-                    !smsSending &&
-                    value.length === CELL_COUNT
-                  ) {
-                    setVerifyPressed(true);
-                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }
-                }}
-                onPressOut={() => setVerifyPressed(false)}
-                disabled={
-                  submitting || smsSending || value.length !== CELL_COUNT
-                }
-                style={({ pressed }) => [
-                  styles.verifyOuter,
-                  { maxWidth: otpRowMax },
-                  (pressed || verifyPressed) && styles.verifyPressed,
-                  (submitting || smsSending || value.length !== CELL_COUNT) &&
-                    styles.verifyDisabled,
-                ]}
-              >
-                <LinearGradient
-                  colors={
-                    verifyPressed
-                      ? ["#16a34a", "#15803d"]
-                      : ["#22c55e", "#16a34a"]
-                  }
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={styles.verifyGradient}
-                >
-                  {submitting ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.verifyText}>Verify OTP</Text>
-                  )}
-                </LinearGradient>
-              </Pressable>
-
-              <View style={styles.resendGroup}>
-                <Text style={styles.resendHint}>
-                  Didn&apos;t receive the code?
-                </Text>
-                <Pressable
-                  onPress={onResend}
-                  disabled={timer > 0 || resending}
-                  onPressIn={() => {
-                    if (timer <= 0 && !resending) {
-                      void Haptics.impactAsync(
-                        Haptics.ImpactFeedbackStyle.Light,
-                      );
+                  <CodeField
+                    ref={ref}
+                    {...clearProps}
+                    value={value}
+                    onChangeText={onCodeChange}
+                    cellCount={CELL_COUNT}
+                    keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    autoComplete={
+                      Platform.OS === "android" ? "sms-otp" : "one-time-code"
                     }
-                  }}
-                  style={styles.resendWrap}
-                >
-                  {resending ? (
-                    <ActivityIndicator color={WEB.green} />
-                  ) : (
-                    <Text
-                      style={[
-                        styles.resend,
-                        timer > 0 ? styles.resendDisabled : styles.resendActive,
-                      ]}
+                    {...(Platform.OS === "android"
+                      ? { importantForAutofill: "yes" as const }
+                      : {})}
+                    editable={!smsSending}
+                    rootStyle={[
+                      styles.codeFieldRoot,
+                      { maxWidth: otpRowMax, gap: cellGap },
+                    ]}
+                    renderCell={({ index, symbol, isFocused }) => (
+                      <View
+                        key={index}
+                        style={[
+                          styles.otpCell,
+                          {
+                            width: boxW,
+                            height: boxH,
+                            borderRadius: ms(WEB.otpBoxRadius, 0.4),
+                          },
+                          symbol ? styles.otpCellFilled : styles.otpCellEmpty,
+                          isFocused && !symbol && styles.otpCellFocused,
+                        ]}
+                        onLayout={getCellOnLayoutHandler(index)}
+                      >
+                        <Text
+                          style={[
+                            styles.otpCellText,
+                            {
+                              fontSize: Math.min(sf(24), boxW * 0.44),
+                              lineHeight: Math.min(sf(28), boxW * 0.52),
+                            },
+                          ]}
+                        >
+                          {symbol ||
+                            (isFocused ? <Cursor cursorSymbol="|" /> : "")}
+                        </Text>
+                      </View>
+                    )}
+                  />
+
+                  <View style={styles.timerBlock}>
+                    <Text style={styles.timerLabel}>Code expires in</Text>
+                    <Text style={styles.timer}>{formatTime(timer)}</Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() => submit(value)}
+                    onPressIn={() => {
+                      if (
+                        !submitting &&
+                        !smsSending &&
+                        value.length === CELL_COUNT
+                      ) {
+                        setVerifyPressed(true);
+                        void Haptics.impactAsync(
+                          Haptics.ImpactFeedbackStyle.Light,
+                        );
+                      }
+                    }}
+                    onPressOut={() => setVerifyPressed(false)}
+                    disabled={
+                      submitting || smsSending || value.length !== CELL_COUNT
+                    }
+                    style={({ pressed }) => [
+                      styles.verifyOuter,
+                      { maxWidth: otpRowMax },
+                      (pressed || verifyPressed) && styles.verifyPressed,
+                      (submitting ||
+                        smsSending ||
+                        value.length !== CELL_COUNT) &&
+                        styles.verifyDisabled,
+                    ]}
+                  >
+                    <LinearGradient
+                      colors={
+                        verifyPressed
+                          ? ["#16a34a", "#15803d"]
+                          : ["#22c55e", "#16a34a"]
+                      }
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={styles.verifyGradient}
                     >
-                      Resend OTP
+                      {submitting ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <Text style={styles.verifyText}>Verify OTP</Text>
+                      )}
+                    </LinearGradient>
+                  </Pressable>
+
+                  <View style={styles.resendGroup}>
+                    <Text style={styles.resendHint}>
+                      Didn&apos;t receive the code?
                     </Text>
-                  )}
-                </Pressable>
+                    <Pressable
+                      onPress={onResend}
+                      disabled={timer > 0 || resending}
+                      onPressIn={() => {
+                        if (timer <= 0 && !resending) {
+                          void Haptics.impactAsync(
+                            Haptics.ImpactFeedbackStyle.Light,
+                          );
+                        }
+                      }}
+                      style={styles.resendWrap}
+                    >
+                      {resending ? (
+                        <ActivityIndicator color={WEB.green} />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.resend,
+                            timer > 0
+                              ? styles.resendDisabled
+                              : styles.resendActive,
+                          ]}
+                        >
+                          Resend OTP
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
               </View>
             </View>
-          </View>
+          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+        {ModalComponent}
       </View>
     </WebShell>
   );
@@ -451,27 +483,39 @@ const styles = StyleSheet.create({
     flex: 1,
     overflow: "hidden",
   },
+  bgImage: {
+    width: "100%",
+    height: "112%",
+    top: "-6%",
+    left: 0,
+  },
   flex: { flex: 1 },
   content: {
     alignItems: "center",
-    paddingHorizontal: s(24),
-    paddingTop: vs(20),
+    paddingHorizontal: s(20),
+    paddingTop: vs(16),
+  },
+  panelShell: {
+    width: "100%",
+    alignSelf: "center",
+    paddingHorizontal: 2,
+    marginBottom: vs(10),
   },
   panel: {
     width: "100%",
     overflow: "hidden",
-    borderRadius: ms(WEB.cardRadius, 0.45),
-    borderWidth: 1.5,
-    borderColor: "rgba(110,231,183,0.35)",
-    backgroundColor: "rgba(4, 10, 22, 0.64)",
-    paddingTop: vs(26),
-    paddingBottom: vs(22),
-    paddingHorizontal: s(18),
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.26)",
+    backgroundColor: "rgba(6, 15, 30, 0.72)",
+    paddingTop: vs(18),
+    paddingBottom: vs(18),
+    paddingHorizontal: s(16),
     shadowColor: "rgba(5, 10, 24, 0.9)",
-    shadowOffset: { width: 0, height: vs(8) },
-    shadowOpacity: 1,
-    shadowRadius: s(28),
-    elevation: 9,
+    shadowOffset: { width: 0, height: vs(6) },
+    shadowOpacity: 0.55,
+    shadowRadius: s(22),
+    elevation: 6,
   },
   header: {
     alignItems: "center",
@@ -480,7 +524,7 @@ const styles = StyleSheet.create({
   },
   verifyPill: {
     alignSelf: "center",
-    marginBottom: vs(10),
+    marginBottom: vs(8),
     borderRadius: 999,
     borderWidth: 1,
     borderColor: "rgba(167,243,208,0.35)",
@@ -503,18 +547,18 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   title: {
-    marginTop: vs(8),
+    marginTop: vs(6),
     fontFamily: FF.bold,
     fontSize: sf(WEB.otpTitle),
     color: WEB.white,
     letterSpacing: -0.01 * WEB.otpTitle,
   },
   sub: {
-    marginTop: vs(12),
+    marginTop: vs(10),
     textAlign: "center",
     fontFamily: FF.regular,
     fontSize: sf(14),
-    lineHeight: sf(22),
+    lineHeight: sf(20),
     color: "rgba(255,255,255,0.62)",
   },
   subStrong: {
@@ -522,7 +566,7 @@ const styles = StyleSheet.create({
     fontFamily: FF.medium,
   },
   bannerSlot: {
-    marginTop: vs(10),
+    marginTop: vs(8),
     marginBottom: vs(2),
     minHeight: vs(48),
     width: "100%",
@@ -548,14 +592,14 @@ const styles = StyleSheet.create({
   },
   codeFieldRoot: {
     width: "100%",
-    marginTop: vs(6),
+    marginTop: vs(4),
     alignSelf: "center",
   },
   otpCell: {
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(30, 30, 34, 0.95)",
-    borderWidth: 2.5,
+    borderWidth: 2,
   },
   otpCellEmpty: {
     borderColor: "rgba(255,255,255,0.06)",
@@ -577,7 +621,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   timerBlock: {
-    marginTop: vs(28),
+    marginTop: vs(20),
     alignItems: "center",
     gap: vs(4),
   },
@@ -595,15 +639,15 @@ const styles = StyleSheet.create({
     color: WEB.green,
   },
   verifyOuter: {
-    marginTop: vs(22),
+    marginTop: vs(16),
     width: "100%",
-    borderRadius: WEB.pillRadius,
+    borderRadius: 12,
     overflow: "hidden",
     shadowColor: "rgba(34, 197, 94, 0.35)",
     shadowOffset: { width: 0, height: vs(4) },
-    shadowOpacity: 1,
-    shadowRadius: s(15),
-    elevation: 6,
+    shadowOpacity: 0.65,
+    shadowRadius: s(10),
+    elevation: 5,
   },
   verifyDisabled: {
     opacity: 0.72,
@@ -615,8 +659,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   verifyGradient: {
-    minHeight: s(WEB.verifyBtnH),
-    paddingVertical: vs(16),
+    minHeight: 50,
+    paddingVertical: vs(12),
     paddingHorizontal: s(28),
     ...gradientPillInner,
     alignItems: "center",
@@ -624,12 +668,12 @@ const styles = StyleSheet.create({
   },
   verifyText: {
     fontFamily: FF.bold,
-    fontSize: sf(17),
+    fontSize: sf(16),
     lineHeight: sf(22),
     color: WEB.white,
   },
   resendGroup: {
-    marginTop: vs(28),
+    marginTop: vs(22),
     alignItems: "center",
     minHeight: vs(54),
   },

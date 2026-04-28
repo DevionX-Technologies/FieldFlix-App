@@ -279,7 +279,7 @@ export default function MainRecordingScreen() {
             <ActivityIndicator size="large" color={ACCENT} />
           </View>
         ) : null}
-        <ModalComponent />
+        {ModalComponent}
       </View>
     </WebShell>
   );

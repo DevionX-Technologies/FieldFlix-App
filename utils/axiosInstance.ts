@@ -1,6 +1,7 @@
 // utils/axiosInstance.ts
 import { BASE_URL } from "@/data/constants";
 import { Paths } from "@/data/paths";
+import { shouldSuppressGlobalAuthRedirect } from "@/utils/authRouteState";
 import { unwrapNestPayload } from "@/utils/unwrapNestPayload";
 import axios, {
   AxiosError,
@@ -98,6 +99,10 @@ axiosInstance.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: AxiosError) => {
     if (error.response?.status === 401) {
+      if (shouldSuppressGlobalAuthRedirect()) {
+        return Promise.reject(error);
+      }
+
       const reqUrl = String(error.config?.url ?? "");
       if (shouldSkipGlobalAuthLogout(reqUrl)) {
         return Promise.reject(error);

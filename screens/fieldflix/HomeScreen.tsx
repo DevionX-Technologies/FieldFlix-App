@@ -579,7 +579,7 @@ export default function FieldflixHomeScreen() {
                 label="Cricket"
                 selected={sport === "cricket"}
                 onPress={() => setSport("cricket")}
-                comingSoon
+                status="Active"
                 icon={
                   <MaterialCommunityIcons
                     name="cricket"
@@ -961,7 +961,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  logoImg: { width: 40, height: 40, resizeMode: "contain" },
+  logoImg: { width: 60, height: 60, resizeMode: "contain" },
   locationCol: { flex: 1, minWidth: 0 },
   locationKicker: {
     fontFamily: FF.medium,
@@ -1028,12 +1028,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 20,
     elevation: 12,
+    marginTop: 15,
   },
   heroTextBlock: {
     position: "absolute",
-    top: 20,
-    left: 24,
-    right: 24,
+    top: 16,
+    left: 16,
+    right: 16,
+    bottom: 16,
   },
   heroBadge: {
     alignSelf: "flex-start",
@@ -1089,8 +1091,8 @@ const styles = StyleSheet.create({
   heroCtaWrap: {
     position: "absolute",
     bottom: 16,
-    left: 12,
-    right: 12,
+    left: 14,
+    right: 14,
     alignItems: "center",
   },
   ctaPill: {
@@ -1100,7 +1102,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 340,
     minHeight: 62,
-    paddingVertical: 6,
+    paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: 999,
     backgroundColor: "#FFFFFF",
@@ -1193,11 +1195,12 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   sportCardSelected: {
+    borderWidth: 2.4,
     shadowColor: "#22c55e",
     shadowOpacity: 0.45,
     shadowRadius: 12,
     elevation: 8,
-    borderColor: "rgba(34,197,94,0.5)",
+    borderColor: "rgba(34,197,94,0.92)",
   },
   sportIconWrap: {
     flex: 1,

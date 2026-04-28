@@ -4,7 +4,7 @@
  */
 export const BG = {
   /** Login — `web` `/image5.png` */
-  login: require("@/assets/fieldflix-web/image515.png"),
+  login: require("@/assets/fieldflix-web/image517.png"),
   /** Signup — `/image15.jpeg` */
   signup: require("@/assets/fieldflix-web/image151.png"),
   /** OTP — `/image16.png` */

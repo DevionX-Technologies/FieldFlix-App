@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/theme";
 import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
 import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
 import { routeFromNotificationData } from "@/utils/notificationRouting";
+import { isPublicRoutePath, setCurrentPathname } from "@/utils/authRouteState";
 import {
     Inter_400Regular,
     Inter_500Medium,
@@ -113,6 +114,10 @@ export default function RootLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const [exitConfirmVisible, setExitConfirmVisible] = useState(false);
+
+  useEffect(() => {
+    setCurrentPathname(pathname);
+  }, [pathname]);
 
   const [interLoaded] = useFonts({
     Inter_400Regular,
@@ -338,16 +343,7 @@ export default function RootLayout() {
         return true;
       }
 
-      const publicRoutes = new Set([
-        Paths.root,
-        Paths.login,
-        Paths.signup,
-        Paths.otp,
-      ]);
-      const isPublicRoute =
-        publicRoutes.has(pathname) ||
-        pathname.startsWith("/shared/media/") ||
-        pathname.startsWith("/shared-recording/");
+      const isPublicRoute = isPublicRoutePath(pathname);
 
       // Keep default Android behavior on public/auth routes.
       if (isPublicRoute) {
@@ -374,17 +370,7 @@ export default function RootLayout() {
   }, [pathname, router, exitConfirmVisible]);
 
   useEffect(() => {
-    const publicRoutes = new Set([
-      Paths.root,
-      Paths.login,
-      Paths.signup,
-      Paths.otp,
-    ]);
-
-    const isPublicRoute =
-      publicRoutes.has(pathname) ||
-      pathname.startsWith("/shared/media/") ||
-      pathname.startsWith("/shared-recording/");
+    const isPublicRoute = isPublicRoutePath(pathname);
 
     let appStateChecksBlocked = true;
     const unblockTimer = setTimeout(() => {
@@ -443,7 +429,7 @@ export default function RootLayout() {
                   contentStyle: { backgroundColor: "#000000" },
                 }}
               />
-              <ModalComponent />
+              {ModalComponent}
               <Modal
                 transparent
                 animationType="fade"

@@ -48,7 +48,7 @@ export function useCustomModal() {
     showModal('loading', title, message || '');
   };
 
-  const ModalComponent = () => (
+  const ModalComponent = (
     <CustomModal
       visible={modalVisible}
       type={modalConfig.type}

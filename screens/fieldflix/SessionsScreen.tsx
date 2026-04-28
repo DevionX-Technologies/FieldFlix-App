@@ -51,6 +51,16 @@ function pickTemplateForSport(sport: string): SessionRowLocal {
 
 type SessionRowExtended = SessionRowForUi;
 
+function getSportIconName(
+  sport: string,
+): React.ComponentProps<typeof MaterialCommunityIcons>["name"] {
+  const s = sport.toLowerCase();
+  if (s.includes("cricket")) return "cricket";
+  if (s.includes("padel") || s.includes("paddle")) return "tennis-ball";
+  if (s.includes("pickle")) return "racquetball";
+  return "dumbbell";
+}
+
 function mapRecordingToSessionRow(r: any): SessionRowExtended {
   const sup = r?.turf?.sports_supported;
   const sport = sportLabelFromTurf(
@@ -176,6 +186,7 @@ function SessionCard({
   onPress: () => void;
 }) {
   const isProcessing = !row.isReady;
+  const sportIconName = getSportIconName(row.sport);
   const onShare = async () => {
     try {
       await Share.share({
@@ -201,7 +212,11 @@ function SessionCard({
         <View style={styles.rowBetween}>
           <View style={styles.row}>
             <View style={styles.iconCircle}>
-              <Image source={row.sportIcon} style={styles.icon} />
+              <MaterialCommunityIcons
+                name={sportIconName}
+                size={22}
+                color="#22C55E"
+              />
             </View>
             <Text style={styles.sport}>{row.sport}</Text>
           </View>

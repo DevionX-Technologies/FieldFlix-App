@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
     ActivityIndicator,
-    Animated,
     Modal,
+  Platform,
     Pressable,
     StyleSheet,
     useColorScheme,
@@ -70,30 +70,37 @@ export const CustomModal: React.FC<CustomModalProps> = ({
 
   const dynamicStyles = StyleSheet.create({
     modalContent: {
-      backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-      borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+      backgroundColor: isDark ? 'rgba(13,21,31,0.98)' : '#FFFFFF',
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0, 0, 0, 0.1)',
     },
     modalTitle: {
       color: isDark ? '#FFFFFF' : '#000000',
     },
     modalMessage: {
-      color: isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)',
+      color: isDark ? 'rgba(203,213,225,0.9)' : 'rgba(0, 0, 0, 0.7)',
     },
     modalButton: {
-      backgroundColor: colors.primary,
-      shadowColor: colors.primary,
+      backgroundColor: 'rgba(255,255,255,0.03)',
+      borderColor: 'rgba(255,255,255,0.2)',
+      shadowColor: 'transparent',
+    },
+    modalButtonText: {
+      color: '#FFFFFF',
     },
   });
 
   return (
     <Modal
-      animationType="fade"
-      transparent={true}
+      animationType={Platform.OS === 'android' ? 'none' : 'fade'}
+      transparent
       visible={visible}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      hardwareAccelerated
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <Animated.View style={[styles.modalContent, dynamicStyles.modalContent]}>
+        <View style={[styles.modalContent, dynamicStyles.modalContent]}>
           <View style={styles.modalHeader}>
             <View
               style={[
@@ -117,10 +124,10 @@ export const CustomModal: React.FC<CustomModalProps> = ({
               style={[styles.modalButton, dynamicStyles.modalButton]}
               onPress={onClose}
             >
-              <Text style={styles.modalButtonText}>{buttonText}</Text>
+              <Text style={[styles.modalButtonText, dynamicStyles.modalButtonText]}>{buttonText}</Text>
             </Pressable>
           )}
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -129,68 +136,65 @@ export const CustomModal: React.FC<CustomModalProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(2, 6, 23, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   modalContent: {
-    borderRadius: 20,
-    padding: 24,
-    minWidth: 280,
-    maxWidth: 320,
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 10,
+      height: 8,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
   },
   modalHeader: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   modalIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 0.2,
   },
   modalMessage: {
-    fontSize: 16,
+    fontSize: 13,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 20,
+    lineHeight: 19,
+    marginBottom: 18,
   },
   modalButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 25,
-    minWidth: 120,
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    minHeight: 44,
+    minWidth: 128,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#FFFFFF',
     textAlign: 'center',
   },
 });
