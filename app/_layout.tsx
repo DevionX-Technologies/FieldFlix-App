@@ -4,8 +4,8 @@ import "@/global.css";
 import { useCustomModal } from "@/hooks/useCustomModal";
 import { store } from "@/store";
 import { ThemeProvider } from "@/theme";
-import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
 import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
+import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -16,7 +16,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import Entypo from "@expo/vector-icons/Entypo";
-import messaging from "@react-native-firebase/messaging";
+import Constants, { ExecutionEnvironment } from "expo-constants";
 import * as Font from "expo-font";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
@@ -47,8 +47,9 @@ function handleFcmTap(
 ): void {
   try {
     const data = remoteMessage?.data ?? {};
-    const action = String(data?.click_action ?? data?.notification_type ?? "")
-      .toUpperCase();
+    const action = String(
+      data?.click_action ?? data?.notification_type ?? "",
+    ).toUpperCase();
     if (action === "RECORDING_COMPLETE") {
       const recordingId =
         data?.recordingId ?? data?.recording_id ?? data?.id ?? null;
@@ -66,15 +67,32 @@ function handleFcmTap(
   }
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+type FirebaseMessagingModule = {
+  (): {
+    onMessage: (cb: (remoteMessage: any) => void) => () => void;
+    getInitialNotification: () => Promise<any>;
+    onNotificationOpenedApp: (cb: (remoteMessage: any) => void) => () => void;
+    setBackgroundMessageHandler: (
+      cb: (remoteMessage: any) => Promise<void>,
+    ) => void;
+  };
+};
+
+const canUseExpoNotificationsInCurrentRuntime =
+  Constants.appOwnership !== "expo" &&
+  Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
+
+if (canUseExpoNotificationsInCurrentRuntime) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
 export default function RootLayout() {
   const { showModal, ModalComponent } = useCustomModal();
   const router = useRouter();
@@ -99,20 +117,20 @@ export default function RootLayout() {
         if (token) {
           setupFcmTokenRefreshListener();
         } else {
-        
         }
-      } catch (error) {
-       
-      }
+      } catch (error) {}
     };
     checkTokenAndSetupListener();
   }, []);
 
-
-  const notificationListener = useRef<Notifications.Subscription>(null);
-  const responseListener = useRef<Notifications.Subscription>(null);
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
 
   useEffect(() => {
+    if (!canUseExpoNotificationsInCurrentRuntime) {
+      return;
+    }
+
     // Foreground notification
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
@@ -147,10 +165,14 @@ export default function RootLayout() {
       });
 
     return () => {
-      Notifications.removeNotificationSubscription(
-        notificationListener.current!
-      );
-      Notifications.removeNotificationSubscription(responseListener.current!);
+      if (notificationListener.current) {
+        Notifications.removeNotificationSubscription(
+          notificationListener.current,
+        );
+      }
+      if (responseListener.current) {
+        Notifications.removeNotificationSubscription(responseListener.current);
+      }
     };
   }, []);
 
@@ -199,7 +221,7 @@ export default function RootLayout() {
   // Deep link handling
   useEffect(() => {
     const handleDeepLink = (url: string) => {
-      console.log('Deep link received:', url);
+      console.log("Deep link received:", url);
 
       // New shared-media link format used by createShareLink/APP_BASE_URL.
       // Matches both `fieldflicks://shared/media/<token>` and
@@ -208,19 +230,19 @@ export default function RootLayout() {
       if (sharedMediaMatch) {
         const token = sharedMediaMatch[1];
         router.push({
-          pathname: '/shared/media/[token]',
+          pathname: "/shared/media/[token]",
           params: { token },
         });
         return;
       }
 
       // Legacy in-app share path — keep for backwards compatibility.
-      if (url.includes('shared-recording')) {
+      if (url.includes("shared-recording")) {
         const recordingIdMatch = url.match(/shared-recording\/([^?&]+)/);
         if (recordingIdMatch) {
           const recordingId = recordingIdMatch[1];
           router.push({
-            pathname: '/shared-recording/[recordingId]',
+            pathname: "/shared-recording/[recordingId]",
             params: { recordingId },
           });
         }
@@ -235,7 +257,7 @@ export default function RootLayout() {
     });
 
     // Handle subsequent deep links when app is already running
-    const subscription = Linking.addEventListener('url', (event) => {
+    const subscription = Linking.addEventListener("url", (event) => {
       handleDeepLink(event.url);
     });
 
@@ -248,6 +270,14 @@ export default function RootLayout() {
     if (!canUseReactNativeFirebase()) {
       return;
     }
+    let messaging: FirebaseMessagingModule;
+    try {
+      messaging = require("@react-native-firebase/messaging")
+        .default as FirebaseMessagingModule;
+    } catch (e) {
+      console.warn("Firebase messaging module unavailable:", e);
+      return;
+    }
     const unsubs: (() => void)[] = [];
     try {
       unsubs.push(
@@ -255,9 +285,9 @@ export default function RootLayout() {
           showModal(
             "info",
             remoteMessage.notification?.title ?? "",
-            remoteMessage.notification?.body ?? ""
+            remoteMessage.notification?.body ?? "",
           );
-        })
+        }),
       );
 
       // Cold-start: app opened by tapping a notification.
