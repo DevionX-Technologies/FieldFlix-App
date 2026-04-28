@@ -3,6 +3,7 @@ import { BASE_URL } from '@/data/constants';
 import {
   embedToHighlightDto,
   getFieldflixApiErrorDebug,
+  getPublicFlickShorts,
   getRecordingById,
   getRecordingHighlights,
   getRecordingPlayback,
@@ -187,6 +188,32 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             return st === 'ready' || st === 'clip_created';
           });
         if (embedded.length > 0) hs = embedded;
+      }
+      if (hs.length === 0) {
+        try {
+          const shorts = await getPublicFlickShorts(undefined);
+          const fromShorts = shorts
+            .filter((s) => String(s.recordingId) === String(recordingId))
+            .map((s): RecordingHighlightDto => ({
+              id: `flick-${s.id}`,
+              relative_timestamp: `${Math.max(0, Math.round(Number(s.startSec ?? 0)))}s`,
+              button_click_timestamp: s.createdAt,
+              playback_id: s.muxPlaybackId ?? null,
+              mux_public_playback_url: s.muxPlaybackId
+                ? `https://stream.mux.com/${s.muxPlaybackId}.m3u8`
+                : null,
+              thumbnail_url: s.muxPlaybackId
+                ? `https://image.mux.com/${s.muxPlaybackId}/thumbnail.jpg?time=2`
+                : null,
+              status: 'ready',
+            }))
+            .filter((h) => Boolean(h.playback_id || h.mux_public_playback_url));
+          if (fromShorts.length > 0) hs = fromShorts;
+        } catch (e) {
+          debugLines.push(
+            `getPublicFlickShorts:\n${getFieldflixApiErrorDebug(e)}`,
+          );
+        }
       }
       try {
         pb = await getRecordingPlayback(recordingId);
