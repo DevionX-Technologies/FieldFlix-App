@@ -1,21 +1,26 @@
-import { BG } from '@/screens/fieldflix/bundledBackgrounds';
-import { createShareLink, getMyRecordings, getSharedWithMe } from '@/lib/fieldflix-api';
+import { Paths } from "@/data/paths";
+import { useRecordingReadyToast } from "@/hooks/useRecordingReadyToast";
 import {
-  highlightCountFromRecording,
+  createShareLink,
+  getMyRecordings,
+  getSharedWithMe,
+} from "@/lib/fieldflix-api";
+import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
+import { WebShell } from "@/screens/fieldflix/WebShell";
+import { BG } from "@/screens/fieldflix/bundledBackgrounds";
+import { FF } from "@/screens/fieldflix/fonts";
+import { RECORDINGS_REC_LOCAL } from "@/screens/fieldflix/recordingsAssets";
+import { WEB } from "@/screens/fieldflix/webDesign";
+import {
   formatRecordingListWhen,
+  highlightCountFromRecording,
   recordingDurationLabel,
   recordingIsReady,
   recordingThumbUrl,
-} from '@/utils/recordingDisplay';
-import { FF } from '@/screens/fieldflix/fonts';
-import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
-import { WebShell } from '@/screens/fieldflix/WebShell';
-import { RECORDINGS_REC_LOCAL } from '@/screens/fieldflix/recordingsAssets';
-import { WEB } from '@/screens/fieldflix/webDesign';
-import { useRecordingReadyToast } from '@/hooks/useRecordingReadyToast';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+} from "@/utils/recordingDisplay";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   Image,
   Pressable,
@@ -26,15 +31,14 @@ import {
   TextInput,
   View,
   type ImageSourcePropType,
-} from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
-import { Paths } from '@/data/paths';
+} from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 
-const REC_BG = '#020617';
-const ACCENT = '#22C55E';
-const MUTED = '#94a3b8';
+const REC_BG = "#020617";
+const ACCENT = "#22C55E";
+const MUTED = "#94a3b8";
 
-type TabId = 'my' | 'shared' | 'find';
+type TabId = "my" | "shared" | "find";
 
 function parseClockOnDay(base: Date, clock: string): number | null {
   const t = clock.trim().toLowerCase();
@@ -43,8 +47,8 @@ function parseClockOnDay(base: Date, clock: string): number | null {
   let h = parseInt(m[1], 10);
   const min = parseInt(m[2], 10);
   const ap = m[3]?.toLowerCase();
-  if (ap === 'pm' && h < 12) h += 12;
-  if (ap === 'am' && h === 12) h = 0;
+  if (ap === "pm" && h < 12) h += 12;
+  if (ap === "am" && h === 12) h = 0;
   const d = new Date(base);
   d.setHours(h, min, 0, 0);
   return d.getTime();
@@ -52,30 +56,33 @@ function parseClockOnDay(base: Date, clock: string): number | null {
 
 export default function FieldflixRecordingsScreen() {
   const router = useRouter();
-  const [tab, setTab] = useState<TabId>('my');
+  const [tab, setTab] = useState<TabId>("my");
   const [my, setMy] = useState<any[]>([]);
   const [shared, setShared] = useState<any[]>([]);
 
-  const [findLocation, setFindLocation] = useState('');
-  const [findGround, setFindGround] = useState('');
-  const [findDate, setFindDate] = useState('');
-  const [findStart, setFindStart] = useState('');
-  const [findEnd, setFindEnd] = useState('');
-  const [findPhone, setFindPhone] = useState('');
+  const [findLocation, setFindLocation] = useState("");
+  const [findGround, setFindGround] = useState("");
+  const [findDate, setFindDate] = useState("");
+  const [findStart, setFindStart] = useState("");
+  const [findEnd, setFindEnd] = useState("");
+  const [findPhone, setFindPhone] = useState("");
   const [findMatches, setFindMatches] = useState<any[] | null>(null);
 
-  const onShareRecording = useCallback(async (recordingId: string, title: string) => {
-    try {
-      const { shareableLink } = await createShareLink(recordingId);
-      await Share.share({
-        message: `Watch my game on FieldFlicks: ${shareableLink}`,
-        url: shareableLink,
-        title,
-      });
-    } catch {
-      // user dismissed or share unavailable — silent
-    }
-  }, []);
+  const onShareRecording = useCallback(
+    async (recordingId: string, title: string) => {
+      try {
+        const { shareableLink } = await createShareLink(recordingId);
+        await Share.share({
+          message: `Watch my game on FieldFlicks: ${shareableLink}`,
+          url: shareableLink,
+          title,
+        });
+      } catch {
+        // user dismissed or share unavailable — silent
+      }
+    },
+    [],
+  );
 
   const runFindInMyRecordings = useCallback(() => {
     const locQ = findLocation.trim().toLowerCase();
@@ -84,10 +91,13 @@ export default function FieldflixRecordingsScreen() {
       const turf = r.turf;
       const hay = [turf?.name, turf?.address_line, turf?.city, turf?.location]
         .filter(Boolean)
-        .join(' ')
+        .join(" ")
         .toLowerCase();
       if (locQ) {
-        const parts = locQ.split(/[,\n]+/).map((p) => p.trim()).filter(Boolean);
+        const parts = locQ
+          .split(/[,\n]+/)
+          .map((p) => p.trim())
+          .filter(Boolean);
         const anyPart = parts.some((p) => p.length > 0 && hay.includes(p));
         if (!anyPart && !hay.includes(locQ)) return false;
       }
@@ -95,7 +105,10 @@ export default function FieldflixRecordingsScreen() {
       const st = r.startTime ? new Date(String(r.startTime)) : null;
       if (st && findDate.trim()) {
         const fd = Date.parse(findDate);
-        if (!Number.isNaN(fd) && st.toDateString() !== new Date(fd).toDateString()) {
+        if (
+          !Number.isNaN(fd) &&
+          st.toDateString() !== new Date(fd).toDateString()
+        ) {
           return false;
         }
       }
@@ -136,13 +149,13 @@ export default function FieldflixRecordingsScreen() {
           return {
             id: String(s?.id ?? i),
             recordingId: s?.id ? String(s.id) : null,
-            title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? 'Recording',
-            location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? '',
+            title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Recording",
+            location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? "",
             when: formatRecordingListWhen(s?.startTime),
             duration: recordingDurationLabel(s),
             thumbUrl: recordingThumbUrl(s),
             highlights: h > 0 ? h : null,
-            status: String(s?.status ?? '').toLowerCase(),
+            status: String(s?.status ?? "").toLowerCase(),
             isReady: recordingIsReady(s),
             tags: [] as string[],
             moreTags: 0,
@@ -155,15 +168,20 @@ export default function FieldflixRecordingsScreen() {
       ? shared.map((s: any, i: number) => {
           const rec = s?.recording;
           const td = rec?.turf_detail;
-          const loc = [td?.city, td?.state].filter(Boolean).join(', ') || td?.address_line || '';
+          const loc =
+            [td?.city, td?.state].filter(Boolean).join(", ") ||
+            td?.address_line ||
+            "";
           return {
             id: String(s?.id ?? i),
             recordingId: rec?.id ? String(rec.id) : null,
             shareToken: s?.share_token ?? rec?.share_token ?? null,
             title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
-            highlights: Array.isArray(rec?.recordingHighlights) ? rec.recordingHighlights.length : 0,
-            shareWith: s?.shared_with_user_name || '—',
-            ownerName: rec?.owner_name ?? '',
+            highlights: Array.isArray(rec?.recordingHighlights)
+              ? rec.recordingHighlights.length
+              : 0,
+            shareWith: s?.shared_with_user_name || "—",
+            ownerName: rec?.owner_name ?? "",
             location: loc,
             thumbUrl: recordingThumbUrl(rec),
             duration: recordingDurationLabel(rec),
@@ -183,58 +201,66 @@ export default function FieldflixRecordingsScreen() {
               onPress={() => router.push(Paths.home)}
               style={styles.logoBtn}
             >
-              <Image source={RECORDINGS_REC_LOCAL.headLogo} style={{ width: 24, height: 24 }} resizeMode="cover" />
+              <Image
+                source={RECORDINGS_REC_LOCAL.headLogo}
+                style={{ width: 24, height: 24 }}
+                resizeMode="cover"
+              />
             </Pressable>
             <Text style={styles.headTitle}>Recordings</Text>
           </View>
           <Pressable accessibilityLabel="Filter">
-            <Image source={RECORDINGS_REC_LOCAL.headFilter} style={{ width: 24, height: 24 }} resizeMode="cover" />
+            <Image
+              source={RECORDINGS_REC_LOCAL.headFilter}
+              style={{ width: 24, height: 24 }}
+              resizeMode="cover"
+            />
           </Pressable>
         </View>
 
         <View style={styles.segOuter}>
           <View style={styles.segTrack}>
             <SegTab
-              active={tab === 'my'}
-              onPress={() => setTab('my')}
+              active={tab === "my"}
+              onPress={() => setTab("my")}
               iconSource={RECORDINGS_REC_LOCAL.tabMy}
               label="My Recordings"
             />
             <SegTab
-              active={tab === 'shared'}
-              onPress={() => setTab('shared')}
+              active={tab === "shared"}
+              onPress={() => setTab("shared")}
               iconSource={RECORDINGS_REC_LOCAL.tabShared}
               label="Shared Recordings"
             />
             <SegTab
-              active={tab === 'find'}
-              onPress={() => setTab('find')}
+              active={tab === "find"}
+              onPress={() => setTab("find")}
               iconSource={RECORDINGS_REC_LOCAL.tabFind}
               label="Find Recordings"
             />
           </View>
         </View>
 
-        {readyState.kind !== 'idle' ? (
+        {readyState.kind !== "idle" ? (
           <View style={styles.readyToast}>
             <View style={styles.readyToastDot} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.readyToastTitle} numberOfLines={1}>
-                {readyState.kind === 'ready'
-                  ? 'Your recording is ready'
-                  : readyState.kind === 'failed'
-                    ? 'Recording failed to process'
-                    : 'Processing your recording…'}
+                {readyState.kind === "ready"
+                  ? "Your recording is ready"
+                  : readyState.kind === "failed"
+                    ? "Recording failed to process"
+                    : "Processing your recording…"}
               </Text>
               <Text style={styles.readyToastBody} numberOfLines={2}>
-                {readyState.kind === 'ready'
-                  ? 'Open Highlights to watch the preview and unlock the full match.'
-                  : readyState.kind === 'failed'
-                    ? 'Something went wrong on our side. Please try again.'
-                    : 'Hang tight — we\'ll let you know the moment it\'s ready.'}
+                {readyState.kind === "ready"
+                  ? "Open Highlights to watch the preview and unlock the full match."
+                  : readyState.kind === "failed"
+                    ? "Something went wrong on our side. Please try again."
+                    : "Hang tight — we'll let you know the moment it's ready."}
               </Text>
             </View>
-            {readyState.kind === 'ready' ? (
+            {readyState.kind === "ready" ? (
               <Pressable
                 style={styles.readyToastCta}
                 onPress={() => {
@@ -264,11 +290,12 @@ export default function FieldflixRecordingsScreen() {
           contentContainerStyle={styles.main}
           showsVerticalScrollIndicator={false}
         >
-          {tab === 'my' && (
+          {tab === "my" && (
             <View style={styles.myList}>
               {myRows.length === 0 ? (
                 <Text style={styles.emptyList}>
-                  No recordings yet. Scan a court QR and start a session to build your library.
+                  No recordings yet. Scan a court QR and start a session to
+                  build your library.
                 </Text>
               ) : null}
               {myRows.map((row) => (
@@ -295,21 +322,9 @@ export default function FieldflixRecordingsScreen() {
                     <View style={styles.thumbDur}>
                       <Text style={styles.thumbDurText}>{row.duration}</Text>
                     </View>
-                    <Pressable
-                      style={styles.thumbShare}
-                      onPress={() => {
-                        if (row.recordingId) {
-                          void onShareRecording(row.recordingId, row.title);
-                        }
-                      }}
-                      accessibilityLabel="Share recording"
-                      hitSlop={8}
-                    >
-                      <ShareIcon color="#fff" size={14} />
-                    </Pressable>
                     <View style={styles.thumbPlayOverlay}>
                       <View style={styles.thumbPlayBtn}>
-                        <PlayIcon color="#0a0a0a" size={18} />
+                        <PlayIcon color="#0a0a0a" size={16} />
                       </View>
                     </View>
                   </View>
@@ -318,21 +333,23 @@ export default function FieldflixRecordingsScreen() {
                       {row.title}
                     </Text>
                     <View style={styles.myLine}>
-                      <MapPinIcon color={ACCENT} size={14} />
+                      <MapPinIcon color={ACCENT} size={12} />
                       <Text style={styles.myLineText} numberOfLines={1}>
                         {row.location}
                       </Text>
                     </View>
                     <View style={styles.myLine}>
-                      <CalendarIcon color={ACCENT} size={14} />
+                      <CalendarIcon color={ACCENT} size={12} />
                       <Text style={styles.myLineTextMuted} numberOfLines={1}>
                         {row.when}
                       </Text>
                     </View>
                     {row.highlights != null ? (
                       <View style={styles.myLine}>
-                        <TrophyIcon color={ACCENT} size={14} />
-                        <Text style={styles.myLineAccent}>{row.highlights} Highlights</Text>
+                        <TrophyIcon color={ACCENT} size={12} />
+                        <Text style={styles.myLineAccent}>
+                          {row.highlights} Highlights
+                        </Text>
                       </View>
                     ) : null}
                     {!row.isReady ? (
@@ -342,17 +359,28 @@ export default function FieldflixRecordingsScreen() {
                         </Text>
                       </View>
                     ) : null}
+                    <View style={styles.tagRow}>
+                      {row.tags.map((t) => (
+                        <View key={t} style={styles.tag}>
+                          <Text style={styles.tagText}>{t}</Text>
+                        </View>
+                      ))}
+                      <View style={styles.tagMore}>
+                        <Text style={styles.tagMoreText}>+{row.moreTags}</Text>
+                      </View>
+                    </View>
                   </View>
                 </Pressable>
               ))}
             </View>
           )}
 
-          {tab === 'shared' && (
+          {tab === "shared" && (
             <View style={styles.sharedList}>
               {sharedRows.length === 0 ? (
                 <Text style={styles.emptyList}>
-                  Nothing shared with you yet. When someone shares a recording, it will show here.
+                  Nothing shared with you yet. When someone shares a recording,
+                  it will show here.
                 </Text>
               ) : null}
               {sharedRows.map((card) => (
@@ -381,7 +409,11 @@ export default function FieldflixRecordingsScreen() {
                     resizeMode="cover"
                   />
                   <LinearGradient
-                    colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.94)']}
+                    colors={[
+                      "rgba(0,0,0,0.15)",
+                      "rgba(0,0,0,0.45)",
+                      "rgba(0,0,0,0.94)",
+                    ]}
                     locations={[0, 0.55, 1]}
                     style={StyleSheet.absoluteFill}
                   />
@@ -392,7 +424,9 @@ export default function FieldflixRecordingsScreen() {
                       </View>
                       <View style={styles.sharedDur}>
                         <ClockIcon color="rgba(255,255,255,0.92)" size={14} />
-                        <Text style={styles.sharedDurText}>{card.duration}</Text>
+                        <Text style={styles.sharedDurText}>
+                          {card.duration}
+                        </Text>
                       </View>
                     </View>
                     <View style={styles.sharedMid}>
@@ -400,18 +434,20 @@ export default function FieldflixRecordingsScreen() {
                         {card.title}
                       </Text>
                       <Text style={styles.sharedMeta} numberOfLines={2}>
-                        {card.location || 'No location available'}
+                        {card.location || "No location available"}
                       </Text>
                     </View>
                     <View style={styles.sharedActions}>
                       <View style={styles.sharedPills}>
                         <View style={styles.sharedPill}>
-                          <TrophyIcon color={ACCENT} size={16} />
-                          <Text style={styles.sharedPillText}>{card.highlights} Highlights</Text>
+                          <TrophyIcon color={ACCENT} size={14} />
+                          <Text style={styles.sharedPillText}>
+                            {card.highlights} Highlights
+                          </Text>
                         </View>
                         <View style={styles.sharedPill}>
                           <Text style={styles.sharedPillText} numberOfLines={1}>
-                            From: {card.ownerName || '—'}
+                            Share with: {card.shareWith}
                           </Text>
                         </View>
                       </View>
@@ -425,7 +461,7 @@ export default function FieldflixRecordingsScreen() {
                         }}
                         hitSlop={8}
                       >
-                        <ShareIcon color="#0a0a0a" size={18} />
+                        <ShareIcon color="#0a0a0a" size={16} />
                       </Pressable>
                     </View>
                   </View>
@@ -434,12 +470,18 @@ export default function FieldflixRecordingsScreen() {
             </View>
           )}
 
-          {tab === 'find' && (
+          {tab === "find" && (
             <View style={styles.findWrap}>
               <View style={styles.findHeroOuter}>
-                <Image source={RECORDINGS_REC_LOCAL.hero} style={styles.findHeroImg} resizeMode="cover" />
-                <View style={styles.findHeroBlobA} />
-                <View style={styles.findHeroBlobB} />
+                <Image
+                  source={RECORDINGS_REC_LOCAL.hero}
+                  style={styles.findHeroImg}
+                  resizeMode="cover"
+                />
+                {/* Glowing orb - layered for depth */}
+                <View style={styles.findOrbOuter} />
+                <View style={styles.findOrbMid} />
+                <View style={styles.findOrbCore} />
                 <View style={styles.findHeroInner}>
                   <View style={styles.findBadge}>
                     <Image
@@ -473,7 +515,9 @@ export default function FieldflixRecordingsScreen() {
                   <Text style={styles.findStepText}>Schedule</Text>
                 </View>
                 <View style={[styles.findStep, styles.findStepMuted]}>
-                  <View style={[styles.findStepDot, { backgroundColor: MUTED }]} />
+                  <View
+                    style={[styles.findStepDot, { backgroundColor: MUTED }]}
+                  />
                   <Text style={styles.findStepTextMuted}>Verify</Text>
                 </View>
               </View>
@@ -496,8 +540,19 @@ export default function FieldflixRecordingsScreen() {
                   <View style={styles.findGridCol}>
                     <View style={styles.findLabelRow}>
                       <View style={styles.findSmallIcon}>
-                        <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-                          <Circle cx={12} cy={12} r={9} stroke={MUTED} strokeWidth={2} />
+                        <Svg
+                          width={12}
+                          height={12}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <Circle
+                            cx={12}
+                            cy={12}
+                            r={9}
+                            stroke={MUTED}
+                            strokeWidth={2}
+                          />
                         </Svg>
                       </View>
                       <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
@@ -554,7 +609,15 @@ export default function FieldflixRecordingsScreen() {
               </View>
 
               <Pressable style={styles.findCta} onPress={runFindInMyRecordings}>
-                <PlayIcon color="#fff" size={18} />
+                <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                  <Path
+                    d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z"
+                    stroke="#fff"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
                 <Text style={styles.findCtaText}>Find My Game</Text>
               </Pressable>
 
@@ -562,11 +625,11 @@ export default function FieldflixRecordingsScreen() {
                 <View style={styles.findResults}>
                   <Text style={styles.findResultsTitle}>
                     {findMatches.length === 0
-                      ? 'No matches in your recordings for those details.'
-                      : `${findMatches.length} match${findMatches.length === 1 ? '' : 'es'} in your library`}
+                      ? "No matches in your recordings for those details."
+                      : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"} in your library`}
                   </Text>
                   {findMatches.map((r: any) => {
-                    const title = r?.turf?.name ?? r?.name ?? 'Recording';
+                    const title = r?.turf?.name ?? r?.name ?? "Recording";
                     const when = formatRecordingListWhen(r?.startTime);
                     return (
                       <View key={String(r.id)} style={styles.findResultRow}>
@@ -602,13 +665,26 @@ export default function FieldflixRecordingsScreen() {
                   <Text style={styles.verifyTitleText}>Verify access</Text>
                 </View>
                 <Text style={styles.verifyHint}>
-                  (Enter the mobile number of the player who started the recording)
+                  (Enter the mobile number of the player who started the
+                  recording)
                 </Text>
                 <View style={styles.phoneRow}>
+                  <View style={styles.phoneFlagBox}>
+                    <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                      <Path
+                        d="M3 3h18v18H3z"
+                        stroke={ACCENT}
+                        strokeWidth={1.5}
+                        strokeLinejoin="round"
+                      />
+                    </Svg>
+                  </View>
                   <Text style={styles.phoneCc}>+91</Text>
                   <TextInput
                     value={findPhone}
-                    onChangeText={(v) => setFindPhone(v.replace(/\D/g, '').slice(0, 10))}
+                    onChangeText={(v) =>
+                      setFindPhone(v.replace(/\D/g, "").slice(0, 10))
+                    }
                     keyboardType="number-pad"
                     placeholder="Enter your mobile..."
                     placeholderTextColor="rgba(255,255,255,0.35)"
@@ -638,9 +714,19 @@ function SegTab({
   label: string;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.segTab, active && styles.segTabActive]}>
-      <Image source={iconSource} style={{ width: 24, height: 24 }} resizeMode="contain" />
-      <Text style={[styles.segLabel, active && styles.segLabelActive]} numberOfLines={1}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.segTab, active && styles.segTabActive]}
+    >
+      <Image
+        source={iconSource}
+        style={{ width: 24, height: 24 }}
+        resizeMode="contain"
+      />
+      <Text
+        style={[styles.segLabel, active && styles.segLabelActive]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>
@@ -700,7 +786,12 @@ function ClockIcon({ color, size }: { color: string; size: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2} />
-      <Path d="M12 7v6l3 2" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Path
+        d="M12 7v6l3 2"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
     </Svg>
   );
 }
@@ -730,21 +821,26 @@ function ShareIcon({ color, size }: { color: string; size: number }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   head: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingTop: 10,
     paddingBottom: 4,
-    width: '100%',
+    width: "100%",
   },
-  headLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  headLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
   logoBtn: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 3,
   },
   headTitle: {
@@ -756,23 +852,23 @@ const styles = StyleSheet.create({
   segOuter: {
     paddingHorizontal: 16,
     marginTop: 20,
-    width: '100%',
+    width: "100%",
   },
   segTrack: {
-    flexDirection: 'row',
+    flexDirection: "row",
     borderRadius: 20,
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    backgroundColor: "rgba(30, 41, 59, 0.5)",
     padding: 5,
     minHeight: 70,
-    width: '100%',
+    width: "100%",
     maxWidth: 370,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   segTab: {
     flex: 1,
     minHeight: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 5,
     borderRadius: 20,
     paddingHorizontal: 4,
@@ -786,143 +882,135 @@ const styles = StyleSheet.create({
     fontFamily: FF.semiBold,
     fontSize: 10,
     lineHeight: 14,
-    textAlign: 'center',
+    textAlign: "center",
     color: MUTED,
   },
   segLabelActive: {
-    color: '#fff',
+    color: "#fff",
   },
   main: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 128,
-    width: '100%',
+    width: "100%",
   },
 
-  myList: { gap: 20, marginTop: 8 },
+  myList: { gap: 14, marginTop: 8 },
   myRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: '#0c1218',
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 6,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#0c1218",
+    padding: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
   },
   thumb: {
-    width: 120,
-    height: 104,
-    borderRadius: 12,
-    overflow: 'hidden',
-    position: 'relative',
+    width: 110,
+    height: 110,
+    borderRadius: 10,
+    overflow: "hidden",
+    position: "relative",
     flexShrink: 0,
   },
   thumbBar: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
-    width: 4,
+    width: 3,
     backgroundColor: ACCENT,
     zIndex: 10,
   },
   thumbDur: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    paddingVertical: 2,
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    paddingVertical: 3,
     paddingHorizontal: 6,
     borderRadius: 4,
-    backgroundColor: 'rgba(0,0,0,0.8)',
+    backgroundColor: "rgba(0,0,0,0.85)",
     zIndex: 10,
   },
   thumbDurText: {
-    fontFamily: FF.semiBold,
+    fontFamily: FF.bold,
     fontSize: 10,
-    color: '#fff',
-    fontVariant: ['tabular-nums'],
+    color: "#fff",
+    fontVariant: ["tabular-nums"],
   },
   thumbShare: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    zIndex: 10,
+    display: "none",
   },
   thumbPlayOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   thumbPlayBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  myBody: { flex: 1, minWidth: 0, gap: 6 },
+  myBody: { flex: 1, minWidth: 0, gap: 5 },
   myTitle: {
     fontFamily: FF.bold,
-    fontSize: 14,
-    lineHeight: 19,
-    letterSpacing: -0.14,
-    color: '#fff',
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.2,
+    color: "#fff",
+    marginBottom: 2,
   },
-  myLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  myLine: { flexDirection: "row", alignItems: "center", gap: 6 },
   myLineText: {
     flex: 1,
-    fontFamily: FF.regular,
+    fontFamily: FF.medium,
     fontSize: 12,
-    lineHeight: 17,
-    color: 'rgba(255,255,255,0.78)',
+    lineHeight: 16,
+    color: "rgba(255,255,255,0.7)",
   },
   myLineTextMuted: {
     flex: 1,
-    fontFamily: FF.regular,
+    fontFamily: FF.medium,
     fontSize: 12,
-    lineHeight: 17,
-    color: 'rgba(255,255,255,0.65)',
+    lineHeight: 16,
+    color: "rgba(255,255,255,0.6)",
   },
   myLineAccent: {
     flex: 1,
     fontFamily: FF.semiBold,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
     color: ACCENT,
   },
   myLineProcessing: {
     flex: 1,
     fontFamily: FF.semiBold,
     fontSize: 11,
-    lineHeight: 16,
-    color: 'rgba(234,179,8,0.95)',
+    lineHeight: 15,
+    color: "rgba(234,179,8,0.95)",
   },
   readyToast: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     marginHorizontal: 16,
     marginTop: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderRadius: 16,
-    backgroundColor: 'rgba(34,197,94,0.14)',
+    backgroundColor: "rgba(34,197,94,0.14)",
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.45)',
+    borderColor: "rgba(34,197,94,0.45)",
   },
   readyToastDot: {
     width: 10,
@@ -933,13 +1021,13 @@ const styles = StyleSheet.create({
   readyToastTitle: {
     fontFamily: FF.bold,
     fontSize: 13,
-    color: '#fff',
+    color: "#fff",
   },
   readyToastBody: {
     marginTop: 2,
     fontFamily: FF.regular,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.78)',
+    color: "rgba(255,255,255,0.78)",
   },
   readyToastCta: {
     paddingHorizontal: 14,
@@ -950,313 +1038,317 @@ const styles = StyleSheet.create({
   readyToastCtaText: {
     fontFamily: FF.bold,
     fontSize: 12,
-    color: '#fff',
+    color: "#fff",
   },
   readyToastClose: {
     width: 28,
     height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   readyToastCloseText: {
     fontFamily: FF.bold,
     fontSize: 22,
     lineHeight: 26,
-    color: 'rgba(255,255,255,0.7)',
+    color: "rgba(255,255,255,0.7)",
   },
   tagRow: {
-    marginTop: 4,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
+    marginTop: 6,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
   },
   tag: {
-    paddingVertical: 2,
+    paddingVertical: 4,
     paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: '#1e3521',
+    borderRadius: 6,
+    backgroundColor: "rgba(34,197,94,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.25)",
   },
   tagText: {
     fontFamily: FF.semiBold,
-    fontSize: 10,
+    fontSize: 11,
     color: ACCENT,
   },
   tagMore: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: "rgba(255,255,255,0.12)",
   },
   tagMoreText: {
     fontFamily: FF.semiBold,
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    color: "rgba(255,255,255,0.5)",
   },
 
-  sharedList: { gap: 24, marginTop: 8 },
+  sharedList: { gap: 16, marginTop: 8 },
   sharedCard: {
-    position: 'relative',
-    borderRadius: 20,
+    position: "relative",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
-    height: 200,
-    backgroundColor: '#0a0f14',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.45,
-    shadowRadius: 24,
-    elevation: 10,
+    borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+    height: 180,
+    backgroundColor: "#0a0f14",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
   sharedMedia: {
     ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   sharedOverlay: {
-    position: 'absolute',
+    position: "absolute",
     inset: 0 as any,
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    padding: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 18,
-    justifyContent: 'space-between',
+    padding: 14,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    justifyContent: "space-between",
   },
   sharedTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
   },
   sharedReady: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   sharedReadyText: {
     fontFamily: FF.bold,
-    fontSize: 12,
-    color: '#171717',
+    fontSize: 11,
+    color: "#171717",
   },
   sharedDur: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
   sharedDurText: {
     fontFamily: FF.semiBold,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.92)',
+    fontSize: 11,
+    color: "rgba(255,255,255,0.92)",
   },
   sharedMid: {
-    justifyContent: 'center',
-    paddingVertical: 4,
+    justifyContent: "center",
+    paddingVertical: 2,
   },
   sharedTitle: {
     fontFamily: FF.bold,
-    fontSize: 18,
-    lineHeight: 23,
-    letterSpacing: -0.36,
-    color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.75)',
+    fontSize: 17,
+    lineHeight: 22,
+    letterSpacing: -0.3,
+    color: "#fff",
+    textShadowColor: "rgba(0,0,0,0.8)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    textShadowRadius: 4,
   },
   sharedMeta: {
-    marginTop: 6,
+    marginTop: 4,
     fontFamily: FF.medium,
-    fontSize: 13,
-    lineHeight: 19,
-    color: 'rgba(255,255,255,0.62)',
+    fontSize: 12,
+    lineHeight: 17,
+    color: "rgba(255,255,255,0.65)",
   },
   sharedActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingTop: 2,
   },
   sharedPills: {
     flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
   },
   sharedPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 32,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 28,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.22)',
-    backgroundColor: 'rgba(30, 53, 33, 0.92)',
+    borderColor: "rgba(34,197,94,0.25)",
+    backgroundColor: "rgba(30, 53, 33, 0.85)",
   },
   sharedPillText: {
     fontFamily: FF.semiBold,
-    fontSize: 12,
+    fontSize: 11,
     color: ACCENT,
   },
   sharedFab: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
   },
 
-  findWrap: { gap: 18, marginTop: 8 },
+  findWrap: { gap: 12, marginTop: 8 },
+
+  // ── Hero card ──────────────────────────────────────────────
   findHeroOuter: {
-    position: 'relative',
-    overflow: 'hidden',
-    minHeight: 182,
-    width: '100%',
-    maxWidth: 370,
-    alignSelf: 'center',
-    borderRadius: 20,
-    backgroundColor: '#05111a',
+    position: "relative",
+    overflow: "hidden",
+    minHeight: 170,
+    width: "100%",
+    borderRadius: 16,
+    backgroundColor: "#071220",
   },
   findHeroImg: {
     ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
-  findHeroBlobA: {
-    position: 'absolute',
-    width: 155,
-    height: 135,
-    right: -18,
-    top: '35%',
-    backgroundColor: 'rgba(34,197,94,0.42)',
-    borderRadius: 80,
-    opacity: 0.65,
-    transform: [{ rotate: '-14deg' }],
+  // Glowing orb effect - 3 layers for soft glow
+  findOrbOuter: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    right: -20,
+    top: 0,
+    backgroundColor: "rgba(34,197,94,0.15)",
+    borderRadius: 90,
+    opacity: 0.9,
   },
-  findHeroBlobB: {
-    position: 'absolute',
-    width: 95,
-    height: 105,
-    right: 32,
-    top: '45%',
-    backgroundColor: 'rgba(34,197,94,0.28)',
-    borderRadius: 60,
-    opacity: 0.5,
-    transform: [{ rotate: '8deg' }],
+  findOrbMid: {
+    position: "absolute",
+    width: 130,
+    height: 130,
+    right: 5,
+    top: 25,
+    backgroundColor: "rgba(34,197,94,0.35)",
+    borderRadius: 65,
+    opacity: 0.85,
+  },
+  findOrbCore: {
+    position: "absolute",
+    width: 90,
+    height: 90,
+    right: 25,
+    top: 45,
+    backgroundColor: "rgba(34,197,94,0.6)",
+    borderRadius: 45,
+    opacity: 0.95,
   },
   findHeroInner: {
-    padding: 20,
-    paddingRight: 96,
+    padding: 18,
+    paddingRight: 100,
     zIndex: 2,
   },
   findBadge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    backgroundColor: 'rgba(34,197,94,0.1)',
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: "rgba(34,197,94,0.12)",
   },
   findBadgeText: {
     fontFamily: FF.semiBold,
-    fontSize: 12,
-    letterSpacing: 1,
+    fontSize: 11,
+    letterSpacing: 1.2,
     color: ACCENT,
   },
   findHeadline: {
-    marginTop: 10,
-    maxWidth: 200,
+    marginTop: 8,
     fontFamily: FF.bold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: '#fff',
+    fontSize: 22,
+    lineHeight: 28,
+    color: "#fff",
   },
   findEm: {
-    fontStyle: 'italic',
+    fontStyle: "italic",
     color: ACCENT,
   },
   findSub: {
-    marginTop: 10,
-    maxWidth: 220,
-    fontFamily: FF.semiBold,
-    fontSize: 14,
-    lineHeight: 19,
-    color: MUTED,
+    marginTop: 6,
+    maxWidth: 210,
+    fontFamily: FF.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.6)",
   },
   findPlayRing: {
-    position: 'absolute',
-    right: 12,
-    top: '50%',
-    marginTop: -43,
-    width: 86,
-    height: 86,
-    borderRadius: 43,
-    backgroundColor: 'rgba(100,116,139,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    position: "absolute",
+    right: 16,
+    top: "50%",
+    marginTop: -36,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    // backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+
     zIndex: 3,
   },
   findPlayCore: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(15,23,42,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(15,23,42,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
+  // ── Step pills ─────────────────────────────────────────────
   findSteps: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 5,
-    width: '100%',
-    maxWidth: 370,
-    alignSelf: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
   },
   findStep: {
     flex: 1,
-    minWidth: 100,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: 'rgba(34,197,94,0.1)',
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.2)",
   },
   findStepMuted: {
-    backgroundColor: 'rgba(148,163,184,0.1)',
+    backgroundColor: "rgba(148,163,184,0.07)",
+    borderColor: "rgba(148,163,184,0.15)",
   },
   findStepDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: ACCENT,
   },
@@ -1270,78 +1362,83 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: MUTED,
   },
+
+  // ── Form panels ────────────────────────────────────────────
   findPanel: {
-    width: '100%',
-    maxWidth: 370,
-    alignSelf: 'center',
-    borderRadius: 20,
-    padding: 20,
-    backgroundColor: 'rgba(30,41,59,0.5)',
+    width: "100%",
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: "#0d1626",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
   },
   findPanelVerify: {
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.35)',
+    borderColor: "rgba(34,197,94,0.3)",
+    backgroundColor: "#0a1a12",
   },
   findGrid2: {
-    flexDirection: 'row',
-    gap: 10,
+    flexDirection: "row",
+    gap: 12,
   },
   findGridCol: { flex: 1, minWidth: 0 },
   findLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginBottom: 8,
   },
-  findSmallIcon: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
+  findSmallIcon: {
+    width: 14,
+    height: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   findLabel: {
     fontFamily: FF.semiBold,
-    fontSize: 12,
-    letterSpacing: 0.5,
+    fontSize: 10,
+    letterSpacing: 0.8,
     color: MUTED,
   },
   findInput: {
-    width: '100%',
-    minHeight: 40,
-    borderRadius: 20,
+    width: "100%",
+    height: 42,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(100,116,139,0.45)',
-    backgroundColor: 'rgba(15,23,42,0.95)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: 12,
     fontFamily: FF.semiBold,
     fontSize: 13,
-    color: '#fff',
+    color: "#fff",
   },
+
+  // ── CTA button ─────────────────────────────────────────────
   findCta: {
-    width: '100%',
-    maxWidth: 331,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    borderRadius: 25,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 30,
+    paddingVertical: 15,
     backgroundColor: ACCENT,
     shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
     elevation: 8,
+    marginTop: 4,
   },
   findCtaText: {
     fontFamily: FF.bold,
     fontSize: 16,
-    lineHeight: 22,
-    color: '#fff',
+    color: "#fff",
   },
+
+  // ── Results ────────────────────────────────────────────────
   findResults: {
-    width: '100%',
-    maxWidth: 331,
-    alignSelf: 'center',
-    marginTop: 20,
+    width: "100%",
+    marginTop: 4,
     gap: 10,
   },
   findResultsTitle: {
@@ -1353,14 +1450,14 @@ const styles = StyleSheet.create({
   findResultRow: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: "rgba(255,255,255,0.1)",
     padding: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
   findResultName: {
     fontFamily: FF.semiBold,
     fontSize: 15,
-    color: '#fff',
+    color: "#fff",
   },
   findResultWhen: {
     marginTop: 4,
@@ -1372,59 +1469,70 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255,255,255,0.55)',
-    textAlign: 'center',
+    color: "rgba(255,255,255,0.55)",
+    textAlign: "center",
     marginBottom: 12,
   },
 
+  // ── Verify panel ───────────────────────────────────────────
   findVerifyTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   verifyIconBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: "rgba(34,197,94,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   verifyTitleText: {
-    fontFamily: FF.semiBold,
-    fontSize: 16,
-    color: '#fff',
+    fontFamily: FF.bold,
+    fontSize: 15,
+    color: "#fff",
   },
   verifyHint: {
-    marginTop: 10,
-    fontFamily: FF.semiBold,
+    marginTop: 6,
+    fontFamily: FF.regular,
     fontSize: 12,
-    lineHeight: 16,
+    lineHeight: 17,
     color: MUTED,
   },
   phoneRow: {
-    marginTop: 12,
-    height: 49,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
+    marginTop: 14,
+    height: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(18,25,38,0.95)',
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     paddingHorizontal: 12,
+  },
+  phoneFlagBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.4)",
+    backgroundColor: "rgba(34,197,94,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   phoneCc: {
     fontFamily: FF.semiBold,
-    fontSize: 12,
-    fontVariant: ['tabular-nums'],
-    color: 'rgba(255,255,255,0.9)',
+    fontSize: 13,
+    color: "rgba(255,255,255,0.9)",
   },
   phoneInput: {
     flex: 1,
     minWidth: 0,
-    fontFamily: FF.semiBold,
+    fontFamily: FF.regular,
     fontSize: 13,
-    color: '#fff',
+    color: "rgba(255,255,255,0.5)",
     paddingVertical: 0,
   },
 });
