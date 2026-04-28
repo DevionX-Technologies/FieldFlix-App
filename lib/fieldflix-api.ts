@@ -412,14 +412,68 @@ export type RecordingHighlightDto = {
   status: string;
 };
 
+/** Normalizes occasional wrapped/nested payloads into a highlight row array. */
+export function coerceHighlightList(payload: unknown): RecordingHighlightDto[] {
+  if (Array.isArray(payload)) return payload as RecordingHighlightDto[];
+  if (payload == null || typeof payload !== 'object') return [];
+  const o = payload as Record<string, unknown>;
+  for (const k of ['highlights', 'items', 'data', 'results', 'rows']) {
+    const v = o[k];
+    if (Array.isArray(v)) return v as RecordingHighlightDto[];
+  }
+  const inner = o.data;
+  if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+    const innerObj = inner as Record<string, unknown>;
+    for (const k of ['highlights', 'items']) {
+      const v = innerObj[k];
+      if (Array.isArray(v)) return v as RecordingHighlightDto[];
+    }
+  }
+  return [];
+}
+
+/** Maps `recording.recordingHighlights[]` embedded rows into the `/highlights` DTO shape. */
+export function embedToHighlightDto(raw: {
+  id?: unknown;
+  relative_timestamp?: string | null;
+  button_click_timestamp?: string | Date | null;
+  playback_id?: string | null;
+  mux_public_playback_url?: string | null;
+  status?: string | null;
+}): RecordingHighlightDto | null {
+  const id = raw?.id != null ? String(raw.id) : '';
+  if (!id) return null;
+  const st = String(raw.status ?? '').toLowerCase();
+  if (st === 'failed' || st === 'permanently_failed') return null;
+  const pid =
+    typeof raw.playback_id === 'string' && raw.playback_id.trim()
+      ? raw.playback_id.trim()
+      : null;
+  const url =
+    raw.mux_public_playback_url?.trim?.() ??
+    (pid ? `https://stream.mux.com/${pid}.m3u8` : null);
+  if (!pid && !url) return null;
+  return {
+    id,
+    relative_timestamp: raw.relative_timestamp ?? null,
+    button_click_timestamp: raw.button_click_timestamp ?? '',
+    playback_id: pid,
+    mux_public_playback_url: url,
+    thumbnail_url: pid
+      ? `https://image.mux.com/${pid}/thumbnail.jpg?time=2`
+      : null,
+    status: raw.status ?? 'unknown',
+  };
+}
+
 /** Ready highlights for a recording (`GET /recording/:id/highlights`). */
 export async function getRecordingHighlights(
   recordingId: string,
 ): Promise<RecordingHighlightDto[]> {
-  const { data } = await axiosInstance.get<RecordingHighlightDto[]>(
+  const { data } = await axiosInstance.get<unknown>(
     `/recording/${recordingId}/highlights`,
   );
-  return Array.isArray(data) ? data : [];
+  return coerceHighlightList(data);
 }
 
 export type RecordingPlayback = {

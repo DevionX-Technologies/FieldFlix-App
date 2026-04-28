@@ -1,6 +1,7 @@
 import { Paths } from '@/data/paths';
 import { BASE_URL } from '@/data/constants';
 import {
+  embedToHighlightDto,
   getFieldflixApiErrorDebug,
   getRecordingById,
   getRecordingHighlights,
@@ -9,16 +10,14 @@ import {
   type RecordingPlayback,
 } from '@/lib/fieldflix-api';
 import { useEntitlement } from '@/lib/fieldflix-entitlement';
-import {
-  FIELD_FLIX_BOTTOM_NAV_SPACE,
-  FieldflixBottomNav,
-} from '@/screens/fieldflix/BottomNav';
+import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import {
   formatRecordingListWhen,
+  highlightCountFromRecording,
   recordingDurationLabel,
   recordingIsReady,
   recordingPlaybackUrl,
@@ -41,6 +40,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
 const ACCENT = '#22C55E';
@@ -143,6 +143,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const [liked, setLiked] = useState<LikedHighlightCache[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
   const [apiDebug, setApiDebug] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  /** Matches `FieldflixBottomNav`: safe bottom + pill bar (76) + gap above FAB overlap. */
+  const bottomNavClearance = Math.max(14, insets.bottom + 6) + 76 + 48;
 
   const load = useCallback(async () => {
     if (!recordingId) {
@@ -163,12 +166,27 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         );
       }
       try {
-        const h = await getRecordingHighlights(recordingId);
-        hs = Array.isArray(h) ? h : [];
+        hs = await getRecordingHighlights(recordingId);
       } catch (e) {
         debugLines.push(
           `getRecordingHighlights:\n${getFieldflixApiErrorDebug(e)}`,
         );
+      }
+      if (
+        hs.length === 0 &&
+        rec &&
+        Array.isArray((rec as { recordingHighlights?: unknown }).recordingHighlights)
+      ) {
+        const embedded = (
+          rec as { recordingHighlights: Record<string, unknown>[] }
+        ).recordingHighlights
+          .map((eh) => embedToHighlightDto(eh))
+          .filter((x): x is RecordingHighlightDto => x != null)
+          .filter((x) => {
+            const st = String(x.status ?? '').toLowerCase();
+            return st === 'ready' || st === 'clip_created';
+          });
+        if (embedded.length > 0) hs = embedded;
       }
       try {
         pb = await getRecordingPlayback(recordingId);
@@ -190,6 +208,11 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       setLoading(false);
     }
   }, [recordingId]);
+
+  const embeddedRecordingHighlightCount = useMemo(
+    () => highlightCountFromRecording(recording),
+    [recording],
+  );
 
   useEffect(() => {
     void load();
@@ -366,7 +389,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         });
         return;
       }
-      if (!h.mux_public_playback_url || h.status !== 'ready') return;
+      const st = String(h.status ?? '').toLowerCase();
+      if (!h.mux_public_playback_url || (st !== 'ready' && st !== 'clip_created')) {
+        return;
+      }
       const titleBase = recording?.turf?.name ?? 'Recording';
       void pushLikedHighlight({
         recordingId: recordingId,
@@ -424,7 +450,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.main, { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE }]}
+          contentContainerStyle={[
+            styles.main,
+            { paddingBottom: bottomNavClearance + 24 },
+          ]}
           showsVerticalScrollIndicator={false}
         >
           {/* HERO */}
@@ -467,8 +496,19 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
               <Text style={styles.heroTitle} numberOfLines={2}>
                 {recording?.turf?.name ?? 'Recording'}
               </Text>
-              <Text style={styles.heroMeta} numberOfLines={1}>
-                {sportLabel} · {recordingDurationLabel(recording)}
+              <Text style={styles.heroMeta} numberOfLines={2}>
+                {sportLabel}
+                <Text style={{ color: MUTED }}>{' · '}</Text>
+                <Text style={{ color: MUTED }}>
+                  Recording {recordingDurationLabel(recording)}
+                </Text>
+              </Text>
+              <Text style={styles.heroClipLine} numberOfLines={1}>
+                {highlights.length > 0
+                  ? `${highlights.length} highlight clip${highlights.length === 1 ? '' : 's'}`
+                  : embeddedRecordingHighlightCount > 0
+                    ? 'Highlight clips are still loading or processing…'
+                    : 'No highlight clips for this session yet'}
               </Text>
               <Text style={styles.heroWhen} numberOfLines={1}>
                 {formatRecordingListWhen(recording?.startTime)}
@@ -523,8 +563,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           <View style={styles.list}>
             {highlights.length === 0 ? (
               <Text style={styles.empty}>
-                No highlights yet. Highlights are created from button-press moments and
-                will appear here once your video has finished processing.
+                {embeddedRecordingHighlightCount > 0
+                  ? 'Highlight clips exist on this recording but could not be loaded. Try opening this screen again in a moment.'
+                  : 'No highlights yet. Highlights are created from button-press moments and will appear here once clips have finished processing.'}
               </Text>
             ) : null}
             {highlights.map((h, idx) => (
@@ -572,7 +613,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             </View>
           ) : null}
 
-          <View style={{ height: 40 }} />
+          <View style={{ height: 12 }} />
         </ScrollView>
 
         <FieldflixBottomNav active="recordings" />
@@ -615,7 +656,11 @@ function HighlightRow({
           Highlight {index + 1}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {highlight.status === 'ready' ? 'Ready to watch' : 'Processing…'}
+          {['ready', 'clip_created'].includes(
+            String(highlight.status ?? '').toLowerCase(),
+          )
+            ? 'Ready to watch'
+            : 'Processing…'}
         </Text>
         <View style={styles.rowStats}>
           <Text style={styles.rowStat}>1.2K views</Text>
@@ -713,7 +758,14 @@ const styles = StyleSheet.create({
   main: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 140,
+    paddingBottom: 24,
+  },
+  heroClipLine: {
+    marginTop: 4,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.88)',
   },
   hero: {
     height: 240,
