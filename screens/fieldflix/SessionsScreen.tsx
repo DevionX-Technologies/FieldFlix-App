@@ -1,51 +1,55 @@
-import { Paths } from '@/data/paths';
-import ErrorBoundary from '@/components/organisms/ErrorBoundary/ErrorBoundary';
-import { useSessionsMyRecordings, type SessionRowForUi } from '@/hooks/useSessionsMyRecordings';
-import { FF } from '@/screens/fieldflix/fonts';
+import ErrorBoundary from "@/components/organisms/ErrorBoundary/ErrorBoundary";
+import { Paths } from "@/data/paths";
 import {
-  FIELD_FLIX_BOTTOM_NAV_SPACE,
-  FieldflixBottomNav,
-} from '@/screens/fieldflix/BottomNav';
-import { WebShell } from '@/screens/fieldflix/WebShell';
-import { BG } from '@/screens/fieldflix/bundledBackgrounds';
+    useSessionsMyRecordings,
+    type SessionRowForUi,
+} from "@/hooks/useSessionsMyRecordings";
 import {
-  SESSIONS_BACK_ARROW,
-  SESSIONS_ROW,
-  SESSIONS_SPORT_TEMPLATES,
-  type SessionRowLocal,
-} from '@/screens/fieldflix/sessionsData';
-import { WEB } from '@/screens/fieldflix/webDesign';
+    FIELD_FLIX_BOTTOM_NAV_SPACE,
+    FieldflixBottomNav,
+} from "@/screens/fieldflix/BottomNav";
+import { WebShell } from "@/screens/fieldflix/WebShell";
+import { BG } from "@/screens/fieldflix/bundledBackgrounds";
+import { FF } from "@/screens/fieldflix/fonts";
 import {
-  formatRecordingListWhen,
-  recordingDurationLabel,
-  recordingIsReady,
-  recordingThumbUrl,
-  sportLabelFromTurf,
-} from '@/utils/recordingDisplay';
-import { useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+    SESSIONS_ROW,
+    SESSIONS_SPORT_TEMPLATES,
+    type SessionRowLocal,
+} from "@/screens/fieldflix/sessionsData";
+import { WEB } from "@/screens/fieldflix/webDesign";
 import {
-  ActivityIndicator,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+    formatRecordingListWhen,
+    recordingDurationLabel,
+    recordingIsReady,
+    recordingThumbUrl,
+    sportLabelFromTurf,
+} from "@/utils/recordingDisplay";
+import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import { useCallback } from "react";
+import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
+import {
+    ActivityIndicator,
+    Image,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
+} from "react-native";
 
 /** 21px / 372px — right inset for play + Completed (web `SessionsScreen.tsx`) */
 const CARD_PAD_X_PCT = (21 / 372) * 100;
 
 function pickTemplateForSport(sport: string): SessionRowLocal {
   const s = sport.toLowerCase();
-  if (s.includes('cricket')) return SESSIONS_SPORT_TEMPLATES.cricket;
-  if (s.includes('padel') || s === 'paddle') return SESSIONS_SPORT_TEMPLATES.padel;
-  if (s.includes('pickle')) return SESSIONS_ROW[0];
-  if (s.includes('badminton')) return SESSIONS_ROW[1];
-  if (s.includes('tennis')) return SESSIONS_ROW[2];
-  if (s.includes('basketball')) return SESSIONS_ROW[3];
+  if (s.includes("cricket")) return SESSIONS_SPORT_TEMPLATES.cricket;
+  if (s.includes("padel") || s === "paddle")
+    return SESSIONS_SPORT_TEMPLATES.padel;
+  if (s.includes("pickle")) return SESSIONS_ROW[0];
+  if (s.includes("badminton")) return SESSIONS_ROW[1];
+  if (s.includes("tennis")) return SESSIONS_ROW[2];
+  if (s.includes("basketball")) return SESSIONS_ROW[3];
   return SESSIONS_ROW[0];
 }
 
@@ -58,13 +62,13 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
   );
   const t = pickTemplateForSport(sport);
   const when = formatRecordingListWhen(r?.startTime);
-  const cityLine = [r?.turf?.city, r?.turf?.state].filter(Boolean).join(', ');
-  const area = cityLine || r?.turf?.address_line || r?.turf?.location || '—';
+  const cityLine = [r?.turf?.city, r?.turf?.state].filter(Boolean).join(", ");
+  const area = cityLine || r?.turf?.address_line || r?.turf?.location || "—";
   return {
     id: String(r.id),
     recordingId: String(r.id),
     sport,
-    arena: r?.turf?.name ?? 'Arena',
+    arena: r?.turf?.name ?? "Arena",
     area,
     when,
     sportIcon: t.sportIcon,
@@ -73,7 +77,7 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
     playIcon: t.playIcon,
     thumbUrl: recordingThumbUrl(r),
     duration: recordingDurationLabel(r),
-    status: String(r?.status ?? '').toLowerCase(),
+    status: String(r?.status ?? "").toLowerCase(),
     isReady: recordingIsReady(r),
   };
 }
@@ -81,7 +85,9 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
 /** List layout from `web/src/screens/SessionsScreen.tsx`; rows from `GET /recording/my-recordings`. */
 export default function FieldflixSessionsScreen() {
   const router = useRouter();
-  const { rows, loading, error, load } = useSessionsMyRecordings(mapRecordingToSessionRow);
+  const { rows, loading, error, load } = useSessionsMyRecordings(
+    mapRecordingToSessionRow,
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -98,7 +104,7 @@ export default function FieldflixSessionsScreen() {
             <Text style={styles.crashSub}>Go back to home and try again.</Text>
             <Pressable
               style={styles.crashBtn}
-              onPress={() => router.push(Paths.home)}
+              onPress={() => router.replace(Paths.home)}
               accessibilityRole="button"
               accessibilityLabel="Back to home"
             >
@@ -110,91 +116,85 @@ export default function FieldflixSessionsScreen() {
     >
       <WebShell backgroundColor={WEB.sessionsBg}>
         <View style={styles.flex}>
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.pad}>
-            <View style={styles.header}>
-              <View style={styles.headerStart}>
-                <Pressable
-                  onPress={() => router.push(Paths.home)}
-                  accessibilityLabel="Back to home"
-                  style={styles.backBtn}
-                >
-                  <Image source={SESSIONS_BACK_ARROW} style={{ width: 24, height: 24 }} resizeMode="cover" />
-                </Pressable>
-                <Text style={styles.headerTitle} numberOfLines={1}>
-                  Sessions
-                </Text>
+          <FieldflixScreenHeader
+            title="Sessions"
+            onBack={() => router.replace(Paths.home)}
+            backAccessibilityLabel="Back to home"
+          />
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.pad}>
+              <View style={styles.section}>
+                <View style={styles.completedStrip}>
+                  <Text style={styles.completedText}>Completed Sessions</Text>
+                </View>
+
+                {loading ? (
+                  <View style={styles.loading}>
+                    <ActivityIndicator size="large" color={WEB.green} />
+                  </View>
+                ) : error ? (
+                  <View style={styles.errorWrap}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <Pressable
+                      onPress={() => void load()}
+                      style={styles.retryBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel="Retry loading sessions"
+                    >
+                      <Text style={styles.retryBtnText}>Try again</Text>
+                    </Pressable>
+                  </View>
+                ) : rows.length === 0 ? (
+                  <Text style={styles.empty}>
+                    No completed sessions yet. Finish a recording to see it
+                    here.
+                  </Text>
+                ) : (
+                  <View style={styles.cards} collapsable={false}>
+                    {rows.map((row) => {
+                      const canOpen = row.isReady;
+                      return (
+                        <Pressable
+                          key={row.id}
+                          disabled={!canOpen}
+                          style={({ pressed }) => [
+                            styles.cardPressable,
+                            !canOpen && styles.cardPressableDisabled,
+                            canOpen && pressed && styles.cardPressablePressed,
+                          ]}
+                          onPress={() => {
+                            if (!canOpen) return;
+                            router.push({
+                              pathname: Paths.highlights as never,
+                              params: { id: row.recordingId },
+                            });
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: !canOpen }}
+                          accessibilityLabel={
+                            canOpen
+                              ? `Open ${row.arena} highlights`
+                              : `${row.arena} is still processing. Try again when ready.`
+                          }
+                        >
+                          <SessionCard row={row} />
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             </View>
+          </ScrollView>
 
-            <View style={styles.section}>
-              <View style={styles.completedStrip}>
-                <Text style={styles.completedText}>Completed Sessions</Text>
-              </View>
-
-              {loading ? (
-                <View style={styles.loading}>
-                  <ActivityIndicator size="large" color={WEB.green} />
-                </View>
-              ) : error ? (
-                <View style={styles.errorWrap}>
-                  <Text style={styles.errorText}>{error}</Text>
-                  <Pressable
-                    onPress={() => void load()}
-                    style={styles.retryBtn}
-                    accessibilityRole="button"
-                    accessibilityLabel="Retry loading sessions"
-                  >
-                    <Text style={styles.retryBtnText}>Try again</Text>
-                  </Pressable>
-                </View>
-              ) : rows.length === 0 ? (
-                <Text style={styles.empty}>
-                  No completed sessions yet. Finish a recording to see it here.
-                </Text>
-              ) : (
-                <View style={styles.cards} collapsable={false}>
-                  {rows.map((row) => {
-                    const canOpen = row.isReady;
-                    return (
-                      <Pressable
-                        key={row.id}
-                        disabled={!canOpen}
-                        style={({ pressed }) => [
-                          styles.cardPressable,
-                          !canOpen && styles.cardPressableDisabled,
-                          canOpen && pressed && styles.cardPressablePressed,
-                        ]}
-                        onPress={() => {
-                          if (!canOpen) return;
-                          router.push({
-                            pathname: Paths.highlights as never,
-                            params: { id: row.recordingId },
-                          });
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ disabled: !canOpen }}
-                        accessibilityLabel={
-                          canOpen
-                            ? `Open ${row.arena} highlights`
-                            : `${row.arena} is still processing. Try again when ready.`
-                        }
-                      >
-                        <SessionCard row={row} />
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          </View>
-        </ScrollView>
-
-        <FieldflixBottomNav active="sessions" />
+          <FieldflixBottomNav active="sessions" />
         </View>
       </WebShell>
     </ErrorBoundary>
@@ -216,16 +216,20 @@ function SessionCard({ row }: { row: SessionRowExtended }) {
         style={[
           styles.frameMain,
           {
-            top: '11.52%',
-            left: '5.11%',
-            width: '66.4%',
-            height: '75.76%',
+            top: "11.52%",
+            left: "5.11%",
+            width: "66.4%",
+            height: "75.76%",
           },
         ]}
       >
         <View style={styles.sportRow}>
           <View style={styles.sportIconBg}>
-            <Image source={row.sportIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            <Image
+              source={row.sportIcon}
+              style={{ width: 24, height: 24 }}
+              resizeMode="contain"
+            />
           </View>
           <Text style={styles.sportName} numberOfLines={1}>
             {row.sport}
@@ -240,13 +244,21 @@ function SessionCard({ row }: { row: SessionRowExtended }) {
 
         <View style={styles.metaCol}>
           <View style={styles.metaLine}>
-            <Image source={row.pinIcon} style={styles.metaIcon} resizeMode="cover" />
+            <Image
+              source={row.pinIcon}
+              style={styles.metaIcon}
+              resizeMode="cover"
+            />
             <Text style={styles.metaText} numberOfLines={1}>
               {row.area}
             </Text>
           </View>
           <View style={styles.metaLine}>
-            <Image source={row.clockIcon} style={styles.metaIcon} resizeMode="cover" />
+            <Image
+              source={row.clockIcon}
+              style={styles.metaIcon}
+              resizeMode="cover"
+            />
             <Text style={styles.metaText} numberOfLines={1}>
               {row.when}
             </Text>
@@ -257,19 +269,33 @@ function SessionCard({ row }: { row: SessionRowExtended }) {
       {row.playIcon ? (
         isProcessing ? (
           <View
-            style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
+            style={[
+              styles.playBtn,
+              { top: "11.52%", right: `${CARD_PAD_X_PCT}%` },
+            ]}
             pointerEvents="none"
             accessibilityElementsHidden
             importantForAccessibility="no"
           >
-            <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            <Image
+              source={row.playIcon}
+              style={{ width: 24, height: 24 }}
+              resizeMode="contain"
+            />
           </View>
         ) : (
           <Pressable
-            style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
+            style={[
+              styles.playBtn,
+              { top: "11.52%", right: `${CARD_PAD_X_PCT}%` },
+            ]}
             accessibilityLabel="Share or play session"
           >
-            <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+            <Image
+              source={row.playIcon}
+              style={{ width: 24, height: 24 }}
+              resizeMode="contain"
+            />
           </Pressable>
         )
       ) : null}
@@ -290,7 +316,11 @@ function SessionCard({ row }: { row: SessionRowExtended }) {
             isProcessing && styles.processingBadgeText,
           ]}
         >
-          {isProcessing ? 'Processing' : row.duration && row.duration !== '—' ? row.duration : 'Completed'}
+          {isProcessing
+            ? "Processing"
+            : row.duration && row.duration !== "—"
+              ? row.duration
+              : "Completed"}
         </Text>
       </View>
     </View>
@@ -308,46 +338,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingBottom: 40,
   },
-  header: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 8,
-  },
-  headerStart: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  backBtn: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    minWidth: 0,
-    fontFamily: FF.bold,
-    fontSize: 20,
-    lineHeight: 27,
-    color: WEB.white,
-  },
   section: {
     marginTop: 30,
     gap: 20,
   },
   completedStrip: {
-    width: '100%',
+    width: "100%",
     borderBottomWidth: 2,
     borderBottomColor: WEB.green,
     paddingBottom: 10,
   },
   completedText: {
-    textAlign: 'center',
+    textAlign: "center",
     fontFamily: FF.semiBold,
     fontSize: 15,
     lineHeight: 20,
@@ -355,13 +357,13 @@ const styles = StyleSheet.create({
   },
   loading: {
     paddingVertical: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   errorWrap: {
     gap: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 28,
     paddingHorizontal: 8,
   },
@@ -369,18 +371,18 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255,255,255,0.7)',
-    textAlign: 'center',
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "center",
   },
   retryBtn: {
     minHeight: 36,
     paddingHorizontal: 16,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.35)',
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(34, 197, 94, 0.35)",
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   retryBtnText: {
     fontFamily: FF.semiBold,
@@ -391,20 +393,20 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
+    color: "rgba(255,255,255,0.6)",
+    textAlign: "center",
     paddingVertical: 24,
     paddingHorizontal: 8,
   },
   cards: {
-    width: '100%',
-    alignItems: 'center',
+    width: "100%",
+    alignItems: "center",
     gap: 30,
   },
   cardPressable: {
-    width: '100%',
+    width: "100%",
     maxWidth: 372,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   cardPressableDisabled: {
     opacity: 0.72,
@@ -413,24 +415,24 @@ const styles = StyleSheet.create({
     opacity: 0.92,
   },
   card: {
-    position: 'relative',
+    position: "relative",
     height: 165,
-    width: '100%',
+    width: "100%",
     maxWidth: 372,
     borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#0f172a',
+    overflow: "hidden",
+    backgroundColor: "#0f172a",
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.25)',
+    borderColor: "rgba(148,163,184,0.25)",
   },
   frameMain: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 1,
     gap: 12,
   },
   sportRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 11,
     height: 42,
   },
@@ -438,9 +440,9 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: 'rgba(34, 197, 94, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(34, 197, 94, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   sportName: {
     height: 27,
@@ -451,8 +453,8 @@ const styles = StyleSheet.create({
   },
   arenaRow: {
     height: 22,
-    width: '100%',
-    justifyContent: 'center',
+    width: "100%",
+    justifyContent: "center",
   },
   arenaText: {
     fontFamily: FF.semiBold,
@@ -463,13 +465,13 @@ const styles = StyleSheet.create({
   metaCol: {
     height: 37,
     width: 163,
-    maxWidth: '100%',
+    maxWidth: "100%",
     gap: 5,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   metaLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 5,
   },
   metaIcon: {
@@ -484,7 +486,7 @@ const styles = StyleSheet.create({
     color: WEB.muted,
   },
   playBtn: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 2,
     width: 45,
     height: 42,
@@ -493,24 +495,24 @@ const styles = StyleSheet.create({
     paddingRight: 10,
     paddingBottom: 9,
     paddingLeft: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   cardScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2,6,23,0.45)',
+    backgroundColor: "rgba(2,6,23,0.45)",
   },
   completedBadge: {
-    position: 'absolute',
+    position: "absolute",
     zIndex: 2,
     height: 29,
     minWidth: 94,
     paddingHorizontal: 12,
     borderRadius: 20,
     paddingVertical: 5,
-    backgroundColor: 'rgba(34, 197, 94, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(34, 197, 94, 0.25)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   completedBadgeText: {
     fontFamily: FF.semiBold,
@@ -519,16 +521,16 @@ const styles = StyleSheet.create({
     color: WEB.green,
   },
   processingBadge: {
-    backgroundColor: 'rgba(234, 179, 8, 0.22)',
+    backgroundColor: "rgba(234, 179, 8, 0.22)",
   },
   processingBadgeText: {
-    color: '#facc15',
+    color: "#facc15",
   },
   crashWrap: {
     flex: 1,
     paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: 10,
   },
   crashTitle: {
@@ -541,8 +543,8 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 13,
     lineHeight: 18,
-    color: 'rgba(255,255,255,0.7)',
-    textAlign: 'center',
+    color: "rgba(255,255,255,0.7)",
+    textAlign: "center",
   },
   crashBtn: {
     marginTop: 6,
@@ -550,10 +552,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.4)',
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "rgba(34, 197, 94, 0.4)",
+    backgroundColor: "rgba(34, 197, 94, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   crashBtnText: {
     fontFamily: FF.semiBold,

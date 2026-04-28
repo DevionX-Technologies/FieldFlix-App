@@ -132,6 +132,9 @@ export default function FieldflixNotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<{ label: string; items: NotificationItemWithHref[] }[]>([]);
 
+  const markReadUnavailable =
+    loading || sections.length === 0;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -209,7 +212,25 @@ export default function FieldflixNotificationsScreen() {
   return (
     <WebShell backgroundColor={BG}>
       <View style={styles.flex}>
-        <FieldflixScreenHeader title="Notifications" />
+        <FieldflixScreenHeader
+          title="Notifications"
+          rightAccessory={
+            <Pressable
+              onPress={() => {}}
+              disabled={markReadUnavailable}
+              style={({ pressed }) => [
+                styles.markReadBtn,
+                markReadUnavailable && styles.markReadBtnDisabled,
+                pressed && !markReadUnavailable ? styles.markReadBtnPressed : null,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Mark all notifications as read"
+              hitSlop={6}
+            >
+              <Text style={styles.markReadBtnText}>Mark as read</Text>
+            </Pressable>
+          }
+        />
 
         {loading ? (
           <View style={styles.loading}>
@@ -299,6 +320,33 @@ function NotificationCard({
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
+  },
+  markReadBtn: {
+    justifyContent: "center",
+    alignItems: "center",
+    minWidth: 96,
+    minHeight: 36,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(34,197,94,0.12)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(34,197,94,0.35)",
+  },
+  markReadBtnPressed: {
+    backgroundColor: "rgba(34,197,94,0.22)",
+    opacity: 0.94,
+  },
+  markReadBtnDisabled: {
+    opacity: 0.42,
+    backgroundColor: "rgba(148,163,184,0.08)",
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  markReadBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: WEB.greenBright,
+    letterSpacing: -0.1,
+    textAlign: "center",
   },
   main: {
     flex: 1,

@@ -23,7 +23,11 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  FlatList,
   Image,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,6 +45,13 @@ import {
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
 const AUTO_H = require("@/assets/fieldflix-web/autohiglhight.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
+/** Static promos (3) until the API supplies Coming Soon assets. */
+const COMING_SOON_CAROUSEL_IMAGES = [
+  AUTO_H,
+  require("@/assets/fieldflix-web/image51.png"),
+  require("@/assets/fieldflix-web/image151.png"),
+] as const;
+const COMING_SOON_CARD_HEIGHT = 158;
 
 type TurfRow = {
   id: string;
@@ -293,6 +304,54 @@ export default function FieldflixHomeScreen() {
 
   const navReserve = FIELD_FLIX_BOTTOM_NAV_SPACE;
 
+  const bannerSidePad = 20;
+  const comingSoonGap = 12;
+  /** Floor so slide + separators never exceed screen due to fractional layout px. */
+  const carouselW = Math.max(
+    0,
+    Math.floor(windowWidth - bannerSidePad * 2),
+  );
+  const [comingSoonIndex, setComingSoonIndex] = useState(0);
+
+  const comingSoonSlides = useMemo(
+    () =>
+      COMING_SOON_CAROUSEL_IMAGES.map((source, index) => ({
+        id: `coming-soon-${index}`,
+        source,
+      })),
+    [],
+  );
+
+  const slideW = carouselW + comingSoonGap;
+  /** Cap height on narrow screens so vertical layout stays balanced. */
+  const comingSoonTileHeight = Math.min(
+    COMING_SOON_CARD_HEIGHT,
+    Math.max(132, Math.floor(carouselW * 0.44)),
+  );
+
+  const syncComingSoonIndex = useCallback(
+    (offsetX: number) => {
+      if (slideW <= 0) return;
+      const i = Math.round(offsetX / slideW);
+      setComingSoonIndex(
+        Math.min(comingSoonSlides.length - 1, Math.max(0, i)),
+      );
+    },
+    [slideW, comingSoonSlides.length],
+  );
+
+  const onComingSoonScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) =>
+      syncComingSoonIndex(e.nativeEvent.contentOffset.x),
+    [syncComingSoonIndex],
+  );
+
+  const onComingSoonScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) =>
+      syncComingSoonIndex(e.nativeEvent.contentOffset.x),
+    [syncComingSoonIndex],
+  );
+
   return (
     <WebShell backgroundColor={WEB.homeBg}>
       <View style={styles.flex}>
@@ -337,11 +396,7 @@ export default function FieldflixHomeScreen() {
               style={styles.iconBtn}
               hitSlop={8}
             >
-              <MaterialCommunityIcons
-                name="account-circle-outline"
-                size={24}
-                color={WEB.white}
-              />
+              <MaterialCommunityIcons name="account-outline" size={24} color={WEB.white} />
             </Pressable>
           </View>
         </View>
@@ -360,25 +415,43 @@ export default function FieldflixHomeScreen() {
               />
               <LinearGradient
                 colors={[
-                  "rgba(2,6,23,0.68)",
-                  "rgba(2,6,23,0.3)",
-                  "rgba(2,6,23,0.9)",
+                  "rgba(4,13,26,0.82)",
+                  "rgba(5,21,43,0.38)",
+                  "rgba(2,12,31,0.92)",
                 ]}
-                locations={[0, 0.42, 1]}
+                locations={[0, 0.46, 1]}
                 style={StyleSheet.absoluteFillObject}
               />
+              {/* Cool edge tint — aligns with slate + emerald brand */}
               <LinearGradient
-                colors={["rgba(34,197,94,0.16)", "rgba(0,0,0,0)"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0.7 }}
+                colors={["rgba(16,185,129,0.14)", "rgba(0,0,0,0)"]}
+                start={{ x: 0.15, y: 0 }}
+                end={{ x: 0.92, y: 0.85 }}
                 style={StyleSheet.absoluteFillObject}
+              />
+              {/* Left band: anchors headline + description on one readable tone */}
+              <LinearGradient
+                colors={[
+                  "rgba(3,17,38,0.94)",
+                  "rgba(4,26,54,0.62)",
+                  "rgba(2,14,38,0.05)",
+                  "transparent",
+                ]}
+                locations={[0, 0.28, 0.58, 1]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={StyleSheet.absoluteFillObject}
+                pointerEvents="none"
               />
               <View style={styles.heroTextBlock}>
                 <View style={styles.heroBadge}>
                   <Text style={styles.heroBadgeText}>Smart Capture</Text>
                 </View>
                 <Text style={styles.heroKicker}>Elevate Your</Text>
-                <Text style={styles.heroTitle}>Game Today</Text>
+                <Text style={styles.heroTitle}>
+                  Game{" "}
+                  <Text style={styles.heroTitleAccent}>Today</Text>
+                </Text>
                 <Text style={styles.heroDesc}>
                   Capture your best moments and track your improvement over time
                 </Text>
@@ -397,7 +470,7 @@ export default function FieldflixHomeScreen() {
                     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
                       <Path
                         d="M9 5l7 7-7 7"
-                        stroke="#0f172a"
+                        stroke="rgba(4,52,43,0.96)"
                         strokeWidth={2}
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -415,9 +488,9 @@ export default function FieldflixHomeScreen() {
                 <View style={styles.sportsAccent} />
                 <Text style={styles.sportsTitle}>Choose Your Sport</Text>
               </View>
-              <Pressable hitSlop={8}>
+              {/* <Pressable hitSlop={8}>
                 <Text style={styles.sportsViewAll}>View all ›</Text>
-              </Pressable>
+              </Pressable> */}
             </View>
             <View
               style={[
@@ -433,9 +506,9 @@ export default function FieldflixHomeScreen() {
                 status="Active"
                 icon={
                   <MaterialCommunityIcons
-                    name="table-tennis"
+                    name="racquetball"
                     size={Math.round(sportIconMain * 0.78)}
-                    color={WEB.white}
+                    color={WEB.green}
                   />
                 }
               />
@@ -449,7 +522,7 @@ export default function FieldflixHomeScreen() {
                   <MaterialCommunityIcons
                     name="tennis-ball"
                     size={Math.round(sportIconMain * 0.78)}
-                    color={WEB.white}
+                    color={WEB.green}
                   />
                 }
               />
@@ -463,7 +536,7 @@ export default function FieldflixHomeScreen() {
                   <MaterialCommunityIcons
                     name="cricket"
                     size={Math.round(sportIconMain * 0.78)}
-                    color={WEB.white}
+                    color={WEB.green}
                   />
                 }
               />
@@ -476,9 +549,9 @@ export default function FieldflixHomeScreen() {
                 <View style={styles.sportsAccent} />
                 <Text style={styles.venuesTitle}>Nearby Venues</Text>
               </View>
-              <Pressable onPress={() => router.push(Paths.scan)} hitSlop={8}>
+              {/* <Pressable onPress={() => router.push(Paths.scan)} hitSlop={8}>
                 <Text style={styles.venuesViewAll}>View all ›</Text>
-              </Pressable>
+              </Pressable> */}
             </View>
 
             <ScrollView
@@ -682,7 +755,65 @@ export default function FieldflixHomeScreen() {
               </View>
             </View>
             <View style={styles.bannerWrap}>
-              <Image source={AUTO_H} style={styles.banner} resizeMode="cover" />
+              <FlatList
+                data={comingSoonSlides}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                pagingEnabled={false}
+                snapToAlignment="start"
+                decelerationRate="fast"
+                snapToInterval={slideW}
+                initialNumToRender={COMING_SOON_CAROUSEL_IMAGES.length}
+                keyExtractor={(item) => item.id}
+                ItemSeparatorComponent={() =>
+                  carouselW <= 0 ? null : (
+                    <View style={{ width: comingSoonGap }} />
+                  )
+                }
+                style={[styles.bannerFlatList, { maxWidth: carouselW }]}
+                contentContainerStyle={styles.bannerFlatListContent}
+                onScroll={onComingSoonScroll}
+                scrollEventThrottle={16}
+                onMomentumScrollEnd={onComingSoonScrollEnd}
+                renderItem={({ item, index }) =>
+                  carouselW <= 0 ? null : (
+                    <View
+                      style={[styles.bannerSlideShadow, { width: carouselW }]}
+                      accessibilityRole="image"
+                      accessibilityLabel={`Coming soon promotion ${index + 1} of ${comingSoonSlides.length}`}
+                    >
+                      <View style={styles.bannerSlideClip}>
+                        <ExpoImage
+                          source={item.source}
+                          style={[
+                            styles.bannerSlideImage,
+                            { height: comingSoonTileHeight },
+                          ]}
+                          contentFit="cover"
+                          transition={220}
+                          cachePolicy="memory-disk"
+                        />
+                      </View>
+                    </View>
+                  )
+                }
+              />
+              <View style={styles.bannerDotsRowOuter}>
+                <View style={styles.bannerDotsPill}>
+                  <View style={styles.bannerDotsRow}>
+                    {comingSoonSlides.map((_, dotI) => (
+                      <View
+                        key={`cs-dot-${dotI}`}
+                        style={
+                          dotI === comingSoonIndex
+                            ? styles.bannerDotActive
+                            : styles.bannerDotInactive
+                        }
+                      />
+                    ))}
+                  </View>
+                </View>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -843,9 +974,9 @@ const styles = StyleSheet.create({
     width: "100%",
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.22)",
+    borderColor: "rgba(52,211,153,0.28)",
     overflow: "hidden",
-    backgroundColor: "#08101A",
+    backgroundColor: "#071018",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.45,
@@ -861,45 +992,50 @@ const styles = StyleSheet.create({
   heroBadge: {
     alignSelf: "flex-start",
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(34,197,94,0.35)",
-    backgroundColor: "rgba(2,6,23,0.55)",
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "rgba(167,243,208,0.35)",
+    backgroundColor: "rgba(15,23,42,0.62)",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
   heroBadgeText: {
-    fontFamily: FF.medium,
+    fontFamily: FF.semiBold,
     fontSize: 10,
-    color: "#86EFAC",
-    letterSpacing: 0.6,
+    color: "#A7F3D0",
+    letterSpacing: 1.25,
     textTransform: "uppercase",
   },
   heroKicker: {
-    marginTop: 12,
+    marginTop: 14,
     fontFamily: FF.semiBold,
-    fontSize: 18,
-    color: WEB.white,
-    lineHeight: 24,
-    letterSpacing: -0.2,
+    fontSize: 17,
+    color: "rgba(226,232,240,0.96)",
+    lineHeight: 22,
+    letterSpacing: -0.15,
   },
   heroTitle: {
-    marginTop: 4,
+    marginTop: 2,
     fontFamily: FF.extraBold,
-    fontSize: 44,
-    lineHeight: 46,
-    letterSpacing: -0.9,
-    color: "#86efac",
-    textShadowColor: "rgba(0,0,0,0.35)",
+    fontSize: 41,
+    lineHeight: 44,
+    letterSpacing: -1.05,
+    color: "#F8FAFC",
+    textShadowColor: "rgba(0,0,0,0.55)",
     textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 8,
+    textShadowRadius: 14,
+  },
+  heroTitleAccent: {
+    color: WEB.greenBright,
+    textShadowColor: "rgba(0,40,35,0.45)",
   },
   heroDesc: {
-    marginTop: 12,
-    maxWidth: 300,
+    marginTop: 14,
+    maxWidth: 302,
     fontFamily: FF.regular,
-    fontSize: 15,
-    lineHeight: 22,
-    color: "rgba(255,255,255,0.9)",
+    fontSize: 14,
+    lineHeight: 21,
+    letterSpacing: 0.08,
+    color: "rgba(203,213,225,0.9)",
   },
   heroCtaWrap: {
     position: "absolute",
@@ -918,9 +1054,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(34,197,94,0.35)",
-    backgroundColor: "rgba(2,6,23,0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(110,231,183,0.32)",
+    backgroundColor: "rgba(11,34,62,0.82)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.26,
@@ -938,7 +1074,7 @@ const styles = StyleSheet.create({
     fontFamily: FF.bold,
     fontSize: 16,
     lineHeight: 20,
-    color: WEB.white,
+    color: "#F8FAFC",
     letterSpacing: -0.2,
   },
   ctaSub: {
@@ -946,7 +1082,7 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 12,
     lineHeight: 16,
-    color: "rgba(255,255,255,0.78)",
+    color: "rgba(186,217,239,0.88)",
   },
   ctaChevron: {
     width: 34,
@@ -955,6 +1091,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#22C55E",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
   },
 
   sportsRowWrap: {
@@ -1351,12 +1489,81 @@ const styles = StyleSheet.create({
   },
   bannerWrap: {
     paddingHorizontal: 20,
+    overflow: "hidden",
   },
-  banner: {
+  bannerFlatList: {
     width: "100%",
-    height: 120,
-    borderRadius: 22,
+    flexGrow: 0,
+  },
+  bannerFlatListContent: {
+    paddingVertical: 0,
+  },
+  bannerSlideShadow: {
+    borderRadius: 20,
+    backgroundColor: "transparent",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.38,
+        shadowRadius: 14,
+      },
+      android: {
+        elevation: 9,
+      },
+      default: {},
+    }),
+  },
+  bannerSlideClip: {
+    borderRadius: 20,
+    overflow: "hidden",
     borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(8,22,17,0.96)",
+  },
+  bannerSlideImage: {
+    width: "100%",
+    maxWidth: "100%",
+    alignSelf: "center",
+  },
+  bannerDotsRowOuter: {
+    alignItems: "center",
+    marginTop: 14,
+    paddingHorizontal: 4,
+  },
+  bannerDotsPill: {
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "rgba(4,14,18,0.58)",
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.1)",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: { elevation: 2 },
+      default: {},
+    }),
+  },
+  bannerDotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  bannerDotActive: {
+    width: 22,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#4ADE80",
+  },
+  bannerDotInactive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.38)",
   },
 });
