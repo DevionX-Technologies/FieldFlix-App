@@ -94,7 +94,7 @@ export async function refreshEntitlement(): Promise<EntitlementSnapshot> {
 export type UseEntitlementResult = {
   loading: boolean;
   isPaid: boolean;
-  plan: 'cricket' | 'pickleball' | 'padel' | 'free' | 'pro' | 'premium' | null;
+  plan: 'free' | 'pro' | 'premium' | null;
   snapshot: EntitlementSnapshot;
   refresh: () => Promise<EntitlementSnapshot>;
 };
@@ -147,7 +147,11 @@ export function useEntitlement(): UseEntitlementResult {
   // A "paid" plan is anything beyond `free`. A `null` plan with `active=true` (free trial,
   // legacy `MEDIA_ACCESS` purchases) is also treated as paid since the backend already
   // marked the user as having access to the content.
-  const isPaid = snapshot.active && snapshot.plan !== 'free';
+  const isPaid =
+    snapshot.active &&
+    (snapshot.plan === 'pro' ||
+      snapshot.plan === 'premium' ||
+      snapshot.plan === null);
 
   return {
     loading,

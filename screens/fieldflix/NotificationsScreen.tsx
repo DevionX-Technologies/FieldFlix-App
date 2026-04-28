@@ -1,21 +1,12 @@
+import { Paths } from '@/data/paths';
 import { getNotifications } from '@/lib/fieldflix-api';
 import { FF } from '@/screens/fieldflix/fonts';
 import { NOTIFICATION_ICON_SRC } from '@/screens/fieldflix/notificationAssets';
 import type { NotificationIconId, NotificationItem } from '@/screens/fieldflix/notificationsSections';
 import { WebShell } from '@/screens/fieldflix/WebShell';
-import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { WEB } from '@/screens/fieldflix/webDesign';
-import { hrefFromNotificationData } from '@/utils/notificationRouting';
-import { getLocalNotifications } from '@/utils/localNotificationStore';
-import {
-  getUnreadApiNotificationCount,
-  markAllApiNotificationsRead,
-  markNotificationReadLocally,
-} from '@/utils/localNotificationReadStore';
-import * as Haptics from "expo-haptics";
 import { useRouter, type Href } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -25,6 +16,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 const BG = '#050A0E';
 const CARD_BG = '#081020';
@@ -33,15 +26,35 @@ const MUTED = '#a8b0bc';
 function iconForNotificationType(t: string | null | undefined): NotificationIconId {
   const u = String(t || '').toUpperCase();
   if (u.includes('WELCOME')) return 'bulb';
-  if (u.includes('PAYMENT')) return 'trophy';
   if (u.includes('COMPLETE')) return 'trophy';
   if (u.includes('STOP')) return 'video';
   if (u.includes('RECORD')) return 'video';
   return 'trophy';
 }
 
-function notificationHref(type: string | null | undefined, data: any): Href | null {
-  return hrefFromNotificationData(data, type);
+/**
+ * Resolves a notification's tap-target. Currently routes `RECORDING_COMPLETE`
+ * straight to the per-recording Highlights screen using the recording id stored
+ * inside the JSONB `data` column on the backend (see
+ * `recording-highlight.service.ts#sendRecordingCompleteNotification`).
+ */
+function notificationHref(
+  type: string | null | undefined,
+  data: any,
+): Href | null {
+  const u = String(type || '').toUpperCase();
+  if (u === 'RECORDING_COMPLETE') {
+    const first = Array.isArray(data) ? data[0] : data;
+    const recordingId = first?.recordingId ?? first?.recording_id;
+    if (recordingId) {
+      return { pathname: Paths.highlights, params: { id: String(recordingId) } };
+    }
+    return Paths.recordings as Href;
+  }
+  if (u === 'RECORDING_STOP' || u === 'RECORDING_START') {
+    return Paths.recordings as Href;
+  }
+  return null;
 }
 
 function formatNotifTime(iso: string | Date | undefined): string {
@@ -67,22 +80,6 @@ function startOfLocalDay(d: Date): number {
 }
 
 type NotificationItemWithHref = NotificationItem & { href: Href | null };
-
-type MergedRow = {
-  id: string;
-  title: string;
-  body: string;
-  time: string;
-  icon: NotificationIconId;
-  at: number;
-  href: Href | null;
-  dedupeKey: string;
-};
-
-function dedupeKeyForRow(row: { title: string; body: string; at: number }): string {
-  const bucket = Math.floor(row.at / 120_000);
-  return `${row.title}|${row.body}|${bucket}`;
-}
 
 function groupNotifications(
   list: {
@@ -135,153 +132,60 @@ function groupNotifications(
 /** Fetches from `GET /notification`; same layout as `web/src/screens/NotificationsScreen.tsx`. */
 export default function FieldflixNotificationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const pt = Math.max(12, insets.top);
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<{ label: string; items: NotificationItemWithHref[] }[]>([]);
-  const [apiRowsForRead, setApiRowsForRead] = useState<{ id?: string; created_at?: string }[]>([]);
-  const [markingRead, setMarkingRead] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  const markReadUnavailable =
-    loading || markingRead || unreadCount <= 0;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const raw = await getNotifications(1, 50);
-      const serverRows: MergedRow[] = (Array.isArray(raw) ? raw : []).map((e: any) => {
+      const list = (Array.isArray(raw) ? raw : []).map((e: any) => {
         const at = e?.created_at ? new Date(e.created_at).getTime() : 0;
-        const title = String(e?.title ?? 'Notification');
-        const body = String(e?.body ?? '');
-        const row: MergedRow = {
+        return {
           id: String(e?.id ?? ''),
-          title,
-          body,
+          title: String(e?.title ?? 'Notification'),
+          body: String(e?.body ?? ''),
           time: formatNotifTime(e?.created_at),
           icon: iconForNotificationType(e?.notification_type),
           at,
           href: notificationHref(e?.notification_type, e?.data),
-          dedupeKey: '',
         };
-        row.dedupeKey = dedupeKeyForRow(row);
-        return row;
       });
-      setApiRowsForRead(
-        (Array.isArray(raw) ? raw : []).map((e: any) => ({
-          id: e?.id != null ? String(e.id) : undefined,
-          created_at: typeof e?.created_at === "string" ? e.created_at : undefined,
-        })),
-      );
-      const unread = await getUnreadApiNotificationCount(
-        (Array.isArray(raw) ? raw : []).map((e: any) => ({
-          id: e?.id != null ? String(e.id) : undefined,
-          created_at: typeof e?.created_at === "string" ? e.created_at : undefined,
-        })),
-      );
-      setUnreadCount(unread);
-
-      const local = await getLocalNotifications();
-      const localRows: MergedRow[] = local.map((e) => {
-        const at = new Date(e.created_at).getTime();
-        const title = e.title;
-        const body = e.body;
-        const row: MergedRow = {
-          id: e.id,
-          title,
-          body,
-          time: formatNotifTime(e.created_at),
-          icon: iconForNotificationType(e.notification_type),
-          at,
-          href: notificationHref(e.notification_type, e.data),
-          dedupeKey: '',
-        };
-        row.dedupeKey = dedupeKeyForRow(row);
-        return row;
-      });
-
-      const seen = new Set<string>();
-      const merged: MergedRow[] = [];
-      for (const r of serverRows) {
-        if (!seen.has(r.dedupeKey)) {
-          seen.add(r.dedupeKey);
-          merged.push(r);
-        }
-      }
-      for (const r of localRows) {
-        if (!seen.has(r.dedupeKey)) {
-          seen.add(r.dedupeKey);
-          merged.push(r);
-        }
-      }
-      merged.sort((a, b) => b.at - a.at);
-      setSections(
-        groupNotifications(
-          merged.map(({ dedupeKey: _, ...rest }) => rest),
-        ),
-      );
+      setSections(groupNotifications(list));
     } catch {
       setSections([]);
-      setUnreadCount(0);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
     <WebShell backgroundColor={BG}>
       <View style={styles.flex}>
-        <FieldflixScreenHeader
-          title="Notifications"
-          rightAccessory={
-            <Pressable
-              onPressIn={() => {
-                if (!markReadUnavailable) {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-              }}
-              onPress={async () => {
-                if (markReadUnavailable) return;
-                setMarkingRead(true);
-                try {
-                  await markAllApiNotificationsRead(apiRowsForRead);
-                  await load();
-                  void Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Success,
-                  );
-                } finally {
-                  setMarkingRead(false);
-                }
-              }}
-              disabled={markReadUnavailable}
-              style={({ pressed }) => [
-                styles.markReadBtn,
-                markReadUnavailable && styles.markReadBtnDisabled,
-                pressed && !markReadUnavailable ? styles.markReadBtnPressed : null,
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Mark all notifications as read"
-              hitSlop={6}
-            >
-              {markingRead ? (
-                <ActivityIndicator size="small" color={WEB.greenBright} />
-              ) : (
-                <Text
-                  style={[
-                    styles.markReadBtnText,
-                    markReadUnavailable ? styles.markReadBtnTextDisabled : null,
-                  ]}
-                >
-                  Mark as read
-                </Text>
-              )}
-            </Pressable>
-          }
-        />
+        <View style={[styles.header, { paddingTop: pt }]}>
+          <Pressable
+            accessibilityLabel="Go back"
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
+            <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M15 19l-7-7 7-7"
+                stroke="#fff"
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
+          </Pressable>
+          <Text style={styles.headerTitle}>Notifications</Text>
+        </View>
 
         {loading ? (
           <View style={styles.loading}>
@@ -290,7 +194,7 @@ export default function FieldflixNotificationsScreen() {
         ) : (
           <ScrollView
             style={styles.main}
-            contentContainerStyle={styles.scrollContent}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
             showsVerticalScrollIndicator={false}
           >
             {sections.length === 0 ? (
@@ -307,16 +211,7 @@ export default function FieldflixNotificationsScreen() {
                     <NotificationCard
                       key={n.id}
                       item={n}
-                      onPress={
-                        n.href
-                          ? async () => {
-                              await markNotificationReadLocally(n.id);
-                              router.push(n.href as Href);
-                            }
-                          : async () => {
-                              await markNotificationReadLocally(n.id);
-                            }
-                      }
+                      onPress={n.href ? () => router.push(n.href as Href) : undefined}
                     />
                   ))}
                 </View>
@@ -381,43 +276,30 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  markReadBtn: {
-    justifyContent: "center",
-    alignItems: "center",
-    minWidth: 96,
-    minHeight: 36,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    backgroundColor: "rgba(34,197,94,0.12)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(34,197,94,0.35)",
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
-  markReadBtnPressed: {
-    backgroundColor: "rgba(34,197,94,0.22)",
-    opacity: 0.94,
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
   },
-  markReadBtnDisabled: {
-    opacity: 0.42,
-    backgroundColor: "rgba(148,163,184,0.08)",
-    borderColor: "rgba(255,255,255,0.12)",
-  },
-  markReadBtnText: {
-    fontFamily: FF.semiBold,
-    fontSize: 13,
-    color: WEB.greenBright,
-    letterSpacing: -0.1,
-    textAlign: "center",
-  },
-  markReadBtnTextDisabled: {
-    color: "rgba(148,163,184,0.75)",
+  headerTitle: {
+    fontFamily: FF.bold,
+    fontSize: 20,
+    letterSpacing: -0.3,
+    color: WEB.white,
   },
   main: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 28,
   },
   loading: {
     flex: 1,
@@ -433,13 +315,13 @@ const styles = StyleSheet.create({
     marginTop: 32,
   },
   sectionFirst: {
-    paddingTop: 12,
+    paddingTop: 20,
   },
   sectionRest: {
-    marginTop: 22,
+    marginTop: 28,
   },
   sectionLabel: {
-    marginBottom: 10,
+    marginBottom: 12,
     fontFamily: FF.bold,
     fontSize: 13,
     letterSpacing: 1.2,
@@ -447,16 +329,15 @@ const styles = StyleSheet.create({
     color: WEB.green,
   },
   list: {
-    gap: 8,
+    gap: 10,
   },
   card: {
     flexDirection: 'row',
     gap: 12,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.1)',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    padding: 14,
   },
   iconWrap: {
     width: 44,

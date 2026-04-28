@@ -160,8 +160,8 @@ export default function FieldflixRecordingsScreen() {
       const tally: Record<string, number> = {};
       const mine = Array.isArray(a)
         ? new Set<string>(
-            a.map((r: unknown) => String((r as { id?: string })?.id ?? "")),
-          )
+          a.map((r: unknown) => String((r as { id?: string })?.id ?? "")),
+        )
         : new Set<string>();
       const arr = Array.isArray(flickList) ? flickList : [];
       for (const fs of arr) {
@@ -183,49 +183,49 @@ export default function FieldflixRecordingsScreen() {
   const myRows =
     my.length > 0
       ? my.map((s: any, i: number) => {
-          const hid = String(s?.id ?? "");
-          const h =
-            highlightCountFromRecording(s) +
-            (hid ? (shortsPerRecording[hid] ?? 0) : 0);
-          return {
-            id: String(s?.id ?? i),
-            recordingId: s?.id ? String(s.id) : null,
-            title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Recording",
-            location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? "",
-            when: formatRecordingListWhen(s?.startTime),
-            duration: recordingDurationLabel(s),
-            thumbUrl: recordingThumbUrl(s),
-            highlights: h > 0 ? h : null,
-            status: String(s?.status ?? "").toLowerCase(),
-            isReady: recordingIsReady(s),
-            tags: [] as string[],
-            moreTags: 0,
-          };
-        })
+        const hid = String(s?.id ?? "");
+        const h =
+          highlightCountFromRecording(s) +
+          (hid ? (shortsPerRecording[hid] ?? 0) : 0);
+        return {
+          id: String(s?.id ?? i),
+          recordingId: s?.id ? String(s.id) : null,
+          title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Recording",
+          location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? "",
+          when: formatRecordingListWhen(s?.startTime),
+          duration: recordingDurationLabel(s),
+          thumbUrl: recordingThumbUrl(s),
+          highlights: h > 0 ? h : null,
+          status: String(s?.status ?? "").toLowerCase(),
+          isReady: recordingIsReady(s),
+          tags: [] as string[],
+          moreTags: 0,
+        };
+      })
       : [];
 
   const sharedRows =
     shared.length > 0
       ? shared.map((s: any, i: number) => {
-          const rec = s?.recording;
-          const td = rec?.turf_detail;
-          const loc =
-            [td?.city, td?.state].filter(Boolean).join(", ") ||
-            td?.address_line ||
-            "";
-          return {
-            id: String(s?.id ?? i),
-            recordingId: rec?.id ? String(rec.id) : null,
-            shareToken: s?.share_token ?? rec?.share_token ?? null,
-            title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
-            highlights: highlightCountFromRecording(rec),
-            shareWith: s?.shared_with_user_name || "—",
-            ownerName: rec?.owner_name ?? "",
-            location: loc,
-            thumbUrl: recordingThumbUrl(rec),
-            duration: recordingDurationLabel(rec),
-          };
-        })
+        const rec = s?.recording;
+        const td = rec?.turf_detail;
+        const loc =
+          [td?.city, td?.state].filter(Boolean).join(", ") ||
+          td?.address_line ||
+          "";
+        return {
+          id: String(s?.id ?? i),
+          recordingId: rec?.id ? String(rec.id) : null,
+          shareToken: s?.share_token ?? rec?.share_token ?? null,
+          title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
+          highlights: highlightCountFromRecording(rec),
+          shareWith: s?.shared_with_user_name || "—",
+          ownerName: rec?.owner_name ?? "",
+          location: loc,
+          thumbUrl: recordingThumbUrl(rec),
+          duration: recordingDurationLabel(rec),
+        };
+      })
       : [];
 
   const { state: readyState, dismiss: dismissReady } = useRecordingReadyToast();
@@ -238,533 +238,533 @@ export default function FieldflixRecordingsScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
         >
-        <FieldflixScreenHeader
-          title="Recordings"
-          onBack={() => router.replace(Paths.home)}
-          backAccessibilityLabel="Back to home"
-        />
+          <FieldflixScreenHeader
+            title="Recordings"
+            onBack={() => router.replace(Paths.home)}
+            backAccessibilityLabel="Back to home"
+          />
 
-        <View style={styles.segOuter}>
-          <View style={[styles.segTrack, isCompact && styles.segTrackCompact]}>
-            <SegTab
-              active={tab === "my"}
-              onPress={() => setTab("my")}
-              iconSource={RECORDINGS_REC_LOCAL.tabMy}
-              label="My Recordings"
-              compact={isCompact}
-            />
-            <SegTab
-              active={tab === "shared"}
-              onPress={() => setTab("shared")}
-              iconSource={RECORDINGS_REC_LOCAL.tabShared}
-              label="Shared Recordings"
-              compact={isCompact}
-            />
-            <SegTab
-              active={tab === "find"}
-              onPress={() => setTab("find")}
-              iconSource={RECORDINGS_REC_LOCAL.tabFind}
-              label="Find Recordings"
-              compact={isCompact}
-            />
-          </View>
-        </View>
-
-        {readyState.kind !== "idle" ? (
-          <View style={styles.readyToast}>
-            <View style={styles.readyToastDot} />
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.readyToastTitle} numberOfLines={1}>
-                {readyState.kind === "ready"
-                  ? "Your recording is ready"
-                  : readyState.kind === "failed"
-                    ? "Recording failed to process"
-                    : "Processing your recording…"}
-              </Text>
-              <Text style={styles.readyToastBody} numberOfLines={2}>
-                {readyState.kind === "ready"
-                  ? "Open Highlights to watch the preview and unlock the full match."
-                  : readyState.kind === "failed"
-                    ? "Something went wrong on our side. Please try again."
-                    : "Hang tight — we'll let you know the moment it's ready."}
-              </Text>
+          <View style={styles.segOuter}>
+            <View style={[styles.segTrack, isCompact && styles.segTrackCompact]}>
+              <SegTab
+                active={tab === "my"}
+                onPress={() => setTab("my")}
+                iconSource={RECORDINGS_REC_LOCAL.tabMy}
+                label="My Recordings"
+                compact={isCompact}
+              />
+              <SegTab
+                active={tab === "shared"}
+                onPress={() => setTab("shared")}
+                iconSource={RECORDINGS_REC_LOCAL.tabShared}
+                label="Shared Recordings"
+                compact={isCompact}
+              />
+              <SegTab
+                active={tab === "find"}
+                onPress={() => setTab("find")}
+                iconSource={RECORDINGS_REC_LOCAL.tabFind}
+                label="Find Recordings"
+                compact={isCompact}
+              />
             </View>
-            {readyState.kind === "ready" ? (
-              <Pressable
-                style={styles.readyToastCta}
-                onPress={() => {
-                  router.push({
-                    pathname: Paths.highlights,
-                    params: { id: readyState.recordingId },
-                  });
-                  void dismissReady();
-                }}
-              >
-                <Text style={styles.readyToastCtaText}>Open</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              style={styles.readyToastClose}
-              hitSlop={10}
-              onPress={() => void dismissReady()}
-              accessibilityLabel="Dismiss"
-            >
-              <Text style={styles.readyToastCloseText}>×</Text>
-            </Pressable>
           </View>
-        ) : null}
 
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={[
-            styles.main,
-            { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {tab === "my" && (
-            <View style={styles.myList}>
-              {myRows.length === 0 ? (
-                <Text style={styles.emptyList}>
-                  No recordings yet. Scan a court QR and start a session to
-                  build your library.
+          {readyState.kind !== "idle" ? (
+            <View style={styles.readyToast}>
+              <View style={styles.readyToastDot} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.readyToastTitle} numberOfLines={1}>
+                  {readyState.kind === "ready"
+                    ? "Your recording is ready"
+                    : readyState.kind === "failed"
+                      ? "Recording failed to process"
+                      : "Processing your recording…"}
                 </Text>
-              ) : null}
-              {myRows.map((row) => (
+                <Text style={styles.readyToastBody} numberOfLines={2}>
+                  {readyState.kind === "ready"
+                    ? "Open Highlights to watch the preview and unlock the full match."
+                    : readyState.kind === "failed"
+                      ? "Something went wrong on our side. Please try again."
+                      : "Hang tight — we'll let you know the moment it's ready."}
+                </Text>
+              </View>
+              {readyState.kind === "ready" ? (
                 <Pressable
-                  key={row.id}
-                  style={styles.myRow}
+                  style={styles.readyToastCta}
                   onPress={() => {
-                    if (!row.recordingId) return;
                     router.push({
                       pathname: Paths.highlights,
-                      params: { id: row.recordingId },
+                      params: { id: readyState.recordingId },
                     });
+                    void dismissReady();
                   }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${row.title} highlights`}
                 >
-                  <View style={styles.thumb}>
-                    <Image
-                      source={row.thumbUrl ? { uri: row.thumbUrl } : BG.arena}
-                      style={StyleSheet.absoluteFillObject}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.thumbBar} />
-                    <View style={styles.thumbDur}>
-                      <Text style={styles.thumbDurText}>{row.duration}</Text>
-                    </View>
-                    <Pressable
-                      style={styles.thumbShare}
-                      onPress={() => {
-                        if (row.recordingId) {
-                          void onShareRecording(row.recordingId, row.title);
-                        }
-                      }}
-                      accessibilityLabel="Share recording"
-                      hitSlop={8}
-                    >
-                      <ShareIcon color="#fff" size={14} />
-                    </Pressable>
-                    <View style={styles.thumbPlayOverlay}>
-                      <View style={styles.thumbPlayBtn}>
-                        <PlayIcon color="#0a0a0a" size={18} />
-                      </View>
-                    </View>
-                  </View>
-                  <View style={styles.myBody}>
-                    <Text style={styles.myTitle} numberOfLines={2}>
-                      {row.title}
-                    </Text>
-                    <View style={styles.myLine}>
-                      <MapPinIcon color={ACCENT} size={14} />
-                      <Text style={styles.myLineText} numberOfLines={1}>
-                        {row.location}
-                      </Text>
-                    </View>
-                    <View style={styles.myLine}>
-                      <CalendarIcon color={ACCENT} size={14} />
-                      <Text style={styles.myLineTextMuted} numberOfLines={1}>
-                        {row.when}
-                      </Text>
-                    </View>
-                    {row.highlights != null ? (
-                      <View style={styles.myLine}>
-                        <TrophyIcon color={ACCENT} size={14} />
-                        <Text style={styles.myLineAccent}>
-                          {row.highlights} Highlights
-                        </Text>
-                      </View>
-                    ) : null}
-                    {!row.isReady ? (
-                      <View style={styles.myLine}>
-                        <Text style={styles.myLineProcessing} numberOfLines={1}>
-                          Processing — your highlights will appear here shortly.
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
+                  <Text style={styles.readyToastCtaText}>Open</Text>
                 </Pressable>
-              ))}
-            </View>
-          )}
-
-          {tab === "shared" && (
-            <View style={styles.sharedList}>
-              {sharedRows.length === 0 ? (
-                <Text style={styles.emptyList}>
-                  Nothing shared with you yet. When someone shares a recording,
-                  it will show here.
-                </Text>
               ) : null}
-              {sharedRows.map((card) => (
-                <Pressable
-                  key={card.id}
-                  style={styles.sharedCard}
-                  onPress={() => {
-                    if (card.recordingId) {
+              <Pressable
+                style={styles.readyToastClose}
+                hitSlop={10}
+                onPress={() => void dismissReady()}
+                accessibilityLabel="Dismiss"
+              >
+                <Text style={styles.readyToastCloseText}>×</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={[
+              styles.main,
+              { paddingBottom: FIELD_FLIX_BOTTOM_NAV_SPACE },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {tab === "my" && (
+              <View style={styles.myList}>
+                {myRows.length === 0 ? (
+                  <Text style={styles.emptyList}>
+                    No recordings yet. Scan a court QR and start a session to
+                    build your library.
+                  </Text>
+                ) : null}
+                {myRows.map((row) => (
+                  <Pressable
+                    key={row.id}
+                    style={styles.myRow}
+                    onPress={() => {
+                      if (!row.recordingId) return;
                       router.push({
                         pathname: Paths.highlights,
-                        params: { id: card.recordingId },
+                        params: { id: row.recordingId },
                       });
-                    } else if (card.shareToken) {
-                      router.push({
-                        pathname: Paths.sharedMedia,
-                        params: { token: card.shareToken },
-                      });
-                    }
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${card.title}`}
-                >
-                  <Image
-                    source={card.thumbUrl ? { uri: card.thumbUrl } : BG.arena}
-                    style={styles.sharedMedia}
-                    resizeMode="cover"
-                  />
-                  <LinearGradient
-                    colors={[
-                      "rgba(0,0,0,0.15)",
-                      "rgba(0,0,0,0.45)",
-                      "rgba(0,0,0,0.94)",
-                    ]}
-                    locations={[0, 0.55, 1]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <View style={styles.sharedOverlay}>
-                    <View style={styles.sharedTop}>
-                      <View style={styles.sharedReady}>
-                        <Text style={styles.sharedReadyText}>Ready</Text>
-                      </View>
-                      <View style={styles.sharedDur}>
-                        <ClockIcon color="rgba(255,255,255,0.92)" size={14} />
-                        <Text style={styles.sharedDurText}>
-                          {card.duration}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.sharedMid}>
-                      <Text style={styles.sharedTitle} numberOfLines={1}>
-                        {card.title}
-                      </Text>
-                      <Text style={styles.sharedMeta} numberOfLines={2}>
-                        {card.location || "No location available"}
-                      </Text>
-                    </View>
-                    <View style={styles.sharedActions}>
-                      <View style={styles.sharedPills}>
-                        <View style={styles.sharedPill}>
-                          <TrophyIcon color={ACCENT} size={16} />
-                          <Text style={styles.sharedPillText}>
-                            {card.highlights} Highlights
-                          </Text>
-                        </View>
-                        <View style={styles.sharedPill}>
-                          <Text style={styles.sharedPillText} numberOfLines={1}>
-                            From: {card.ownerName || "—"}
-                          </Text>
-                        </View>
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${row.title} highlights`}
+                  >
+                    <View style={styles.thumb}>
+                      <Image
+                        source={row.thumbUrl ? { uri: row.thumbUrl } : BG.arena}
+                        style={StyleSheet.absoluteFillObject}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.thumbBar} />
+                      <View style={styles.thumbDur}>
+                        <Text style={styles.thumbDurText}>{row.duration}</Text>
                       </View>
                       <Pressable
-                        style={styles.sharedFab}
-                        accessibilityLabel="Share"
+                        style={styles.thumbShare}
                         onPress={() => {
-                          if (card.recordingId) {
-                            void onShareRecording(card.recordingId, card.title);
+                          if (row.recordingId) {
+                            void onShareRecording(row.recordingId, row.title);
                           }
                         }}
+                        accessibilityLabel="Share recording"
                         hitSlop={8}
                       >
-                        <ShareIcon color="#0a0a0a" size={18} />
+                        <ShareIcon color="#fff" size={14} />
                       </Pressable>
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          )}
-
-          {tab === "find" && (
-            <View style={styles.findWrap}>
-              <View style={styles.findHeroOuter}>
-                <Image
-                  source={RECORDINGS_REC_LOCAL.hero}
-                  style={styles.findHeroImg}
-                  resizeMode="cover"
-                />
-                <View
-                  style={[
-                    styles.findHeroInner,
-                    isCompact && styles.findHeroInnerCompact,
-                  ]}
-                >
-                  <View style={styles.findBadge}>
-                    <Image
-                      source={RECORDINGS_REC_LOCAL.gameFinderIcon}
-                      style={{ width: 16, height: 16 }}
-                      resizeMode="contain"
-                    />
-                    <Text style={styles.findBadgeText}>GAME FINDER</Text>
-                  </View>
-                  <Text style={styles.findHeadline}>
-                    Missed your <Text style={styles.findEm}>game?</Text>
-                  </Text>
-                  <Text style={styles.findSub}>
-                    Enter your match details and find your recording instantly.
-                  </Text>
-                </View>
-                <View style={styles.findPlayRing}>
-                  <View style={styles.findPlayCore}>
-                    <PlayIcon color={ACCENT} size={22} />
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.findSteps}>
-                <View
-                  style={[
-                    styles.findStep,
-                    !isLocationComplete && styles.findStepMuted,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.findStepDot,
-                      !isLocationComplete && styles.findStepDotMuted,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.findStepText,
-                      !isLocationComplete && styles.findStepTextMuted,
-                    ]}
-                  >
-                    Location
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.findStep,
-                    !isScheduleComplete && styles.findStepMuted,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.findStepDot,
-                      !isScheduleComplete && styles.findStepDotMuted,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.findStepText,
-                      !isScheduleComplete && styles.findStepTextMuted,
-                    ]}
-                  >
-                    Schedule
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.findStep,
-                    !isVerifyComplete && styles.findStepMuted,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.findStepDot,
-                      !isVerifyComplete && styles.findStepDotMuted,
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.findStepText,
-                      !isVerifyComplete && styles.findStepTextMuted,
-                    ]}
-                  >
-                    Verify
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.findPanel}>
-                <View style={styles.findLabelRow}>
-                  <MapPinIcon color={MUTED} size={14} />
-                  <Text style={styles.findLabel}>LOCATION</Text>
-                </View>
-                <TextInput
-                  value={findLocation}
-                  onChangeText={setFindLocation}
-                  style={styles.findInput}
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                />
-              </View>
-
-              <View style={styles.findPanel}>
-                <View
-                  style={[styles.findGrid2, isCompact && styles.findGridStack]}
-                >
-                  <View style={styles.findGridCol}>
-                    <View style={styles.findLabelRow}>
-                      <View style={styles.findSmallIcon}>
-                        <Svg
-                          width={12}
-                          height={12}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <Circle
-                            cx={12}
-                            cy={12}
-                            r={9}
-                            stroke={MUTED}
-                            strokeWidth={2}
-                          />
-                        </Svg>
+                      <View style={styles.thumbPlayOverlay}>
+                        <View style={styles.thumbPlayBtn}>
+                          <PlayIcon color="#0a0a0a" size={18} />
+                        </View>
                       </View>
-                      <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
                     </View>
-                    <TextInput
-                      value={findGround}
-                      onChangeText={setFindGround}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
-                  </View>
-                  <View style={styles.findGridCol}>
-                    <View style={styles.findLabelRow}>
-                      <CalendarIcon color={MUTED} size={14} />
-                      <Text style={styles.findLabel}>DATE</Text>
-                    </View>
-                    <TextInput
-                      value={findDate}
-                      onChangeText={setFindDate}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.findPanel}>
-                <View
-                  style={[styles.findGrid2, isCompact && styles.findGridStack]}
-                >
-                  <View style={styles.findGridCol}>
-                    <View style={styles.findLabelRow}>
-                      <ClockIcon color={MUTED} size={14} />
-                      <Text style={styles.findLabel}>START TIME</Text>
-                    </View>
-                    <TextInput
-                      value={findStart}
-                      onChangeText={setFindStart}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
-                  </View>
-                  <View style={styles.findGridCol}>
-                    <View style={styles.findLabelRow}>
-                      <ClockIcon color={MUTED} size={14} />
-                      <Text style={styles.findLabel}>END TIME</Text>
-                    </View>
-                    <TextInput
-                      value={findEnd}
-                      onChangeText={setFindEnd}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
-                  </View>
-                </View>
-              </View>
-
-              <View style={[styles.findPanel, styles.findPanelVerify]}>
-                <View style={styles.findVerifyTitle}>
-                  <View style={styles.verifyIconBox}>
-                    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
-                      <Path
-                        d="M12 2L3 7v5c0 5 4 9 9 10 5-1 9-5 9-10V7l-9-5z"
-                        stroke={ACCENT}
-                        strokeWidth={1.6}
-                        strokeLinejoin="round"
-                      />
-                      <Path
-                        d="M9 12l2 2 4-4"
-                        stroke={ACCENT}
-                        strokeWidth={1.6}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </Svg>
-                  </View>
-                  <Text style={styles.verifyTitleText}>Verify access</Text>
-                </View>
-                <Text style={styles.verifyHint}>
-                  (Enter the mobile number of the player who started the
-                  recording)
-                </Text>
-                <View style={styles.phoneRow}>
-                  <Text style={styles.phoneCc}>+91</Text>
-                  <TextInput
-                    value={findPhone}
-                    onChangeText={(v) =>
-                      setFindPhone(v.replace(/\D/g, "").slice(0, 10))
-                    }
-                    keyboardType="number-pad"
-                    placeholder="Enter your mobile..."
-                    placeholderTextColor="rgba(255,255,255,0.35)"
-                    style={styles.phoneInput}
-                  />
-                </View>
-              </View>
-
-              <Pressable style={styles.findCta} onPress={runFindInMyRecordings}>
-                <PlayIcon color="#fff" size={18} />
-                <Text style={styles.findCtaText}>Find My Game</Text>
-              </Pressable>
-
-              {findMatches !== null ? (
-                <View style={styles.findResults}>
-                  <Text style={styles.findResultsTitle}>
-                    {findMatches.length === 0
-                      ? "No matches in your recordings for those details."
-                      : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"} in your library`}
-                  </Text>
-                  {findMatches.map((r: any) => {
-                    const title = r?.turf?.name ?? r?.name ?? "Recording";
-                    const when = formatRecordingListWhen(r?.startTime);
-                    return (
-                      <View key={String(r.id)} style={styles.findResultRow}>
-                        <Text style={styles.findResultName} numberOfLines={2}>
-                          {title}
+                    <View style={styles.myBody}>
+                      <Text style={styles.myTitle} numberOfLines={2}>
+                        {row.title}
+                      </Text>
+                      <View style={styles.myLine}>
+                        <MapPinIcon color={ACCENT} size={14} />
+                        <Text style={styles.myLineText} numberOfLines={1}>
+                          {row.location}
                         </Text>
-                        <Text style={styles.findResultWhen}>{when}</Text>
                       </View>
-                    );
-                  })}
+                      <View style={styles.myLine}>
+                        <CalendarIcon color={ACCENT} size={14} />
+                        <Text style={styles.myLineTextMuted} numberOfLines={1}>
+                          {row.when}
+                        </Text>
+                      </View>
+                      {row.highlights != null ? (
+                        <View style={styles.myLine}>
+                          <TrophyIcon color={ACCENT} size={14} />
+                          <Text style={styles.myLineAccent}>
+                            {row.highlights} Highlights
+                          </Text>
+                        </View>
+                      ) : null}
+                      {!row.isReady ? (
+                        <View style={styles.myLine}>
+                          <Text style={styles.myLineProcessing} numberOfLines={1}>
+                            Processing — your highlights will appear here shortly.
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            {tab === "shared" && (
+              <View style={styles.sharedList}>
+                {sharedRows.length === 0 ? (
+                  <Text style={styles.emptyList}>
+                    Nothing shared with you yet. When someone shares a recording,
+                    it will show here.
+                  </Text>
+                ) : null}
+                {sharedRows.map((card) => (
+                  <Pressable
+                    key={card.id}
+                    style={styles.sharedCard}
+                    onPress={() => {
+                      if (card.recordingId) {
+                        router.push({
+                          pathname: Paths.highlights,
+                          params: { id: card.recordingId },
+                        });
+                      } else if (card.shareToken) {
+                        router.push({
+                          pathname: Paths.sharedMedia,
+                          params: { token: card.shareToken },
+                        });
+                      }
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${card.title}`}
+                  >
+                    <Image
+                      source={card.thumbUrl ? { uri: card.thumbUrl } : BG.arena}
+                      style={styles.sharedMedia}
+                      resizeMode="cover"
+                    />
+                    <LinearGradient
+                      colors={[
+                        "rgba(0,0,0,0.15)",
+                        "rgba(0,0,0,0.45)",
+                        "rgba(0,0,0,0.94)",
+                      ]}
+                      locations={[0, 0.55, 1]}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    <View style={styles.sharedOverlay}>
+                      <View style={styles.sharedTop}>
+                        <View style={styles.sharedReady}>
+                          <Text style={styles.sharedReadyText}>Ready</Text>
+                        </View>
+                        <View style={styles.sharedDur}>
+                          <ClockIcon color="rgba(255,255,255,0.92)" size={14} />
+                          <Text style={styles.sharedDurText}>
+                            {card.duration}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.sharedMid}>
+                        <Text style={styles.sharedTitle} numberOfLines={1}>
+                          {card.title}
+                        </Text>
+                        <Text style={styles.sharedMeta} numberOfLines={2}>
+                          {card.location || "No location available"}
+                        </Text>
+                      </View>
+                      <View style={styles.sharedActions}>
+                        <View style={styles.sharedPills}>
+                          <View style={styles.sharedPill}>
+                            <TrophyIcon color={ACCENT} size={16} />
+                            <Text style={styles.sharedPillText}>
+                              {card.highlights} Highlights
+                            </Text>
+                          </View>
+                          <View style={styles.sharedPill}>
+                            <Text style={styles.sharedPillText} numberOfLines={1}>
+                              From: {card.ownerName || "—"}
+                            </Text>
+                          </View>
+                        </View>
+                        <Pressable
+                          style={styles.sharedFab}
+                          accessibilityLabel="Share"
+                          onPress={() => {
+                            if (card.recordingId) {
+                              void onShareRecording(card.recordingId, card.title);
+                            }
+                          }}
+                          hitSlop={8}
+                        >
+                          <ShareIcon color="#0a0a0a" size={18} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            {tab === "find" && (
+              <View style={styles.findWrap}>
+                <View style={styles.findHeroOuter}>
+                  <Image
+                    source={RECORDINGS_REC_LOCAL.hero}
+                    style={styles.findHeroImg}
+                    resizeMode="cover"
+                  />
+                  <View
+                    style={[
+                      styles.findHeroInner,
+                      isCompact && styles.findHeroInnerCompact,
+                    ]}
+                  >
+                    <View style={styles.findBadge}>
+                      <Image
+                        source={RECORDINGS_REC_LOCAL.gameFinderIcon}
+                        style={{ width: 16, height: 16 }}
+                        resizeMode="contain"
+                      />
+                      <Text style={styles.findBadgeText}>GAME FINDER</Text>
+                    </View>
+                    <Text style={styles.findHeadline}>
+                      Missed your <Text style={styles.findEm}>game?</Text>
+                    </Text>
+                    <Text style={styles.findSub}>
+                      Enter your match details and find your recording instantly.
+                    </Text>
+                  </View>
+                  <View style={styles.findPlayRing}>
+                    <View style={styles.findPlayCore}>
+                      <PlayIcon color={ACCENT} size={22} />
+                    </View>
+                  </View>
                 </View>
-              ) : null}
-            </View>
-          )}
-        </ScrollView>
+
+                <View style={styles.findSteps}>
+                  <View
+                    style={[
+                      styles.findStep,
+                      !isLocationComplete && styles.findStepMuted,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.findStepDot,
+                        !isLocationComplete && styles.findStepDotMuted,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.findStepText,
+                        !isLocationComplete && styles.findStepTextMuted,
+                      ]}
+                    >
+                      Location
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.findStep,
+                      !isScheduleComplete && styles.findStepMuted,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.findStepDot,
+                        !isScheduleComplete && styles.findStepDotMuted,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.findStepText,
+                        !isScheduleComplete && styles.findStepTextMuted,
+                      ]}
+                    >
+                      Schedule
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.findStep,
+                      !isVerifyComplete && styles.findStepMuted,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.findStepDot,
+                        !isVerifyComplete && styles.findStepDotMuted,
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.findStepText,
+                        !isVerifyComplete && styles.findStepTextMuted,
+                      ]}
+                    >
+                      Verify
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.findPanel}>
+                  <View style={styles.findLabelRow}>
+                    <MapPinIcon color={MUTED} size={14} />
+                    <Text style={styles.findLabel}>LOCATION</Text>
+                  </View>
+                  <TextInput
+                    value={findLocation}
+                    onChangeText={setFindLocation}
+                    style={styles.findInput}
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                  />
+                </View>
+
+                <View style={styles.findPanel}>
+                  <View
+                    style={[styles.findGrid2, isCompact && styles.findGridStack]}
+                  >
+                    <View style={styles.findGridCol}>
+                      <View style={styles.findLabelRow}>
+                        <View style={styles.findSmallIcon}>
+                          <Svg
+                            width={12}
+                            height={12}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                          >
+                            <Circle
+                              cx={12}
+                              cy={12}
+                              r={9}
+                              stroke={MUTED}
+                              strokeWidth={2}
+                            />
+                          </Svg>
+                        </View>
+                        <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
+                      </View>
+                      <TextInput
+                        value={findGround}
+                        onChangeText={setFindGround}
+                        style={styles.findInput}
+                        placeholderTextColor="rgba(255,255,255,0.35)"
+                      />
+                    </View>
+                    <View style={styles.findGridCol}>
+                      <View style={styles.findLabelRow}>
+                        <CalendarIcon color={MUTED} size={14} />
+                        <Text style={styles.findLabel}>DATE</Text>
+                      </View>
+                      <TextInput
+                        value={findDate}
+                        onChangeText={setFindDate}
+                        style={styles.findInput}
+                        placeholderTextColor="rgba(255,255,255,0.35)"
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.findPanel}>
+                  <View
+                    style={[styles.findGrid2, isCompact && styles.findGridStack]}
+                  >
+                    <View style={styles.findGridCol}>
+                      <View style={styles.findLabelRow}>
+                        <ClockIcon color={MUTED} size={14} />
+                        <Text style={styles.findLabel}>START TIME</Text>
+                      </View>
+                      <TextInput
+                        value={findStart}
+                        onChangeText={setFindStart}
+                        style={styles.findInput}
+                        placeholderTextColor="rgba(255,255,255,0.35)"
+                      />
+                    </View>
+                    <View style={styles.findGridCol}>
+                      <View style={styles.findLabelRow}>
+                        <ClockIcon color={MUTED} size={14} />
+                        <Text style={styles.findLabel}>END TIME</Text>
+                      </View>
+                      <TextInput
+                        value={findEnd}
+                        onChangeText={setFindEnd}
+                        style={styles.findInput}
+                        placeholderTextColor="rgba(255,255,255,0.35)"
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={[styles.findPanel, styles.findPanelVerify]}>
+                  <View style={styles.findVerifyTitle}>
+                    <View style={styles.verifyIconBox}>
+                      <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                        <Path
+                          d="M12 2L3 7v5c0 5 4 9 9 10 5-1 9-5 9-10V7l-9-5z"
+                          stroke={ACCENT}
+                          strokeWidth={1.6}
+                          strokeLinejoin="round"
+                        />
+                        <Path
+                          d="M9 12l2 2 4-4"
+                          stroke={ACCENT}
+                          strokeWidth={1.6}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </Svg>
+                    </View>
+                    <Text style={styles.verifyTitleText}>Verify access</Text>
+                  </View>
+                  <Text style={styles.verifyHint}>
+                    (Enter the mobile number of the player who started the
+                    recording)
+                  </Text>
+                  <View style={styles.phoneRow}>
+                    <Text style={styles.phoneCc}>+91</Text>
+                    <TextInput
+                      value={findPhone}
+                      onChangeText={(v) =>
+                        setFindPhone(v.replace(/\D/g, "").slice(0, 10))
+                      }
+                      keyboardType="number-pad"
+                      placeholder="Enter your mobile..."
+                      placeholderTextColor="rgba(255,255,255,0.35)"
+                      style={styles.phoneInput}
+                    />
+                  </View>
+                </View>
+
+                <Pressable style={styles.findCta} onPress={runFindInMyRecordings}>
+                  <PlayIcon color="#fff" size={18} />
+                  <Text style={styles.findCtaText}>Find My Game</Text>
+                </Pressable>
+
+                {findMatches !== null ? (
+                  <View style={styles.findResults}>
+                    <Text style={styles.findResultsTitle}>
+                      {findMatches.length === 0
+                        ? "No matches in your recordings for those details."
+                        : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"} in your library`}
+                    </Text>
+                    {findMatches.map((r: any) => {
+                      const title = r?.turf?.name ?? r?.name ?? "Recording";
+                      const when = formatRecordingListWhen(r?.startTime);
+                      return (
+                        <View key={String(r.id)} style={styles.findResultRow}>
+                          <Text style={styles.findResultName} numberOfLines={2}>
+                            {title}
+                          </Text>
+                          <Text style={styles.findResultWhen}>{when}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </ScrollView>
 
         </KeyboardAvoidingView>
         <FieldflixBottomNav active="recordings" />

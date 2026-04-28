@@ -1,51 +1,44 @@
-import ErrorBoundary from "@/components/organisms/ErrorBoundary/ErrorBoundary";
-import { Paths } from "@/data/paths";
-import {
-  useSessionsMyRecordings,
-  type SessionRowForUi,
-} from "@/hooks/useSessionsMyRecordings";
-import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
-import { WebShell } from "@/screens/fieldflix/WebShell";
-import { FF } from "@/screens/fieldflix/fonts";
-import {
-  SESSIONS_BACK_ARROW,
-  SESSIONS_ROW,
-  SESSIONS_SPORT_TEMPLATES,
-  type SessionRowLocal,
-} from "@/screens/fieldflix/sessionsData";
-import { WEB } from "@/screens/fieldflix/webDesign";
+import { Paths } from '@/data/paths';
+import { useSessionsMyRecordings, type SessionRowForUi } from '@/hooks/useSessionsMyRecordings';
+import { FF } from '@/screens/fieldflix/fonts';
+import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
+import { WebShell } from '@/screens/fieldflix/WebShell';
+import { BG } from '@/screens/fieldflix/bundledBackgrounds';
+import { SESSIONS_BACK_ARROW, SESSIONS_ROW, type SessionRowLocal } from '@/screens/fieldflix/sessionsData';
+import { WEB } from '@/screens/fieldflix/webDesign';
 import {
   formatRecordingListWhen,
   recordingDurationLabel,
   recordingIsReady,
   recordingThumbUrl,
   sportLabelFromTurf,
-} from "@/utils/recordingDisplay";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { useFocusEffect } from "@react-navigation/native";
-import { useRouter } from "expo-router";
-import { useCallback } from "react";
+} from '@/utils/recordingDisplay';
+import { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
 import {
   ActivityIndicator,
-  FlatList,
+  Alert,
   Image,
+  Modal,
   Pressable,
-  Share,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+} from 'react-native';
+import { useRouter } from 'expo-router';
+
+/** 21px / 372px — right inset for play + Completed (web `SessionsScreen.tsx`) */
+const CARD_PAD_X_PCT = (21 / 372) * 100;
+const SHOW_SESSION_LOGS_BUTTON = false;
 
 function pickTemplateForSport(sport: string): SessionRowLocal {
   const s = sport.toLowerCase();
-  if (s.includes("cricket")) return SESSIONS_SPORT_TEMPLATES.cricket;
-  if (s.includes("padel") || s === "paddle")
-    return SESSIONS_SPORT_TEMPLATES.padel;
-  if (s.includes("pickle")) return SESSIONS_ROW[0];
-  if (s.includes("badminton")) return SESSIONS_ROW[1];
-  if (s.includes("tennis")) return SESSIONS_ROW[2];
-  if (s.includes("basketball")) return SESSIONS_ROW[3];
+  if (s.includes('badminton')) return SESSIONS_ROW[1];
+  if (s.includes('tennis')) return SESSIONS_ROW[2];
+  if (s.includes('basketball')) return SESSIONS_ROW[3];
+  if (s.includes('cricket')) return SESSIONS_ROW[4] ?? SESSIONS_ROW[0];
   return SESSIONS_ROW[0];
 }
 
@@ -58,14 +51,13 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
   );
   const t = pickTemplateForSport(sport);
   const when = formatRecordingListWhen(r?.startTime);
-  const cityLine = [r?.turf?.city, r?.turf?.state].filter(Boolean).join(", ");
-  const area = cityLine || r?.turf?.address_line || "—";
-
+  const cityLine = [r?.turf?.city, r?.turf?.state].filter(Boolean).join(', ');
+  const area = cityLine || r?.turf?.address_line || r?.turf?.location || '—';
   return {
     id: String(r.id),
     recordingId: String(r.id),
     sport,
-    arena: r?.turf?.name ?? "Arena",
+    arena: r?.turf?.name ?? 'Arena',
     area,
     when,
     sportIcon: t.sportIcon,
@@ -74,38 +66,18 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
     playIcon: t.playIcon,
     thumbUrl: recordingThumbUrl(r),
     duration: recordingDurationLabel(r),
-    status: String(r?.status ?? "").toLowerCase(),
+    status: String(r?.status ?? '').toLowerCase(),
     isReady: recordingIsReady(r),
   };
 }
 
+/** List layout from `web/src/screens/SessionsScreen.tsx`; rows from `GET /recording/my-recordings`. */
 export default function FieldflixSessionsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const bottomNavClearance = Math.max(14, insets.bottom + 6) + 76 + 48;
-
-  const { rows, loading, error, load } = useSessionsMyRecordings(
+  const { rows, loading, backendLog, load } = useSessionsMyRecordings(
     mapRecordingToSessionRow,
   );
-
-  const renderSessionItem = useCallback(
-    ({ item }: { item: SessionRowExtended }) => (
-      <View style={styles.listItemContainer}>
-        <View style={styles.listItemCardWrap}>
-          <SessionCard
-            row={item}
-            onPress={() =>
-              router.push({
-                pathname: Paths.highlights as never,
-                params: { id: item.recordingId },
-              })
-            }
-          />
-        </View>
-      </View>
-    ),
-    [router],
-  );
+  const [logModalOpen, setLogModalOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -113,320 +85,471 @@ export default function FieldflixSessionsScreen() {
     }, [load]),
   );
 
+  const onCopyBackendLog = useCallback(async () => {
+    const text =
+      backendLog ||
+      'No log yet. This fills when the screen loads my-recordings.';
+    try {
+      await Clipboard.setStringAsync(text);
+      Alert.alert('Copied', 'Session logs were copied to the clipboard.');
+    } catch {
+      Alert.alert('Copy failed', 'Could not copy to the clipboard.');
+    }
+  }, [backendLog]);
+
   return (
-    <ErrorBoundary>
-      <WebShell backgroundColor={WEB.sessionsBg}>
-        <View style={{ flex: 1 }}>
-          <FlatList
-            data={loading || error ? [] : rows}
-            keyExtractor={(item) => item.id}
-            renderItem={renderSessionItem}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{
-              paddingBottom: bottomNavClearance + 16,
-              paddingHorizontal: 15,
-            }}
-            ItemSeparatorComponent={() => <View style={styles.listGap} />}
-            ListHeaderComponent={
-              <>
-                {/* Header */}
-                <View style={styles.header}>
-                  <Pressable onPress={() => router.push(Paths.home)}>
-                    <Image
-                      source={SESSIONS_BACK_ARROW}
-                      style={styles.backIcon}
-                    />
-                  </Pressable>
-                  <Text style={styles.title}>Sessions</Text>
-                </View>
-
-                {/* Section */}
-                <Text style={styles.sectionTitle}>Completed Sessions</Text>
-
-                {loading ? (
-                  <ActivityIndicator color={WEB.green} />
-                ) : error ? (
-                  <Text style={{ color: "white" }}>{error}</Text>
-                ) : null}
-              </>
-            }
-            ListEmptyComponent={
-              !loading && !error ? (
-                <Text style={{ color: "white", textAlign: "center" }}>
-                  No completed sessions yet.
+    <WebShell backgroundColor={WEB.sessionsBg}>
+      <View style={styles.flex}>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.pad}>
+            <View style={styles.header}>
+              <View style={styles.headerStart}>
+                <Pressable
+                  onPress={() => router.push(Paths.home)}
+                  accessibilityLabel="Back to home"
+                  style={styles.backBtn}
+                >
+                  <Image source={SESSIONS_BACK_ARROW} style={{ width: 24, height: 24 }} resizeMode="cover" />
+                </Pressable>
+                <Text style={styles.headerTitle} numberOfLines={1}>
+                  Sessions
                 </Text>
-              ) : null
-            }
-          />
+              </View>
+              {SHOW_SESSION_LOGS_BUTTON ? (
+                <Pressable
+                  onPress={() => setLogModalOpen(true)}
+                  accessibilityLabel="View backend request log for this screen"
+                  style={styles.logsBtn}
+                >
+                  <Text style={styles.logsBtnText}>Logs</Text>
+                </Pressable>
+              ) : null}
+            </View>
 
-          <FieldflixBottomNav active="sessions" />
-        </View>
-      </WebShell>
-    </ErrorBoundary>
+            <View style={styles.section}>
+              <View style={styles.completedStrip}>
+                <Text style={styles.completedText}>Completed Sessions</Text>
+              </View>
+
+              {loading ? (
+                <View style={styles.loading}>
+                  <ActivityIndicator size="large" color={WEB.green} />
+                </View>
+              ) : rows.length === 0 ? (
+                <Text style={styles.empty}>
+                  No completed sessions yet. Finish a recording to see it here.
+                </Text>
+              ) : (
+                <View style={styles.cards} collapsable={false}>
+                  {rows.map((row) => (
+                    <Pressable
+                      key={row.id}
+                      onPress={() =>
+                        router.push({
+                          pathname: Paths.highlights,
+                          params: { id: row.recordingId },
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${row.arena} highlights`}
+                    >
+                      <SessionCard row={row} />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+
+        {SHOW_SESSION_LOGS_BUTTON ? (
+          <Modal
+            visible={logModalOpen}
+            animationType="fade"
+            transparent
+            onRequestClose={() => setLogModalOpen(false)}
+          >
+            <View style={styles.logModalRoot}>
+              <Pressable
+                style={styles.logModalBackdrop}
+                onPress={() => setLogModalOpen(false)}
+                accessibilityLabel="Close log"
+              />
+              <View style={styles.logPanel}>
+                <View style={styles.logPanelHeader}>
+                  <Text style={styles.logPanelTitle} numberOfLines={2}>
+                    GET /recording/my-recordings
+                  </Text>
+                  <View style={styles.logPanelActions}>
+                    <Pressable
+                      onPress={() => void onCopyBackendLog()}
+                      hitSlop={10}
+                      accessibilityLabel="Copy session logs to clipboard"
+                    >
+                      <Text style={styles.logPanelAction}>Copy</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setLogModalOpen(false)}
+                      hitSlop={10}
+                      accessibilityLabel="Close"
+                    >
+                      <Text style={styles.logPanelAction}>Close</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                <ScrollView
+                  style={styles.logScroll}
+                  contentContainerStyle={styles.logScrollContent}
+                  nestedScrollEnabled
+                >
+                  <Text selectable style={styles.logBody}>
+                    {backendLog || 'No log yet. This fills when the screen loads my-recordings.'}
+                  </Text>
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        ) : null}
+
+        <FieldflixBottomNav active="sessions" />
+      </View>
+    </WebShell>
   );
 }
 
-/* ================= CARD ================= */
-
-function SessionCard({
-  row,
-  onPress,
-}: {
-  row: SessionRowExtended;
-  onPress: () => void;
-}) {
+function SessionCard({ row }: { row: SessionRowExtended }) {
   const isProcessing = !row.isReady;
-  const onShare = async () => {
-    try {
-      await Share.share({
-        message: `${row.sport} session at ${row.arena}\n${row.area}\n${row.when}`,
-        title: `${row.sport} Session`,
-      });
-    } catch {
-      // non-fatal: keep UI responsive if native share is unavailable
-    }
-  };
-
   return (
-    <Pressable
-      onPress={() => !isProcessing && onPress()}
-      style={({ pressed }) => [
-        styles.card,
-        pressed && styles.cardPressed,
-        isProcessing && styles.cardDisabled,
-      ]}
-    >
-      <View style={styles.content}>
-        {/* Top */}
-        <View style={styles.rowBetween}>
-          <View style={styles.row}>
-            <View style={styles.iconCircle}>
-              <Image source={row.sportIcon} style={styles.icon} />
-            </View>
-            <Text style={styles.sport}>{row.sport}</Text>
-          </View>
+    <View style={styles.card}>
+      <Image
+        source={row.thumbUrl ? { uri: row.thumbUrl } : BG.sessionCard}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
+      <View style={styles.cardScrim} />
 
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              void onShare();
-            }}
-            style={({ pressed }) => [
-              styles.shareChip,
-              pressed && styles.shareChipPressed,
-            ]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Share ${row.sport} session`}
-          >
-            <MaterialCommunityIcons
-              name="share-variant-outline"
-              size={18}
-              color="#cbd5e1"
-            />
-          </Pressable>
+      <View
+        style={[
+          styles.frameMain,
+          {
+            top: '11.52%',
+            left: '5.11%',
+            width: '66.4%',
+            height: '75.76%',
+          },
+        ]}
+      >
+        <View style={styles.sportRow}>
+          <View style={styles.sportIconBg}>
+            <Image source={row.sportIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+          </View>
+          <Text style={styles.sportName} numberOfLines={1}>
+            {row.sport}
+          </Text>
         </View>
 
-        {/* Arena */}
-        <Text style={styles.arena} numberOfLines={2}>
-          {row.arena}
-        </Text>
+        <View style={styles.arenaRow}>
+          <Text style={styles.arenaText} numberOfLines={1}>
+            {row.arena}
+          </Text>
+        </View>
 
-        {/* Bottom */}
-        <View style={styles.rowBetween}>
-          <View style={styles.metaCol}>
-            <View style={styles.metaRow}>
-              <MaterialCommunityIcons
-                name="map-marker-outline"
-                size={13}
-                color="#cbd5e1"
-              />
-              <Text style={styles.meta} numberOfLines={1}>
-                {row.area}
-              </Text>
-            </View>
-            <View style={styles.metaRow}>
-              <MaterialCommunityIcons
-                name="clock-outline"
-                size={13}
-                color="#cbd5e1"
-              />
-              <Text style={styles.meta} numberOfLines={1}>
-                {row.when}
-              </Text>
-            </View>
+        <View style={styles.metaCol}>
+          <View style={styles.metaLine}>
+            <Image source={row.pinIcon} style={styles.metaIcon} resizeMode="cover" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {row.area}
+            </Text>
           </View>
-
-          <View style={[styles.badge, isProcessing && styles.badgeProcessing]}>
-            <Text style={styles.badgeText}>
-              {isProcessing ? "Processing" : "Completed"}
+          <View style={styles.metaLine}>
+            <Image source={row.clockIcon} style={styles.metaIcon} resizeMode="cover" />
+            <Text style={styles.metaText} numberOfLines={1}>
+              {row.when}
             </Text>
           </View>
         </View>
       </View>
-    </Pressable>
+
+      {row.playIcon ? (
+        <Pressable
+          style={[styles.playBtn, { top: '11.52%', right: `${CARD_PAD_X_PCT}%` }]}
+          accessibilityLabel="Share or play session"
+        >
+          <Image source={row.playIcon} style={{ width: 24, height: 24 }} resizeMode="contain" />
+        </Pressable>
+      ) : null}
+
+      <View
+        style={[
+          styles.completedBadge,
+          isProcessing && styles.processingBadge,
+          {
+            bottom: `${(21 / 165) * 100}%`,
+            right: `${CARD_PAD_X_PCT}%`,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.completedBadgeText,
+            isProcessing && styles.processingBadgeText,
+          ]}
+        >
+          {isProcessing ? 'Processing' : row.duration && row.duration !== '—' ? row.duration : 'Completed'}
+        </Text>
+      </View>
+    </View>
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    marginBottom: 22,
-    gap: 10,
-    paddingHorizontal: 2,
-  },
-  backIcon: { width: 24, height: 24 },
-  title: {
-    fontFamily: FF.bold,
-    fontSize: 20,
-    color: "white",
-  },
-  sectionTitle: {
-    color: "white",
-    textAlign: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: WEB.green,
-    paddingBottom: 9,
-    marginBottom: 18,
-  },
-
-  /* Card */
-  card: {
-    minHeight: 170,
-    borderRadius: 13,
-    marginBottom: 16,
-    overflow: "hidden",
-    backgroundColor: "rgba(11,18,27,0.96)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  cardPressed: {
-    transform: [{ scale: 0.97 }],
-    shadowOpacity: 0.14,
-    elevation: 2,
-  },
-  cardDisabled: {
-    opacity: 0.66,
-  },
-  content: {
+  flex: {
     flex: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    justifyContent: "space-between",
   },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
+  scrollContent: {
+    paddingBottom: 200,
+  },
+  pad: {
+    paddingHorizontal: 15,
+    paddingBottom: 40,
+  },
+  header: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
   },
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
-
-  iconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "rgba(74,222,128,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(110,231,183,0.28)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  icon: { width: 21, height: 21 },
-
-  sport: {
-    color: "white",
-    fontSize: 17,
-    fontFamily: FF.semiBold,
-    letterSpacing: -0.15,
-  },
-
-  arena: {
-    color: "#f8fafc",
-    fontSize: 14.5,
-    lineHeight: 20,
-    fontFamily: FF.medium,
-    marginTop: 4,
-    marginBottom: 2,
-  },
-
-  shareChip: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1.1,
-    borderColor: "rgba(148,163,184,0.5)",
-    backgroundColor: "rgba(2,6,23,0.45)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 0,
-  },
-  shareChipPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.96 }],
-  },
-  metaCol: {
+  headerStart: {
     flex: 1,
     minWidth: 0,
-    gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
+  backBtn: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  meta: {
-    color: "#cbd5e1",
-    fontSize: 11.5,
-    lineHeight: 16,
+  headerTitle: {
     flex: 1,
+    minWidth: 0,
+    fontFamily: FF.bold,
+    fontSize: 20,
+    lineHeight: 27,
+    color: WEB.white,
   },
-
-  badge: {
-    backgroundColor: "rgba(20,83,45,0.5)",
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.5)",
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    borderRadius: 999,
+  logsBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
-  badgeProcessing: {
-    backgroundColor: "rgba(245,158,11,0.22)",
-    borderColor: "rgba(251,191,36,0.5)",
-    shadowColor: "#f59e0b",
-  },
-  badgeText: {
-    color: "#bbf7d0",
-    fontSize: 11,
+  logsBtnText: {
     fontFamily: FF.semiBold,
-    letterSpacing: 0.2,
+    fontSize: 14,
+    lineHeight: 19,
+    color: WEB.green,
   },
-  listItemCardWrap: {
-    width: "100%",
-    alignSelf: "stretch",
-    borderRadius: 14,
-    borderWidth: 1.6,
-    borderColor: "rgba(34,197,94,0.9)",
-    backgroundColor: "rgba(34,197,94,0.08)",
-    padding: 1,
+  logModalRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
-  listItemContainer: {
-    width: "100%",
-    alignSelf: "stretch",
+  logModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
-  listGap: {
-    height: 0,
+  logPanel: {
+    maxHeight: '88%',
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.35)',
+    padding: 12,
+  },
+  logPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  logPanelTitle: {
+    flex: 1,
+    fontFamily: FF.semiBold,
+    fontSize: 15,
+    color: WEB.white,
+  },
+  logPanelActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  logPanelAction: {
+    fontFamily: FF.semiBold,
+    fontSize: 15,
+    color: WEB.green,
+  },
+  logScroll: {
+    maxHeight: 480,
+  },
+  logScrollContent: {
+    paddingBottom: 8,
+  },
+  logBody: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    lineHeight: 16,
+    color: 'rgba(255,255,255,0.88)',
+  },
+  section: {
+    marginTop: 30,
+    gap: 40,
+  },
+  completedStrip: {
+    width: '100%',
+    borderBottomWidth: 2,
+    borderBottomColor: WEB.green,
+    paddingBottom: 10,
+  },
+  completedText: {
+    textAlign: 'center',
+    fontFamily: FF.semiBold,
+    fontSize: 15,
+    lineHeight: 20,
+    color: WEB.white,
+  },
+  loading: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  empty: {
+    fontFamily: FF.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 8,
+  },
+  cards: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 30,
+  },
+  card: {
+    position: 'relative',
+    height: 165,
+    width: '100%',
+    maxWidth: 372,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  frameMain: {
+    position: 'absolute',
+    zIndex: 1,
+    gap: 12,
+  },
+  sportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    height: 42,
+  },
+  sportIconBg: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(34, 197, 94, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sportName: {
+    height: 27,
+    fontFamily: FF.semiBold,
+    fontSize: 20,
+    lineHeight: 27,
+    color: WEB.white,
+  },
+  arenaRow: {
+    height: 22,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  arenaText: {
+    fontFamily: FF.semiBold,
+    fontSize: 16,
+    lineHeight: 22,
+    color: WEB.white,
+  },
+  metaCol: {
+    height: 37,
+    width: 163,
+    maxWidth: '100%',
+    gap: 5,
+    justifyContent: 'center',
+  },
+  metaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  metaIcon: {
+    width: 15,
+    height: 15,
+  },
+  metaText: {
+    flex: 1,
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    lineHeight: 16,
+    color: WEB.muted,
+  },
+  playBtn: {
+    position: 'absolute',
+    zIndex: 2,
+    width: 45,
+    height: 42,
+    borderRadius: 20,
+    paddingTop: 9,
+    paddingRight: 10,
+    paddingBottom: 9,
+    paddingLeft: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.45)',
+  },
+  completedBadge: {
+    position: 'absolute',
+    zIndex: 2,
+    height: 29,
+    minWidth: 94,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(34, 197, 94, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completedBadgeText: {
+    fontFamily: FF.semiBold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: WEB.green,
+  },
+  processingBadge: {
+    backgroundColor: 'rgba(234, 179, 8, 0.22)',
+  },
+  processingBadgeText: {
+    color: '#facc15',
   },
 });

@@ -1,261 +1,236 @@
-import { Paths } from "@/data/paths";
-import { WEB } from "@/screens/fieldflix/webDesign";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { useRouter } from "expo-router";
-import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
-import { CurvedBottomBarExpo } from "react-native-curved-bottom-bar";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Paths } from '@/data/paths';
+import { FF } from '@/screens/fieldflix/fonts';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import type { ImageSourcePropType } from 'react-native';
+import type { ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const COLORS = {
-  barBg: "#0D141A",
-  barBorder: "rgba(255,255,255,0.14)",
-  barInner: "rgba(255,255,255,0.03)",
-  iconActive: WEB.green,
-  iconIdle: "rgba(255,255,255,0.68)",
-  fabBg: WEB.green,
-  fabIcon: "#03120A",
-  fabRing: "rgba(5,10,14,0.95)",
-  indicator: WEB.green,
-  shadow: "#000000",
-} as const;
+const QR = require('@/assets/fieldflix-web/qr.png');
+const NAV_HOME = require('@/Home.png');
+const NAV_SESSION = require('@/Session.png');
+const NAV_FLICKSHORTS = require('@/Flickshorts.png');
+const NAV_RECORDINGS = require('@/Recordings.png');
 
-type Tab = "home" | "sessions" | "flix" | "recordings";
-type BarRoute = "home" | "sessions" | "flix" | "recordings";
+const ACCENT = '#22C55E';
+const ACCENT_DEEP = '#14532d';
+const BAR_BG = '#384553';
+const INACTIVE = 'rgba(255,255,255,0.72)';
+/** Solid tint for inactive Home (asset is green fill); outline tabs use native gray from PNG when idle. */
+const INACTIVE_HOME_TINT = '#9ca3af';
 
-const DUMMY = () => null;
-const TAB_WIDTH = Dimensions.get("window").width;
-const BAR_HEIGHT = 68;
-const FAB_SIZE = 68;
-export const FIELD_FLIX_BOTTOM_NAV_SPACE = 110;
+type Tab = 'home' | 'sessions' | 'flix' | 'recordings';
 
-const ROUTE_CONFIG: {
-  key: BarRoute;
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  label: string;
-  appRoute: string;
-  position: "LEFT" | "RIGHT";
-}[] = [
-  {
-    key: "home",
-    icon: "home-variant",
-    label: "Home",
-    appRoute: Paths.home,
-    position: "LEFT",
-  },
-  {
-    key: "sessions",
-    icon: "video-outline",
-    label: "Sessions",
-    appRoute: Paths.sessions,
-    position: "LEFT",
-  },
-  {
-    key: "flix",
-    icon: "play-circle-outline",
-    label: "FlickShorts",
-    appRoute: Paths.flixshorts,
-    position: "RIGHT",
-  },
-  {
-    key: "recordings",
-    icon: "camera-iris",
-    label: "Recordings",
-    appRoute: Paths.recordings,
-    position: "RIGHT",
-  },
-];
-
-function initialTab(active: Tab): BarRoute {
-  if (active === "home") return "home";
-  if (active === "sessions") return "sessions";
-  if (active === "flix") return "flix";
-  if (active === "recordings") return "recordings";
-  return "home";
-}
-
+/**
+ * Floating pill bottom nav (see screenshot attached in the brief).
+ * - Dark rounded bar detached from screen edges.
+ * - QR FAB is a separately-positioned circle that sits above the bar.
+ * - Active nav item becomes a solid green pill wrapping the icon + label.
+ */
 export function FieldflixBottomNav({
   active,
+  centerAction = 'scan',
 }: {
   active: Tab;
-  centerAction?: "scan";
+  centerAction?: 'scan';
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const startTab = initialTab(active);
+  const bottomGap = Math.max(14, insets.bottom + 6);
 
   return (
-    <View pointerEvents="box-none" style={styles.wrap}>
-      <View
-        pointerEvents="none"
-        style={[styles.bottomFill, { height: Math.max(insets.bottom, 12) }]}
-      />
-      <CurvedBottomBarExpo.Navigator
-        key={`nav-${active}`}
-        id="fieldflix-bottom-nav"
-        type="DOWN"
-        circlePosition="CENTER"
-        width={TAB_WIDTH}
-        height={BAR_HEIGHT}
-        circleWidth={60}
-        borderTopLeftRight={false}
-        bgColor={COLORS.barBg}
-        borderColor={COLORS.barBorder}
-        borderWidth={1}
-        initialRouteName={startTab}
-        backBehavior="initialRoute"
-        screenListeners={{}}
-        screenOptions={{ headerShown: false }}
-        defaultScreenOptions={{}}
-        style={styles.navigatorShell}
-        shadowStyle={styles.navigatorShadow}
-        tabBar={({
-          routeName,
-          selectedTab,
-          navigate,
-        }: {
-          routeName: string;
-          selectedTab: string;
-          navigate: (tab: string) => void;
-        }) => {
-          const cfg = ROUTE_CONFIG.find((x) => x.key === routeName);
-          if (!cfg) return <View style={styles.tabSlot} />;
-          const isActive = selectedTab === routeName;
-          return (
-            <Pressable
-              onPress={() => {
-                navigate(routeName);
-                router.replace(cfg.appRoute as any);
-              }}
-              style={styles.tabSlot}
-              hitSlop={8}
-            >
-              <MaterialCommunityIcons
-                name={cfg.icon}
-                size={29}
-                color={isActive ? COLORS.iconActive : COLORS.iconIdle}
-              />
-              <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : styles.tabLabelIdle]}>
-                {cfg.label}
-              </Text>
-              {isActive ? <View style={styles.indicator} /> : null}
-            </Pressable>
-          );
-        }}
-        renderCircle={() => (
-          <Pressable
-            accessibilityLabel="Open QR scanner"
-            onPress={() => router.replace(Paths.scan as any)}
-            style={styles.fab}
-          >
-            <MaterialCommunityIcons
-              name="qrcode-scan"
-              size={28}
-              color={COLORS.fabIcon}
-            />
-          </Pressable>
-        )}
+    <View pointerEvents="box-none" style={[styles.wrap, { paddingBottom: bottomGap }]}>
+      <View style={styles.barShadow}>
+        <View style={styles.bar}>
+          <NavItem
+            label="Home"
+            active={active === 'home'}
+            onPress={() => router.push(Paths.home)}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_HOME} active={on} variant="home" />
+            )}
+          />
+          <NavItem
+            label="Sessions"
+            active={active === 'sessions'}
+            onPress={() => router.push(Paths.sessions)}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_SESSION} active={on} variant="outline" />
+            )}
+          />
+          {/* spacer for the QR FAB */}
+          <View style={styles.centerSpacer} />
+          <NavItem
+            label="FlickShorts"
+            active={active === 'flix'}
+            onPress={() => router.push(Paths.flixshorts)}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_FLICKSHORTS} active={on} variant="outline" />
+            )}
+          />
+          <NavItem
+            label="Recordings"
+            active={active === 'recordings'}
+            onPress={() => router.push(Paths.recordings)}
+            icon={(on) => (
+              <NavRasterIcon source={NAV_RECORDINGS} active={on} variant="outline" />
+            )}
+          />
+        </View>
+      </View>
+
+      <Pressable
+        accessibilityLabel="Scan QR code"
+        onPress={() => centerAction === 'scan' && router.push(Paths.scan)}
+        style={[styles.fab, { bottom: bottomGap + 40 }]}
       >
-        <CurvedBottomBarExpo.Screen
-          name="home"
-          position="LEFT"
-          component={DUMMY}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="sessions"
-          position="LEFT"
-          component={DUMMY}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="flix"
-          position="RIGHT"
-          component={DUMMY}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="recordings"
-          position="RIGHT"
-          component={DUMMY}
-        />
-      </CurvedBottomBarExpo.Navigator>
+        <Image source={QR} style={{ width: 30, height: 30 }} contentFit="contain" />
+      </Pressable>
     </View>
+  );
+}
+
+function NavItem({
+  label,
+  icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  icon: (active: boolean) => ReactNode;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  const isActive = !!active;
+  return (
+    <Pressable onPress={onPress} style={styles.slot} hitSlop={4}>
+      <View style={[styles.pill, isActive && styles.pillActive]}>
+        <View style={styles.iconBox}>{icon(isActive)}</View>
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          allowFontScaling={false}
+          style={[styles.label, isActive ? styles.labelActive : styles.labelIdle]}
+        >
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function NavRasterIcon({
+  source,
+  active,
+  variant,
+}: {
+  source: ImageSourcePropType;
+  active: boolean;
+  variant: 'home' | 'outline';
+}) {
+  const tintColor =
+    variant === 'home'
+      ? active
+        ? undefined
+        : INACTIVE_HOME_TINT
+      : active
+        ? ACCENT
+        : undefined;
+
+  return (
+    <Image
+      source={source}
+      style={[styles.navIcon, tintColor != null ? { tintColor } : null]}
+      contentFit="contain"
+    />
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    position: "absolute",
+    position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: 60,
-    paddingHorizontal: 0,
-    backgroundColor: "transparent",
+    zIndex: 40,
+    paddingHorizontal: 14,
   },
-  bottomFill: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: COLORS.barBg,
-  },
-  navigatorShell: {
-    borderWidth: 1,
-    borderColor: COLORS.barInner,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    overflow: "hidden",
-    backgroundColor: "transparent",
-  },
-  navigatorShadow: {
-    shadowColor: COLORS.shadow,
+  barShadow: {
+    borderRadius: 38,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.34,
-    shadowRadius: 18,
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
     elevation: 14,
   },
-  tabSlot: {
+  bar: {
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: BAR_BG,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  slot: {
     flex: 1,
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    paddingTop: 4,
-    paddingBottom: 8,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 0,
   },
-  tabLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.1,
+  centerSpacer: { width: 60 },
+  pill: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 64,
+    width: '100%',
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    borderRadius: 32,
+    gap: 3,
   },
-  tabLabelActive: {
-    color: "#F8FAFC",
+  pillActive: {
+    backgroundColor: ACCENT_DEEP,
+    paddingHorizontal: 6,
   },
-  tabLabelIdle: {
-    color: COLORS.iconIdle,
+  iconBox: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  indicator: {
-    position: "absolute",
-    bottom: 4,
-    width: 38,
-    height: 4,
-    borderRadius: 999,
-    backgroundColor: COLORS.indicator,
+  navIcon: {
+    width: 24,
+    height: 24,
   },
+  label: {
+    fontFamily: FF.semiBold,
+    fontSize: 10.5,
+    letterSpacing: 0,
+    textAlign: 'center',
+    width: '100%',
+    includeFontPadding: false as unknown as boolean,
+  },
+  labelActive: { color: '#fff' },
+  labelIdle: { color: INACTIVE },
   fab: {
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: COLORS.fabBg,
-    borderWidth: 6,
-    borderColor: COLORS.fabRing,
-    shadowColor: COLORS.fabBg,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.32,
-    shadowRadius: 12,
-    elevation: 12,
-    bottom: 4,
+    position: 'absolute',
+    alignSelf: 'center',
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ACCENT,
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 14,
+    borderWidth: 4,
+    borderColor: 'rgba(5,10,14,0.95)',
   },
 });

@@ -9,13 +9,13 @@ import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
 import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
 import { routeFromNotificationData } from "@/utils/notificationRouting";
 import {
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_800ExtraBold,
-    Inter_800ExtraBold_Italic,
-    useFonts,
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  Inter_800ExtraBold,
+  Inter_800ExtraBold_Italic,
+  useFonts,
 } from "@expo-google-fonts/inter";
 import Entypo from "@expo/vector-icons/Entypo";
 import Constants, { ExecutionEnvironment } from "expo-constants";
@@ -31,15 +31,15 @@ import * as SecureStore from "expo-secure-store";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import {
-    AppState,
-    BackHandler,
-    Modal,
-    Platform,
-    Pressable,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  AppState,
+  BackHandler,
+  Modal,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
@@ -138,7 +138,7 @@ export default function RootLayout() {
           setupFcmTokenRefreshListener();
         } else {
         }
-      } catch (error) {}
+      } catch (error) { }
     };
     void checkTokenAndSetupListener();
   }, []);
@@ -303,7 +303,7 @@ export default function RootLayout() {
           .then((remoteMessage) => {
             if (remoteMessage) handleFcmTap(remoteMessage, router);
           })
-          .catch(() => {});
+          .catch(() => { });
       } catch {
         // ignore
       }

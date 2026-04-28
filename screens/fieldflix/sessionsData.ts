@@ -73,25 +73,3 @@ export const SESSIONS_ROW: SessionRowLocal[] = [
     playIcon: null,
   },
 ];
-
-const BASE = SESSIONS_ROW[0];
-
-/**
- * Per-sport card chrome aligned with `HomeScreen` / `sportLabelFromTurf` (Cricket, Padel, etc.).
- * Pin/clock/play reuse the Pickleball row so list layout stays consistent.
- */
-export const SESSIONS_SPORT_TEMPLATES: Record<'cricket' | 'padel', SessionRowLocal> = {
-  cricket: {
-    ...BASE,
-    id: 'cricket',
-    sport: 'Cricket',
-    /** Same asset as Home “Cricket” sport tile. */
-    sportIcon: require('@/assets/fieldflix-web/coming-soon.png'),
-  },
-  padel: {
-    ...BASE,
-    id: 'padel',
-    sport: 'Padel',
-    sportIcon: require('@/assets/fieldflix-web/padel.png'),
-  },
-};

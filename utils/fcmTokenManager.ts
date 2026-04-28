@@ -1,39 +1,16 @@
 import { TOKEN_KEY } from '@/data/constants';
 import { canUseReactNativeFirebase } from '@/utils/canUseReactNativeFirebase';
+import messaging from '@react-native-firebase/messaging';
 import * as SecureStore from 'expo-secure-store'; // Or AsyncStorage
 import axiosInstance from './axiosInstance';
 
-let tokenRefreshSubscribed = false;
+
 
 /**
  * Get permission and fetch FCM token
  */
-type FirebaseMessagingModule = {
-  (): {
-    requestPermission: () => Promise<number>;
-    getToken: () => Promise<string>;
-    onTokenRefresh: (cb: (newToken: string) => void) => () => void;
-  };
-  AuthorizationStatus: {
-    AUTHORIZED: number;
-    PROVISIONAL: number;
-  };
-};
-
-function getMessagingModule(): FirebaseMessagingModule | null {
-  if (!canUseReactNativeFirebase()) {
-    return null;
-  }
-  try {
-    return require('@react-native-firebase/messaging').default as FirebaseMessagingModule;
-  } catch {
-    return null;
-  }
-}
-
 export const requestAndRegisterFcmToken = async () => {
-  const messaging = getMessagingModule();
-  if (!messaging) {
+  if (!canUseReactNativeFirebase()) {
     return;
   }
   try {
@@ -48,20 +25,18 @@ export const requestAndRegisterFcmToken = async () => {
     }
 
     const currentToken = await messaging().getToken();
-    if (!currentToken) {
-      console.warn('FCM: no device token from Firebase');
-      return;
-    }
+    const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
 
-    // Always upsert on the server so the userDevices row exists (phone login, reinstall, same token).
-    try {
+    if (currentToken && currentToken !== storedToken) {
+      console.log('📲 Sending new FCM token to backend:', currentToken);
+
       await axiosInstance.put('/users/register/deviceId', {
         deviceId: currentToken,
       });
+
       await SecureStore.setItemAsync(TOKEN_KEY, currentToken);
-      console.log('✅ FCM device id registered with backend');
-    } catch (e) {
-      console.error('FCM: failed to register device with backend (not logged in yet?)', e);
+    } else {
+      console.log('✅ FCM token already registered or unchanged');
     }
   } catch (error) {
     console.error('❌ FCM token registration error:', error);
@@ -72,15 +47,13 @@ export const requestAndRegisterFcmToken = async () => {
  * Handle token refreshes and update backend if needed
  */
 export const setupFcmTokenRefreshListener = () => {
-  const messaging = getMessagingModule();
-  if (!messaging) {
+  if (!canUseReactNativeFirebase()) {
     return;
   }
-  tokenRefreshSubscribed = true;
   messaging().onTokenRefresh(async (newToken) => {
     try {
       const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
-      console.log("stored token", storedToken)
+        console.log("stored token",storedToken)
       if (newToken !== storedToken) {
         console.log('🔄 FCM token refreshed. Updating backend:', newToken);
 

@@ -8,11 +8,11 @@ import { useEffect } from "react";
 import { Image, StyleSheet, View } from "react-native";
 import Animated, {
   cancelAnimation,
-  withDelay,
   Easing,
   interpolate,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
