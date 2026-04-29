@@ -169,7 +169,8 @@ export default function FieldflixOtpScreen() {
     return () => {
       cancelled = true;
     };
-  }, [mobile, showError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobile]);
 
   useEffect(() => {
     if (smsSending) return;
@@ -520,7 +521,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center",
     paddingHorizontal: s(8),
-    marginBottom: vs(6),
+    marginBottom: vs(4),
   },
   verifyPill: {
     alignSelf: "center",
@@ -566,9 +567,9 @@ const styles = StyleSheet.create({
     fontFamily: FF.medium,
   },
   bannerSlot: {
-    marginTop: vs(8),
-    marginBottom: vs(2),
-    minHeight: vs(48),
+    marginTop: vs(6),
+    marginBottom: vs(4),
+    minHeight: vs(42),
     width: "100%",
     justifyContent: "center",
     alignSelf: "center",
@@ -621,27 +622,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   timerBlock: {
-    marginTop: vs(20),
+    marginTop: vs(24),
     alignItems: "center",
-    gap: vs(4),
+    gap: vs(2),
   },
   timerLabel: {
     fontFamily: FF.medium,
-    fontSize: sf(12),
-    letterSpacing: 0.8,
+    fontSize: sf(11),
+    letterSpacing: 1,
     textTransform: "uppercase",
     color: "rgba(255,255,255,0.45)",
   },
   timer: {
     fontFamily: FF.bold,
-    fontSize: sf(26),
+    fontSize: sf(20),
     fontVariant: ["tabular-nums"],
     color: WEB.green,
   },
   verifyOuter: {
-    marginTop: vs(16),
+    marginTop: vs(24),
     width: "100%",
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: "hidden",
     shadowColor: "rgba(34, 197, 94, 0.35)",
     shadowOffset: { width: 0, height: vs(4) },
@@ -680,7 +681,7 @@ const styles = StyleSheet.create({
   resendHint: {
     fontFamily: FF.regular,
     fontSize: sf(13),
-    color: "rgba(255,255,255,0.52)",
+    color: "rgba(255,255,255,0.45)",
   },
   resendWrap: {
     minHeight: vs(26),
