@@ -1,11 +1,11 @@
-import { FF } from '@/screens/fieldflix/fonts';
-import { WebShell } from '@/screens/fieldflix/WebShell';
-import { WEB } from '@/screens/fieldflix/webDesign';
 import {
   TIME_GROUNDLOCATION,
-  TIME_TURF_NAME,
   TIME_TOTAL,
+  TIME_TURF_NAME,
 } from '@/data/constants';
+import { FF } from '@/screens/fieldflix/fonts';
+import { WEB } from '@/screens/fieldflix/webDesign';
+import { WebShell } from '@/screens/fieldflix/WebShell';
 import axiosInstance from '@/utils/axiosInstance';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -38,6 +38,7 @@ function formatHMS(totalSeconds: number) {
 
 const DIAL_SIZE = 180;
 const R = 78;
+const BG = '#020617';
 const CX = 90;
 const CY = 90;
 const CIRC = 2 * Math.PI * R;
@@ -147,7 +148,7 @@ export default function MainRecordingScreen() {
   const padBottom = Math.max(28, insets.bottom);
 
   return (
-    <WebShell backgroundColor="#000000">
+    <WebShell backgroundColor={WEB.profileBg}>
       <View style={styles.page}>
         <Pressable
           accessibilityLabel="Go back"
@@ -345,7 +346,15 @@ function StopIcon() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: BG,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: BG,
+  },
+  blank: {
+    flex: 1,
+    backgroundColor: BG,
   },
   back: {
     position: 'absolute',

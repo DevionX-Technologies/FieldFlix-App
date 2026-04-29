@@ -7,14 +7,14 @@ import { CurvedBottomBarExpo } from "react-native-curved-bottom-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const COLORS = {
-  barBg: "#0D141A",
+  barBg: WEB.bottomNavBg,
   barBorder: "rgba(255,255,255,0.14)",
   barInner: "rgba(255,255,255,0.03)",
   iconActive: WEB.green,
   iconIdle: "rgba(255,255,255,0.68)",
   fabBg: WEB.green,
   fabIcon: "#03120A",
-  fabRing: "rgba(5,10,14,0.95)",
+  fabRing: WEB.navBarBg,
   indicator: WEB.green,
   shadow: "#000000",
 } as const;
@@ -35,35 +35,35 @@ const ROUTE_CONFIG: {
   appRoute: string;
   position: "LEFT" | "RIGHT";
 }[] = [
-  {
-    key: "home",
-    icon: "home-variant",
-    label: "Home",
-    appRoute: Paths.home,
-    position: "LEFT",
-  },
-  {
-    key: "sessions",
-    icon: "video-outline",
-    label: "Sessions",
-    appRoute: Paths.sessions,
-    position: "LEFT",
-  },
-  {
-    key: "flix",
-    icon: "play-circle-outline",
-    label: "FlickShorts",
-    appRoute: Paths.flixshorts,
-    position: "RIGHT",
-  },
-  {
-    key: "recordings",
-    icon: "camera-iris",
-    label: "Recordings",
-    appRoute: Paths.recordings,
-    position: "RIGHT",
-  },
-];
+    {
+      key: "home",
+      icon: "home-variant",
+      label: "Home",
+      appRoute: Paths.home,
+      position: "LEFT",
+    },
+    {
+      key: "sessions",
+      icon: "video-outline",
+      label: "Sessions",
+      appRoute: Paths.sessions,
+      position: "LEFT",
+    },
+    {
+      key: "flix",
+      icon: "play-circle-outline",
+      label: "FlickShorts",
+      appRoute: Paths.flixshorts,
+      position: "RIGHT",
+    },
+    {
+      key: "recordings",
+      icon: "camera-iris",
+      label: "Recordings",
+      appRoute: Paths.recordings,
+      position: "RIGHT",
+    },
+  ];
 
 function initialTab(active: Tab): BarRoute {
   if (active === "home") return "home";

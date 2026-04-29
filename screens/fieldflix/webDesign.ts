@@ -5,9 +5,10 @@ export const WEB_MAX_WIDTH = 402;
 export const WEB = {
   shellBg: '#020617',
   splashBg: '#000000',
-  homeBg: '#050A0E',
+  homeBg: '#020617',
   sessionsBg: '#020617',
   profileBg: '#020617',
+  navBarBg: '#020A18',
 
   green: '#22C55E',
   greenBright: '#4ade80',
@@ -68,7 +69,7 @@ export const WEB = {
   sportTile: 128,
   sportTileRadius: 20,
   bottomNavRadius: 24,
-  bottomNavBg: 'rgba(10, 16, 20, 0.95)',
+  bottomNavBg: '#020A18',
   fabSize: 60,
   fabQr: 32,
   navIconCircle: 44,

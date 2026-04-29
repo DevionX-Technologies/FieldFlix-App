@@ -1,20 +1,20 @@
 import { getNotifications } from '@/lib/fieldflix-api';
+import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { FF } from '@/screens/fieldflix/fonts';
 import { NOTIFICATION_ICON_SRC } from '@/screens/fieldflix/notificationAssets';
 import type { NotificationIconId, NotificationItem } from '@/screens/fieldflix/notificationsSections';
-import { WebShell } from '@/screens/fieldflix/WebShell';
-import { FieldflixScreenHeader } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { WEB } from '@/screens/fieldflix/webDesign';
-import { hrefFromNotificationData } from '@/utils/notificationRouting';
-import { getLocalNotifications } from '@/utils/localNotificationStore';
+import { WebShell } from '@/screens/fieldflix/WebShell';
 import {
   getUnreadApiNotificationCount,
   markAllApiNotificationsRead,
   markNotificationReadLocally,
 } from '@/utils/localNotificationReadStore';
+import { getLocalNotifications } from '@/utils/localNotificationStore';
+import { hrefFromNotificationData } from '@/utils/notificationRouting';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from "expo-haptics";
 import { useRouter, type Href } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,7 +26,7 @@ import {
   View,
 } from 'react-native';
 
-const BG = '#050A0E';
+const BG = '#020617';
 const CARD_BG = '#081020';
 const MUTED = '#a8b0bc';
 
@@ -310,12 +310,12 @@ export default function FieldflixNotificationsScreen() {
                       onPress={
                         n.href
                           ? async () => {
-                              await markNotificationReadLocally(n.id);
-                              router.push(n.href as Href);
-                            }
+                            await markNotificationReadLocally(n.id);
+                            router.push(n.href as Href);
+                          }
                           : async () => {
-                              await markNotificationReadLocally(n.id);
-                            }
+                            await markNotificationReadLocally(n.id);
+                          }
                       }
                     />
                   ))}

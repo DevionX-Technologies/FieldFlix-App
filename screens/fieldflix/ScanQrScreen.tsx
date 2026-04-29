@@ -100,11 +100,11 @@ export default function FieldflixScanQrScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#020617',
   },
   blank: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#020617',
   },
   camera: {
     flex: 1,

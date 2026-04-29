@@ -43,9 +43,7 @@ function pickTemplateForSport(sport: string): SessionRowLocal {
   if (s.includes("padel") || s === "paddle")
     return SESSIONS_SPORT_TEMPLATES.padel;
   if (s.includes("pickle")) return SESSIONS_ROW[0];
-  if (s.includes("badminton")) return SESSIONS_ROW[1];
-  if (s.includes("tennis")) return SESSIONS_ROW[2];
-  if (s.includes("basketball")) return SESSIONS_ROW[3];
+  // Common fallback for all other sports
   return SESSIONS_ROW[0];
 }
 
@@ -58,7 +56,8 @@ function getSportIconName(
   if (s.includes("cricket")) return "cricket";
   if (s.includes("padel") || s.includes("paddle")) return "tennis-ball";
   if (s.includes("pickle")) return "racquetball";
-  return "dumbbell";
+  // Common symbol for all other sports
+  return "trophy";
 }
 
 function mapRecordingToSessionRow(r: any): SessionRowExtended {

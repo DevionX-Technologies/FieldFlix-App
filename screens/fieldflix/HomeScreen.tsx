@@ -167,20 +167,20 @@ function mapRecordingToRecent(
   const raw = s?.startTime ?? s?.endTime ?? s?.created_at;
   const d = raw ? new Date(String(raw)) : null;
   const valid = d != null && !Number.isNaN(d.getTime());
-  const thumbTime = valid
-    ? `${String(d!.getHours()).padStart(2, "0")}:${String(d!.getMinutes()).padStart(2, "0")}`
-    : "--:--";
+
+  const duration = recordingDurationLabel(s);
   const timeLabel = valid ? formatRecordingTimeLabel(d!) : "";
   const score = highlightCountFromRecording(s) + Math.max(0, extraHighlights);
+
   return {
     id: recordingId,
     recordingId,
     arenaName: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Session",
     location: s?.turf?.city ?? s?.turf?.address_line ?? s?.turf?.location ?? "",
     timeLabel,
-    thumbTime,
+    thumbTime: duration,
     thumbUrl: recordingThumbUrl(s, 6),
-    duration: recordingDurationLabel(s),
+    duration,
     score,
   };
 }
@@ -277,10 +277,10 @@ export default function FieldflixHomeScreen() {
           sports_supported: sportEnum,
           ...(userCoords
             ? {
-                latitude: userCoords.latitude,
-                longitude: userCoords.longitude,
-                radiusKm: 100,
-              }
+              latitude: userCoords.latitude,
+              longitude: userCoords.longitude,
+              radiusKm: 100,
+            }
             : {}),
         }),
         getMyRecordings(),
@@ -946,7 +946,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(34,197,94,0.35)",
     borderBottomLeftRadius: 22,
     borderBottomRightRadius: 22,
-    backgroundColor: "rgba(2, 10, 24, 0.72)",
+    backgroundColor: WEB.navBarBg,
   },
   headerLeft: {
     flex: 1,

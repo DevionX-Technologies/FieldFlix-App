@@ -1,7 +1,7 @@
 import { Paths } from '@/data/paths';
 import { FF } from '@/screens/fieldflix/fonts';
-import { WebShell } from '@/screens/fieldflix/WebShell';
 import { WEB } from '@/screens/fieldflix/webDesign';
+import { WebShell } from '@/screens/fieldflix/WebShell';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -97,7 +97,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
   const bottomPad = Math.max(28, insets.bottom);
 
   return (
-    <WebShell backgroundColor="#000000">
+    <WebShell backgroundColor={WEB.profileBg}>
       <View style={styles.page}>
         <Pressable
           accessibilityLabel="Go back"
@@ -237,7 +237,7 @@ const DIAL_SIZE = 168;
 const styles = StyleSheet.create({
   page: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: '#020617',
   },
   back: {
     position: 'absolute',

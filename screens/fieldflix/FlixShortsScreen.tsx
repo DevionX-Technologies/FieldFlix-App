@@ -1,32 +1,33 @@
 import { FlickReelCell } from "@/components/fieldflix/FlickReelCell";
 import { Paths } from "@/data/paths";
 import {
-    commentOnFlickShort,
-    getFieldflixApiErrorMessage,
-    getPublicFlickShorts,
-    likeFlickShort,
-    type FlickShortDto,
+  commentOnFlickShort,
+  getFieldflixApiErrorMessage,
+  getPublicFlickShorts,
+  likeFlickShort,
+  type FlickShortDto,
 } from "@/lib/fieldflix-api";
+import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
+import { FIELD_FLIX_HEADER_HEIGHT, FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { FF } from "@/screens/fieldflix/fonts";
-import { FieldflixScreenHeader, FIELD_FLIX_HEADER_HEIGHT } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Image,
-    Modal,
-    Pressable,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
   ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
+  StyleSheet,
+  Text,
+  TextInput,
   useWindowDimensions,
-    View,
-    type ViewToken,
+  View,
+  type ViewToken,
 } from "react-native";
 
 const SPORT_TILES_H = 54;
@@ -172,7 +173,7 @@ export default function FieldflixFlixShortsScreen() {
   };
 
   return (
-    <WebShell backgroundColor="#000000">
+    <WebShell backgroundColor={WEB.profileBg}>
       <View style={styles.flex}>
         <FieldflixScreenHeader
           title="FlickShorts"
@@ -208,7 +209,10 @@ export default function FieldflixFlixShortsScreen() {
         </View>
 
         <View
-          style={styles.listViewport}
+          style={[
+            styles.listViewport,
+            { marginBottom: 70 },
+          ]}
           onLayout={(e) => {
             const h = Math.floor(e.nativeEvent.layout.height);
             if (h > 0 && h !== listViewportHeight) setListViewportHeight(h);
@@ -264,6 +268,7 @@ export default function FieldflixFlixShortsScreen() {
             />
           )}
         </View>
+        <FieldflixBottomNav active="flix" />
       </View>
 
       <Modal

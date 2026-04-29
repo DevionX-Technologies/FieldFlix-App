@@ -64,6 +64,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(255,255,255,0.1)",
+    backgroundColor: WEB.navBarBg,
   },
   backBtn: {
     width: 44,

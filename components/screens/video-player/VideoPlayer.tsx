@@ -254,7 +254,7 @@ const LOG_GREEN = "#22C55E";
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: "#0C0C11",
+    backgroundColor: "#020617",
   },
   logsRow: {
     flexDirection: "row",
@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: "#0C0C11",
+    backgroundColor: "#020617",
   },
   contentContainer: {
     paddingHorizontal: 16,
