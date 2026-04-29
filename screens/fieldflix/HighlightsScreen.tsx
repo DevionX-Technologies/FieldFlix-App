@@ -1,48 +1,80 @@
-import { Paths } from "@/data/paths";
+import { BASE_URL } from '@/data/constants';
+import { Paths } from '@/data/paths';
 import {
-  embedToHighlightDto,
+  createShareLink,
   getFieldflixApiErrorDebug,
-  getPublicFlickShorts,
   getRecordingById,
   getRecordingHighlights,
   getRecordingPlayback,
   type RecordingHighlightDto,
   type RecordingPlayback,
-} from "@/lib/fieldflix-api";
-import { useEntitlement } from "@/lib/fieldflix-entitlement";
-import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
-import { BG } from "@/screens/fieldflix/bundledBackgrounds";
-import { FF } from "@/screens/fieldflix/fonts";
-import { WEB } from "@/screens/fieldflix/webDesign";
-import { WebShell } from "@/screens/fieldflix/WebShell";
+} from '@/lib/fieldflix-api';
+import { useEntitlement } from '@/lib/fieldflix-entitlement';
+import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
+import { BG } from '@/screens/fieldflix/bundledBackgrounds';
+import { FF } from '@/screens/fieldflix/fonts';
+import { WEB } from '@/screens/fieldflix/webDesign';
+import { WebShell } from '@/screens/fieldflix/WebShell';
 import {
   formatRecordingListWhen,
-  highlightCountFromRecording,
   recordingDurationLabel,
+  recordingIsReady,
   recordingPlaybackUrl,
   recordingThumbUrl,
   sportLabelFromTurf,
-} from "@/utils/recordingDisplay";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LinearGradient } from "expo-linear-gradient";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+} from '@/utils/recordingDisplay';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Path } from "react-native-svg";
+} from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { FieldflixScreenHeader } from './FieldflixScreenHeader';
 
-const ACCENT = "#22C55E";
-const BG_COLOR = "#020617";
-const MUTED = "rgba(255,255,255,0.62)";
+const ACCENT = '#22C55E';
+const BG_COLOR = '#020617';
+const MUTED = 'rgba(255,255,255,0.62)';
+
+const ALERT_DEBUG_MAX = 3600;
+
+function formatPlaybackBlockedMessage(
+  apiDebug: string | null,
+  recording: any | null,
+  playback: RecordingPlayback | null,
+): string {
+  const parts: string[] = [];
+  if (apiDebug?.trim()) {
+    parts.push('— API errors —\n' + apiDebug.trim());
+  }
+  parts.push(
+    '— Last loaded recording fields —\n' +
+    [
+      `API base: ${BASE_URL}`,
+      `status: ${recording?.status ?? 'null'}`,
+      `mux_asset_id: ${recording?.mux_asset_id ?? 'null'}`,
+      `mux_playback_id: ${recording?.mux_playback_id ?? 'null'}`,
+      `mux_media_url: ${recording?.mux_media_url ? 'set' : 'null'}`,
+      `mux_public_url: ${recording?.mux_public_url ? 'set' : 'null'}`,
+      `GET /playback playback_id: ${playback?.playback_id ?? 'null'}`,
+      `GET /playback signed_url: ${playback?.signed_url ? 'set' : 'null'}`,
+      `GET /playback signed_token: ${playback?.signed_token ? 'set' : 'null'}`,
+    ].join('\n'),
+  );
+  const full = parts.join('\n\n');
+  return full.length > ALERT_DEBUG_MAX
+    ? full.slice(0, ALERT_DEBUG_MAX) + '…'
+    : full;
+}
 
 type Props = {
   /** When set, overrides the route param. Used by the shared-media flow. */
@@ -51,7 +83,7 @@ type Props = {
   forcePreview?: boolean;
 };
 
-const LIKED_HIGHLIGHTS_KEY = "fieldflicks-liked-highlights-v1";
+const LIKED_HIGHLIGHTS_KEY = 'fieldflicks-liked-highlights-v1';
 
 type LikedHighlightCache = {
   recordingId: string;
@@ -75,7 +107,9 @@ async function readLikedHighlights(): Promise<LikedHighlightCache[]> {
 async function pushLikedHighlight(entry: LikedHighlightCache): Promise<void> {
   try {
     const list = await readLikedHighlights();
-    const dedup = list.filter((l) => l.highlightId !== entry.highlightId);
+    const dedup = list.filter(
+      (l) => l.highlightId !== entry.highlightId,
+    );
     const next = [entry, ...dedup].slice(0, 12);
     await AsyncStorage.setItem(LIKED_HIGHLIGHTS_KEY, JSON.stringify(next));
   } catch {
@@ -92,16 +126,13 @@ async function pushLikedHighlight(entry: LikedHighlightCache): Promise<void> {
  * preview pill and lock badges on highlight rows; tapping anywhere that
  * starts full playback routes them to the premium screen.
  */
-export default function HighlightsScreen({
-  forcedRecordingId,
-  forcePreview,
-}: Props = {}) {
+export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Props = {}) {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; previewOnly?: string }>();
-  const recordingId =
-    forcedRecordingId ?? (params.id as string | undefined) ?? "";
-  const { isPaid: rawIsPaid, plan, refresh } = useEntitlement();
+  const recordingId = forcedRecordingId ?? (params.id as string | undefined) ?? '';
+  const { isPaid: rawIsPaid, refresh } = useEntitlement();
   const isPaid = forcePreview ? false : rawIsPaid;
+  const previewOnly = forcePreview || params.previewOnly === '1';
 
   const [recording, setRecording] = useState<any | null>(null);
   const [playback, setPlayback] = useState<RecordingPlayback | null>(null);
@@ -109,10 +140,7 @@ export default function HighlightsScreen({
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<LikedHighlightCache[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
-  const [, setApiDebug] = useState<string | null>(null);
-  const insets = useSafeAreaInsets();
-  /** Matches `FieldflixBottomNav`: safe bottom + pill bar (76) + gap above FAB overlap. */
-  const bottomNavClearance = Math.max(14, insets.bottom + 6) + 76 + 48;
+  const [apiDebug, setApiDebug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!recordingId) {
@@ -128,79 +156,17 @@ export default function HighlightsScreen({
       try {
         rec = await getRecordingById(recordingId);
       } catch (e) {
-        debugLines.push(`getRecordingById:\n${getFieldflixApiErrorDebug(e)}`);
+        debugLines.push(
+          `getRecordingById:\n${getFieldflixApiErrorDebug(e)}`,
+        );
       }
       try {
-        hs = await getRecordingHighlights(recordingId);
+        const h = await getRecordingHighlights(recordingId);
+        hs = Array.isArray(h) ? h : [];
       } catch (e) {
         debugLines.push(
           `getRecordingHighlights:\n${getFieldflixApiErrorDebug(e)}`,
         );
-      }
-      if (
-        rec &&
-        Array.isArray(
-          (rec as { recordingHighlights?: unknown }).recordingHighlights,
-        )
-      ) {
-        const embedded = (
-          rec as { recordingHighlights: Record<string, unknown>[] }
-        ).recordingHighlights
-          .map((eh) => embedToHighlightDto(eh))
-          .filter((x): x is RecordingHighlightDto => x != null)
-          .filter((x) => {
-            const st = String(x.status ?? "").toLowerCase();
-            return st === "ready" || st === "clip_created";
-          });
-        if (embedded.length > 0) {
-          const keyOf = (h: RecordingHighlightDto) =>
-            [h.playback_id ?? "", h.mux_public_playback_url ?? ""].join("|");
-          const seen = new Set(hs.map((h) => keyOf(h)));
-          for (const h of embedded) {
-            const k = keyOf(h);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            hs.push(h);
-          }
-        }
-      }
-      {
-        try {
-          const shorts = await getPublicFlickShorts(undefined);
-          const fromShorts = shorts
-            .filter((s) => String(s.recordingId) === String(recordingId))
-            .map(
-              (s): RecordingHighlightDto => ({
-                id: `flick-${s.id}`,
-                relative_timestamp: `${Math.max(0, Math.round(Number(s.startSec ?? 0)))}s`,
-                button_click_timestamp: s.createdAt,
-                playback_id: s.muxPlaybackId ?? null,
-                mux_public_playback_url: s.muxPlaybackId
-                  ? `https://stream.mux.com/${s.muxPlaybackId}.m3u8`
-                  : null,
-                thumbnail_url: s.muxPlaybackId
-                  ? `https://image.mux.com/${s.muxPlaybackId}/thumbnail.jpg?time=2`
-                  : null,
-                status: "ready",
-              }),
-            )
-            .filter((h) => Boolean(h.playback_id || h.mux_public_playback_url));
-          if (fromShorts.length > 0) {
-            const keyOf = (h: RecordingHighlightDto) =>
-              [h.playback_id ?? "", h.mux_public_playback_url ?? ""].join("|");
-            const seen = new Set(hs.map((h) => keyOf(h)));
-            for (const h of fromShorts) {
-              const k = keyOf(h);
-              if (seen.has(k)) continue;
-              seen.add(k);
-              hs.push(h);
-            }
-          }
-        } catch (e) {
-          debugLines.push(
-            `getPublicFlickShorts:\n${getFieldflixApiErrorDebug(e)}`,
-          );
-        }
       }
       try {
         pb = await getRecordingPlayback(recordingId);
@@ -212,7 +178,7 @@ export default function HighlightsScreen({
       setRecording(rec);
       setHighlights(hs);
       setPlayback(pb);
-      setApiDebug(debugLines.length ? debugLines.join("\n\n") : null);
+      setApiDebug(debugLines.length ? debugLines.join('\n\n') : null);
     } catch (e) {
       setRecording(null);
       setHighlights([]);
@@ -222,11 +188,6 @@ export default function HighlightsScreen({
       setLoading(false);
     }
   }, [recordingId]);
-
-  const embeddedRecordingHighlightCount = useMemo(
-    () => highlightCountFromRecording(recording),
-    [recording],
-  );
 
   useEffect(() => {
     void load();
@@ -249,8 +210,7 @@ export default function HighlightsScreen({
         mux_media_url: recording?.mux_media_url ?? null,
         mux_public_url: recording?.mux_public_url ?? null,
         signed_url: playback?.signed_url ?? null,
-        mux_playback_id:
-          recording?.mux_playback_id ?? playback?.playback_id ?? null,
+        mux_playback_id: recording?.mux_playback_id ?? playback?.playback_id ?? null,
       }),
     [recording, playback],
   );
@@ -266,20 +226,17 @@ export default function HighlightsScreen({
       }
       return;
     }
-    if (String(recording?.status ?? "").toLowerCase() === "failed") return;
+    if (String(recording?.status ?? '').toLowerCase() === 'failed') return;
     if (pollRef.current) return;
     pollRef.current = setInterval(() => {
       void load();
     }, 8000);
-    const t = setTimeout(
-      () => {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
-      },
-      4 * 60 * 1000,
-    );
+    const t = setTimeout(() => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }, 4 * 60 * 1000);
     return () => {
       clearTimeout(t);
       if (pollRef.current) {
@@ -294,41 +251,84 @@ export default function HighlightsScreen({
       ? (recording.turf.sports_supported as string[])
       : undefined,
   );
-  const requiredSportPlan = useMemo<
-    "cricket" | "pickleball" | "padel" | null
-  >(() => {
-    const raw = String(sportLabel || "").toLowerCase();
-    if (raw.includes("cricket")) return "cricket";
-    if (raw.includes("pickle")) return "pickleball";
-    if (raw.includes("padel") || raw.includes("paddle")) return "padel";
-    return null;
-  }, [sportLabel]);
-  const hasSportAccess = useMemo(() => {
-    if (!isPaid) return false;
-    if (!requiredSportPlan) return true;
-    if (plan === "cricket" || plan === "pickleball" || plan === "padel") {
-      return plan === requiredSportPlan;
+
+  const onWatchHero = useCallback(() => {
+    if (!recordingId) return;
+    if (!isPaid && !previewOnly) {
+      router.push(Paths.profilePremium);
+      return;
     }
-    // Legacy paid plans still keep full access.
-    return true;
-  }, [isPaid, plan, requiredSportPlan]);
+    if (!heroPlaybackUrl) {
+      Alert.alert(
+        'No playback URL',
+        formatPlaybackBlockedMessage(apiDebug, recording, playback),
+      );
+      return;
+    }
+    router.push({
+      pathname: Paths.VideoRecording,
+      params: {
+        source: heroPlaybackUrl,
+        filename: recording?.turf?.name ?? 'Recording',
+        recordingHighlights: JSON.stringify(highlights),
+        recordingId,
+        previewMode: !isPaid ? '1' : '0',
+      },
+    });
+  }, [
+    recordingId,
+    isPaid,
+    previewOnly,
+    heroPlaybackUrl,
+    recording,
+    playback,
+    highlights,
+    router,
+    apiDebug,
+  ]);
+
+  const onPreviewHero = useCallback(() => {
+    if (!recordingId) return;
+    if (!heroPlaybackUrl) {
+      Alert.alert(
+        'No playback URL (preview)',
+        formatPlaybackBlockedMessage(apiDebug, recording, playback),
+      );
+      return;
+    }
+    router.push({
+      pathname: Paths.VideoRecording,
+      params: {
+        source: heroPlaybackUrl,
+        filename: recording?.turf?.name ?? 'Recording',
+        recordingHighlights: JSON.stringify(highlights),
+        recordingId,
+        previewMode: '1',
+      },
+    });
+  }, [recordingId, heroPlaybackUrl, recording, playback, highlights, router, apiDebug]);
+
+  const onShareHero = useCallback(async () => {
+    if (!recordingId) return;
+    try {
+      const { shareableLink } = await createShareLink(recordingId);
+      await Share.share({
+        message: `Watch my game on FieldFlicks: ${shareableLink}`,
+        url: shareableLink,
+      });
+    } catch {
+      // user dismissed or share failed — silent
+    }
+  }, [recordingId]);
+
   const onHighlightPress = useCallback(
     async (h: RecordingHighlightDto) => {
-      if (!isPaid || !hasSportAccess) {
-        router.push({
-          pathname: Paths.profilePremium,
-          params: { sport: requiredSportPlan ?? undefined },
-        });
+      if (!isPaid) {
+        router.push(Paths.profilePremium);
         return;
       }
-      const st = String(h.status ?? "").toLowerCase();
-      if (
-        !h.mux_public_playback_url ||
-        (st !== "ready" && st !== "clip_created")
-      ) {
-        return;
-      }
-      const titleBase = recording?.turf?.name ?? "Recording";
+      if (!h.mux_public_playback_url || h.status !== 'ready') return;
+      const titleBase = recording?.turf?.name ?? 'Recording';
       void pushLikedHighlight({
         recordingId: recordingId,
         highlightId: h.id,
@@ -343,20 +343,12 @@ export default function HighlightsScreen({
           source: h.mux_public_playback_url,
           filename: `${titleBase} — Highlight`,
           recordingId,
-          previewMode: "0",
+          previewMode: '0',
         },
       });
     },
-    [hasSportAccess, isPaid, recording, recordingId, requiredSportPlan, router],
+    [isPaid, recording, recordingId, router],
   );
-
-  const onHeaderBackPress = useCallback(() => {
-    if (typeof router.canGoBack === "function" && router.canGoBack()) {
-      router.back();
-      return;
-    }
-    router.replace(Paths.recordings);
-  }, [router]);
 
   if (loading) {
     return (
@@ -371,25 +363,15 @@ export default function HighlightsScreen({
   return (
     <WebShell backgroundColor={BG_COLOR}>
       <View style={styles.flex}>
-        <View style={styles.header}>
-          <Pressable
-            accessibilityLabel="Go back"
-            onPress={onHeaderBackPress}
-            style={styles.backBtn}
-            hitSlop={8}
-          >
-            <BackIcon />
-          </Pressable>
-          <Text style={styles.headerTitle}>Highlights</Text>
-          <View style={styles.rightSpacer} />
-        </View>
+        <FieldflixScreenHeader
+          title="Highlights"
+          onBack={() => router.push(Paths.home)}
+          backAccessibilityLabel="Back to home"
+        />
 
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[
-            styles.main,
-            { paddingBottom: bottomNavClearance + 24 },
-          ]}
+          contentContainerStyle={styles.main}
           showsVerticalScrollIndicator={false}
         >
           {/* HERO */}
@@ -399,53 +381,75 @@ export default function HighlightsScreen({
               style={StyleSheet.absoluteFillObject}
               resizeMode="cover"
             />
+
             <LinearGradient
-              colors={[
-                "rgba(2,6,23,0.06)",
-                "rgba(2,6,23,0.48)",
-                "rgba(2,6,23,0.96)",
-              ]}
+              colors={['rgba(2,6,23,0.06)', 'rgba(2,6,23,0.48)', 'rgba(2,6,23,0.96)']}
               locations={[0, 0.55, 1]}
               style={StyleSheet.absoluteFill}
             />
+
             <View style={styles.heroBody}>
+
+              {/* ✅ KEEP THIS (top pills) */}
+              <View style={styles.heroTopRow}>
+                <View style={styles.statusPill}>
+                  <View style={styles.dotLive} />
+                  <Text style={styles.statusPillText}>
+                    {recordingIsReady({
+                      status: recording?.status,
+                      mux_playback_id:
+                        recording?.mux_playback_id ?? playback?.playback_id ?? null,
+                      mux_media_url: recording?.mux_media_url ?? null,
+                      mux_public_url: recording?.mux_public_url ?? null,
+                    })
+                      ? 'Ready'
+                      : 'Processing'}
+                  </Text>
+                </View>
+
+                {!isPaid ? (
+                  <View style={styles.previewPill}>
+                    <LockIcon size={12} />
+                    <Text style={styles.previewPillText}>Preview only</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {/* ✅ NEW LAYOUT TEXT BLOCK */}
               <View style={styles.heroTextBlock}>
                 <Text style={styles.heroHeadline} numberOfLines={1}>
-                  {recording?.turf?.name ?? "Recording"}
+                  {recording?.turf?.name ?? 'Recording'}
                 </Text>
+
                 <View style={styles.heroDivider} />
+
                 <Text style={styles.heroSubline} numberOfLines={1}>
-                  {sportLabel} · Recording {recordingDurationLabel(recording)}
+                  {sportLabel} · {recordingDurationLabel(recording)}
+                </Text>
+
+                <Text style={styles.heroWhen}>
+                  {formatRecordingListWhen(recording?.startTime)}
                 </Text>
               </View>
 
-              <View style={styles.heroBottomRow}>
-                <View style={styles.heroStatsRow}>
-                  <View style={styles.heroStatItem}>
-                    <MaterialCommunityIcons
-                      name="play-circle-outline"
-                      size={22}
-                      color="rgba(255,255,255,0.95)"
-                    />
-                    <Text style={styles.heroStatText}>
-                      {highlights.length > 0
-                        ? `${highlights.length} clip${highlights.length === 1 ? "" : "s"}`
-                        : embeddedRecordingHighlightCount > 0
-                          ? "Clips processing"
-                          : "No clips"}
-                    </Text>
-                  </View>
-                  <View style={styles.heroStatItem}>
-                    <MaterialCommunityIcons
-                      name="heart"
-                      size={21}
-                      color={ACCENT}
-                    />
-                    <Text style={styles.heroStatText}>
-                      {formatRecordingListWhen(recording?.startTime)}
-                    </Text>
-                  </View>
-                </View>
+              {/* ✅ KEEP BUTTONS EXACTLY */}
+              <View style={styles.heroActions}>
+                <Pressable style={styles.watchBtn} onPress={onWatchHero}>
+                  <LinearGradient
+                    colors={[ACCENT, '#16a34a']}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <PlayIcon color="#fff" size={16} />
+                  <Text style={styles.watchBtnText}>
+                    {isPaid ? 'Watch Now' : 'Unlock Full Match'}
+                  </Text>
+                </Pressable>
+
+                {!isPaid ? (
+                  <Pressable style={styles.previewBtn} onPress={onPreviewHero}>
+                    <Text style={styles.previewBtnText}>Preview</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </View>
           </View>
@@ -456,12 +460,7 @@ export default function HighlightsScreen({
             <Pressable
               hitSlop={8}
               onPress={() => {
-                if (!isPaid) {
-                  router.push({
-                    pathname: Paths.profilePremium,
-                    params: { sport: requiredSportPlan ?? undefined },
-                  });
-                }
+                if (!isPaid) router.push(Paths.profilePremium);
               }}
             >
               <View style={styles.viewAllPill}>
@@ -472,12 +471,18 @@ export default function HighlightsScreen({
 
           {/* HIGHLIGHTS LIST */}
           <View style={styles.list}>
+            {highlights.length === 0 ? (
+              <Text style={styles.empty}>
+                No highlights yet. Highlights are created from button-press moments and
+                will appear here once your video has finished processing.
+              </Text>
+            ) : null}
             {highlights.map((h, idx) => (
               <HighlightRow
                 key={h.id}
                 highlight={h}
                 index={idx}
-                hasSportAccess={hasSportAccess}
+                isPaid={isPaid}
                 onPress={() => void onHighlightPress(h)}
               />
             ))}
@@ -517,7 +522,7 @@ export default function HighlightsScreen({
             </View>
           ) : null}
 
-          <View style={{ height: 12 }} />
+          <View style={{ height: 40 }} />
         </ScrollView>
 
         <FieldflixBottomNav active="recordings" />
@@ -529,12 +534,12 @@ export default function HighlightsScreen({
 function HighlightRow({
   highlight,
   index,
-  hasSportAccess,
+  isPaid,
   onPress,
 }: {
   highlight: RecordingHighlightDto;
   index: number;
-  hasSportAccess: boolean;
+  isPaid: boolean;
   onPress: () => void;
 }) {
   const thumb = highlight.thumbnail_url
@@ -543,19 +548,15 @@ function HighlightRow({
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <View style={styles.rowThumb}>
-        <Image
-          source={thumb}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode="cover"
-        />
-        {!hasSportAccess ? (
+        <Image source={thumb} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+        {!isPaid ? (
           <View style={styles.rowLockBadge}>
             <LockIcon size={12} />
           </View>
         ) : null}
         <View style={styles.rowDur}>
           <Text style={styles.rowDurText}>
-            {highlight.relative_timestamp ?? "0:30"}
+            {highlight.relative_timestamp ?? '0:30'}
           </Text>
         </View>
       </View>
@@ -564,11 +565,7 @@ function HighlightRow({
           Highlight {index + 1}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {["ready", "clip_created"].includes(
-            String(highlight.status ?? "").toLowerCase(),
-          )
-            ? "Ready to watch"
-            : "Processing…"}
+          {highlight.status === 'ready' ? 'Ready to watch' : 'Processing…'}
         </Text>
         <View style={styles.rowStats}>
           <Text style={styles.rowStat}>1.2K views</Text>
@@ -594,6 +591,28 @@ function BackIcon() {
   );
 }
 
+function ShareIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+        stroke="#fff"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function PlayIcon({ color, size }: { color: string; size: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M8 5v14l11-7z" />
+    </Svg>
+  );
+}
+
 function LockIcon({ size = 14 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -610,29 +629,32 @@ function LockIcon({ size = 14 }: { size?: number }) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  loadingWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.22)",
-    backgroundColor: "rgba(15,23,42,0.66)",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rightSpacer: { width: 36, height: 36 },
+  shareBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
     flex: 1,
-    textAlign: "center",
+    textAlign: 'center',
     fontFamily: FF.bold,
     fontSize: 20,
     lineHeight: 27,
@@ -640,107 +662,180 @@ const styles = StyleSheet.create({
   },
   main: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 24,
+    paddingTop: 8,
+    paddingBottom: 140,
   },
   hero: {
     height: 265,
     borderRadius: 22,
-    overflow: "hidden",
-    backgroundColor: "#0b1220",
+    overflow: 'hidden',
+    backgroundColor: '#0b1220',
     borderWidth: 1,
-    borderColor: "rgba(148,163,184,0.22)",
-    position: "relative",
-    shadowColor: "#000",
+    borderColor: 'rgba(148,163,184,0.22)',
+    position: 'relative',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.28,
     shadowRadius: 22,
     elevation: 8,
   },
   heroBody: {
-    position: "absolute",
+    position: 'absolute',
     inset: 0 as any,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
     paddingHorizontal: 18,
     paddingVertical: 16,
-    justifyContent: "flex-end",
+    justifyContent: 'space-between',
   },
   heroTextBlock: {
-    width: "100%",
+    width: '100%',
     maxWidth: 460,
   },
+
   heroHeadline: {
     fontFamily: FF.bold,
     fontSize: 16,
-    lineHeight: 21,
-    letterSpacing: -0.2,
-    color: "#F8FAFC",
-    textShadowColor: "rgba(0,0,0,0.72)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
+    color: '#F8FAFC',
   },
+
   heroDivider: {
     marginTop: 8,
-    width: 255,
-    maxWidth: "88%",
+    width: 200,
     height: 2,
     borderRadius: 1,
-    backgroundColor: "rgba(241,245,249,0.6)",
+    backgroundColor: 'rgba(241,245,249,0.6)',
   },
+
   heroSubline: {
     marginTop: 8,
     fontFamily: FF.semiBold,
     fontSize: 13,
-    lineHeight: 18,
-    color: "rgba(248,250,252,0.96)",
+    color: 'rgba(248,250,252,0.96)',
   },
-  heroBottomRow: {
-    marginTop: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 12,
-  },
-  heroStatsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 20,
-    flex: 1,
-    minWidth: 0,
-  },
-  heroStatItem: {
-    flexDirection: "row",
-    alignItems: "center",
+  heroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 8,
   },
-  heroStatText: {
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(34,197,94,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.45)',
+  },
+  dotLive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: ACCENT,
+  },
+  statusPillText: {
     fontFamily: FF.semiBold,
+    fontSize: 11,
+    color: ACCENT,
+    letterSpacing: 0.4,
+  },
+  previewPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  previewPillText: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+  heroTitle: {
+    fontFamily: FF.bold,
+    fontSize: 22,
+    lineHeight: 28,
+    letterSpacing: -0.4,
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    marginTop: 6,
+  },
+  heroMeta: {
+    marginTop: 4,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  heroWhen: {
+    marginTop: 2,
+    fontFamily: FF.regular,
     fontSize: 12,
-    color: "rgba(248,250,252,0.94)",
-    letterSpacing: -0.15,
+    color: 'rgba(255,255,255,0.62)',
+  },
+  heroActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  watchBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 999,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  watchBtnText: {
+    fontFamily: FF.bold,
+    fontSize: 14,
+    color: '#fff',
+    letterSpacing: 0.2,
+  },
+  previewBtn: {
+    paddingHorizontal: 16,
+    height: 44,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  previewBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: '#fff',
   },
   sectionRow: {
     marginTop: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
     fontFamily: FF.bold,
     fontSize: 18,
-    color: "#fff",
+    color: '#fff',
     letterSpacing: -0.3,
   },
   viewAllPill: {
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(34,197,94,0.18)",
+    backgroundColor: 'rgba(34,197,94,0.18)',
     borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.45)",
+    borderColor: 'rgba(34,197,94,0.45)',
   },
   viewAllText: {
     fontFamily: FF.semiBold,
@@ -753,79 +848,79 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: MUTED,
-    textAlign: "center",
+    textAlign: 'center',
     paddingVertical: 20,
   },
   row: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 14,
     padding: 12,
     borderRadius: 16,
-    backgroundColor: "#0c1218",
+    backgroundColor: '#0c1218',
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   rowThumb: {
     width: 110,
     height: 80,
     borderRadius: 12,
-    overflow: "hidden",
-    position: "relative",
+    overflow: 'hidden',
+    position: 'relative',
   },
   rowLockBadge: {
-    position: "absolute",
+    position: 'absolute',
     top: 8,
     left: 8,
     width: 24,
     height: 24,
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: ACCENT,
   },
   rowDur: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 6,
     right: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
-    backgroundColor: "rgba(0,0,0,0.78)",
+    backgroundColor: 'rgba(0,0,0,0.78)',
   },
   rowDurText: {
     fontFamily: FF.semiBold,
     fontSize: 10,
-    color: "#fff",
-    fontVariant: ["tabular-nums"],
+    color: '#fff',
+    fontVariant: ['tabular-nums'],
   },
   rowBody: { flex: 1, minWidth: 0, gap: 4 },
   rowTitle: {
     fontFamily: FF.bold,
     fontSize: 14,
-    color: "#fff",
+    color: '#fff',
   },
   rowMeta: {
     fontFamily: FF.regular,
     fontSize: 12,
-    color: "rgba(255,255,255,0.65)",
+    color: 'rgba(255,255,255,0.65)',
   },
   rowStats: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     marginTop: 4,
   },
   rowStat: {
     fontFamily: FF.medium,
     fontSize: 11,
-    color: "rgba(255,255,255,0.55)",
+    color: 'rgba(255,255,255,0.55)',
   },
   rowDot: {
     width: 3,
     height: 3,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.45)",
+    backgroundColor: 'rgba(255,255,255,0.45)',
   },
   likedSection: { marginTop: 28, gap: 12 },
   likedRowContent: { gap: 12, paddingRight: 8 },
@@ -837,11 +932,11 @@ const styles = StyleSheet.create({
     width: 130,
     height: 78,
     borderRadius: 12,
-    backgroundColor: "#0a0f14",
+    backgroundColor: '#0a0f14',
   },
   likedTitle: {
     fontFamily: FF.semiBold,
     fontSize: 12,
-    color: "#fff",
+    color: '#fff',
   },
 });

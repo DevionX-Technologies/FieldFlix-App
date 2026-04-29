@@ -1,5 +1,8 @@
 import { BASE_URL } from "@/data/constants";
+import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
+import { extractMuxStreamId } from "@/utils/muxStreamId";
 import * as Clipboard from "expo-clipboard";
+import { router } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   Alert,
@@ -15,7 +18,6 @@ import { HighlightList, VideoPlayerControls } from "./components";
 import { DebugVideoPlayerControls } from "./components/DebugVideoPlayerControls";
 import { SafeVideoPlayerControls } from "./components/SafeVideoPlayerControls";
 import { useVideoPlayerState } from "./hooks";
-import { extractMuxStreamId } from "@/utils/muxStreamId";
 import { RecordingHighlight } from "./type";
 
 const SHOW_RECORDINGS_LOGS_BUTTON = false;
@@ -99,8 +101,7 @@ export default function VideoPlayer({
       return [
         label,
         u,
-        `  mux .m3u8 path id: ${
-          sid ?? "(n/a — URL may be unsigned Mux, non-mux, or not …/….m3u8)"
+        `  mux .m3u8 path id: ${sid ?? "(n/a — URL may be unsigned Mux, non-mux, or not …/….m3u8)"
         }`,
         parsed,
       ].join("\n");
@@ -166,7 +167,11 @@ export default function VideoPlayer({
           </Pressable>
         </View>
       ) : null}
-
+      <FieldflixScreenHeader
+        title="Highlights"
+        onBack={() => router.back()}
+        backAccessibilityLabel="Back to home"
+      />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
