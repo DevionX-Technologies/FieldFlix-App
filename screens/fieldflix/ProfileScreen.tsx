@@ -504,13 +504,13 @@ export default function FieldflixProfileScreen() {
                 onPress={() => router.push(Paths.profileAppSettings)}
                 showDivider
               />
-              <SettingsRow
+              {/* <SettingsRow
                 title="Premium"
                 subtitle="Upgrade your plan"
                 icon="crown-outline"
                 onPress={() => router.push(Paths.profilePremium)}
                 showDivider
-              />
+              /> */}
               <SettingsRow
                 title="Payment History"
                 subtitle="View all transactions."

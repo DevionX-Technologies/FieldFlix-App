@@ -1,18 +1,18 @@
-import { FF } from '@/screens/fieldflix/fonts';
-import { getAccountType, setAccountType } from '@/lib/fieldflix-account-type';
-import { WebShell } from '@/screens/fieldflix/WebShell';
-import { WEB } from '@/screens/fieldflix/webDesign';
-import { BackHeader } from '@/screens/fieldflix/profile/BackHeader';
-import { ToggleSwitch } from '@/screens/fieldflix/profile/ToggleSwitch';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getAccountType, setAccountType } from "@/lib/fieldflix-account-type";
+import { WebShell } from "@/screens/fieldflix/WebShell";
+import { FF } from "@/screens/fieldflix/fonts";
+import { BackHeader } from "@/screens/fieldflix/profile/BackHeader";
+import { ToggleSwitch } from "@/screens/fieldflix/profile/ToggleSwitch";
+import { WEB } from "@/screens/fieldflix/webDesign";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-const SWITCH_ON = '#22c55e';
+const SWITCH_ON = "#22c55e";
 
-const APP_SETTINGS_KEY = 'fieldflix_app_settings_v1';
+const APP_SETTINGS_KEY = "fieldflix_app_settings_v1";
 
 type AppSettingsSnapshot = {
   showStats: boolean;
@@ -35,20 +35,28 @@ export default function FieldflixProfileAppSettingsScreen() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [v, raw] = await Promise.all([getAccountType(), AsyncStorage.getItem(APP_SETTINGS_KEY)]);
+      const [v, raw] = await Promise.all([
+        getAccountType(),
+        AsyncStorage.getItem(APP_SETTINGS_KEY),
+      ]);
       if (cancelled) return;
       if (v) {
-        setVisibility((s) => ({ ...s, publicProfile: v === 'public' }));
+        setVisibility((s) => ({ ...s, publicProfile: v === "public" }));
       }
       if (raw) {
         try {
           const p = JSON.parse(raw) as Partial<AppSettingsSnapshot>;
           setVisibility((s) => ({
             ...s,
-            showStats: typeof p.showStats === 'boolean' ? p.showStats : s.showStats,
-            showLocation: typeof p.showLocation === 'boolean' ? p.showLocation : s.showLocation,
+            showStats:
+              typeof p.showStats === "boolean" ? p.showStats : s.showStats,
+            showLocation:
+              typeof p.showLocation === "boolean"
+                ? p.showLocation
+                : s.showLocation,
           }));
-          if (typeof p.dataTracking === 'boolean') setDataTracking(p.dataTracking);
+          if (typeof p.dataTracking === "boolean")
+            setDataTracking(p.dataTracking);
         } catch {
           /* ignore */
         }
@@ -79,7 +87,7 @@ export default function FieldflixProfileAppSettingsScreen() {
 
   const onTogglePublic = (v: boolean) => {
     setVisibility((s) => ({ ...s, publicProfile: v }));
-    void setAccountType(v ? 'public' : 'private');
+    void setAccountType(v ? "public" : "private");
   };
 
   return (
@@ -88,12 +96,19 @@ export default function FieldflixProfileAppSettingsScreen() {
         <BackHeader title="App Settings" />
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.scroll, { paddingBottom: 40 + insets.bottom }]}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingBottom: 40 + insets.bottom },
+          ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.section}>
+          {/* <View style={styles.section}>
             <View style={styles.sectionHead}>
-              <MaterialCommunityIcons name="eye-outline" size={16} color="#4ade80" />
+              <MaterialCommunityIcons
+                name="eye-outline"
+                size={16}
+                color="#4ade80"
+              />
               <Text style={styles.sectionLabel}>Profile Visibility</Text>
             </View>
             <ToggleRow
@@ -109,18 +124,28 @@ export default function FieldflixProfileAppSettingsScreen() {
             <ToggleRow
               label="Show Location"
               value={visibility.showLocation}
-              onChange={(v) => setVisibility((s) => ({ ...s, showLocation: v }))}
+              onChange={(v) =>
+                setVisibility((s) => ({ ...s, showLocation: v }))
+              }
             />
-          </View>
+          </View> */}
 
           <View style={styles.rule} />
 
           <View style={styles.section}>
             <View style={styles.sectionHead}>
-              <MaterialCommunityIcons name="database-outline" size={16} color="#4ade80" />
+              <MaterialCommunityIcons
+                name="database-outline"
+                size={16}
+                color="#4ade80"
+              />
               <Text style={styles.sectionLabel}>Data & Permissions</Text>
             </View>
-            <ToggleRow label="Allow Data Tracking" value={dataTracking} onChange={setDataTracking} />
+            <ToggleRow
+              label="Allow Data Tracking"
+              value={dataTracking}
+              onChange={setDataTracking}
+            />
             <ActionRow label="Download My Data" onPress={() => {}} />
             <ActionRow label="Clear App Data" onPress={() => {}} />
           </View>
@@ -151,7 +176,11 @@ function ActionRow({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={styles.actionRow}>
       <Text style={styles.rowLabel}>{label}</Text>
-      <MaterialCommunityIcons name="chevron-right" size={20} color="rgba(255,255,255,0.5)" />
+      <MaterialCommunityIcons
+        name="chevron-right"
+        size={20}
+        color="rgba(255,255,255,0.5)"
+      />
     </Pressable>
   );
 }
@@ -166,8 +195,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   sectionHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginTop: 10,
     marginBottom: 14,
@@ -179,29 +208,29 @@ const styles = StyleSheet.create({
   },
   row: {
     minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 10,
   },
   actionRow: {
     minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
+    borderTopColor: "rgba(255,255,255,0.05)",
   },
   rowLabel: {
     flex: 1,
     fontFamily: FF.regular,
     fontSize: 15,
-    color: 'rgba(255,255,255,0.88)',
+    color: "rgba(255,255,255,0.88)",
   },
   rule: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: "rgba(255,255,255,0.08)",
     marginVertical: 12,
   },
 });

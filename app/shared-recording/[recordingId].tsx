@@ -118,7 +118,7 @@ export default function SharedRecordingLandingScreen() {
       </VStack>
 
       {/* Modal Component */}
-      <ModalComponent />
+      {ModalComponent}
     </Box>
   );
 }

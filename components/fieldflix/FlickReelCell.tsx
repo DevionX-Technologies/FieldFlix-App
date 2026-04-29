@@ -3,10 +3,11 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 const CLIP_FUDGE = 0.05;
 
@@ -24,15 +25,23 @@ export function FlickReelCell({
   height,
   isActive,
   liked,
+  isLiking,
+  isSharing,
   onLike,
   onComment,
+  onShareStart,
+  onShareEnd,
 }: {
   item: FlickShortDto;
   height: number;
   isActive: boolean;
   liked: boolean;
+  isLiking?: boolean;
+  isSharing?: boolean;
   onLike: () => void;
   onComment: () => void;
+  onShareStart?: () => void;
+  onShareEnd?: () => void;
 }) {
   const startSec = item.startSec ?? 0;
   const endSec = item.endSec ?? 15;
@@ -77,17 +86,23 @@ export function FlickReelCell({
   }, [isActive, player, startSec, item.muxPlaybackId, item.id]);
 
   const onShare = async () => {
+    onShareStart?.();
     try {
       await Share.share({
         message: `${item.title || 'FlickShort'} (${Math.max(0, endSec - startSec).toFixed(0)}s)\n${hls}`,
         url: hls,
+        title: item.title || 'FlickShort',
       });
     } catch {
       /* ignore */
+    } finally {
+      onShareEnd?.();
     }
   };
 
   const posterTime = startSec;
+  const railBottom = Math.max(56, Math.min(104, Math.round(height * 0.135)));
+  const captionBottom = Math.max(18, Math.min(36, Math.round(height * 0.05)));
   const videoInner =
     item.aspect === '16:9' ? (
       <View style={styles.letterboxCol}>
@@ -148,18 +163,28 @@ export function FlickReelCell({
   return (
     <View style={[styles.reel, { height }]}>
       {videoInner}
-      <View style={styles.reelDim} pointerEvents="none" />
-      <View style={styles.rail}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['rgba(0,0,0,0.44)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.56)']}
+        locations={[0, 0.5, 1]}
+        style={styles.reelShade}
+      />
+      <View style={[styles.rail, { bottom: railBottom }]}>
         <ReelAction
           label={liked ? 'Liked' : 'Like'}
           active={liked}
           onPress={onLike}
+          busy={!!isLiking}
           icon={
-            <MaterialCommunityIcons
-              name={liked ? 'heart' : 'heart-outline'}
-              size={32}
-              color={liked ? '#f43f5e' : '#fff'}
-            />
+            isLiking ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialCommunityIcons
+                name={liked ? 'heart' : 'heart-outline'}
+                size={32}
+                color={liked ? '#f43f5e' : '#fff'}
+              />
+            )
           }
         />
         <ReelAction
@@ -170,10 +195,17 @@ export function FlickReelCell({
         <ReelAction
           label="Share"
           onPress={onShare}
-          icon={<MaterialCommunityIcons name="share-variant" size={30} color="#fff" />}
+          busy={!!isSharing}
+          icon={
+            isSharing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <MaterialCommunityIcons name="share-variant" size={30} color="#fff" />
+            )
+          }
         />
       </View>
-      <View style={styles.caption} pointerEvents="none">
+      <View style={[styles.caption, { bottom: captionBottom }]} pointerEvents="none">
         <Text style={styles.captionTitle} numberOfLines={2}>
           {item.title}
         </Text>
@@ -193,14 +225,16 @@ function ReelAction({
   icon,
   onPress,
   active,
+  busy,
 }: {
   label: string;
   icon: ReactNode;
   onPress: () => void;
   active?: boolean;
+  busy?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} style={styles.railBtn}>
+    <Pressable onPress={onPress} style={styles.railBtn} hitSlop={8} disabled={busy}>
       {icon}
       <Text style={[styles.railLbl, active && { color: WEB.greenBright }]}>{label}</Text>
     </Pressable>
@@ -229,22 +263,20 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 9,
     backgroundColor: '#000',
   },
-  reelDim: {
+  reelShade: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.06)',
   },
   rail: {
     zIndex: 2,
     position: 'absolute',
     right: 12,
-    bottom: 100,
     alignItems: 'center',
-    gap: 20,
+    gap: 14,
   },
-  railBtn: { alignItems: 'center', gap: 4 },
+  railBtn: { alignItems: 'center', gap: 5 },
   railLbl: {
     fontFamily: FF.medium,
-    fontSize: 10,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.85)',
   },
   overlayTop: {
@@ -269,18 +301,23 @@ const styles = StyleSheet.create({
   caption: {
     position: 'absolute',
     left: 12,
-    right: 72,
-    bottom: 24,
+    right: 78,
+    paddingRight: 6,
   },
   captionTitle: {
     fontFamily: FF.bold,
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
+    lineHeight: 22,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
   captionSub: {
     marginTop: 4,
     fontFamily: FF.medium,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255,255,255,0.84)',
     fontSize: 12,
+    lineHeight: 16,
   },
 });
