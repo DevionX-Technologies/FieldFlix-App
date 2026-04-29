@@ -32,30 +32,48 @@ export default function FieldflixProfilePrivacyScreen() {
           contentContainerStyle={[styles.scroll, { paddingBottom: 40 + insets.bottom }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.sectionHead}>
-            <MaterialCommunityIcons name="shield-lock-outline" size={22} color="#4ade80" />
-            <Text style={styles.sectionTitle}>Privacy</Text>
-          </View>
-          <View style={styles.copy}>
-            {privacyBody.map((p, i) => (
-              <Text key={i} style={styles.paragraph}>
-                {p}
-              </Text>
-            ))}
+          <View style={styles.heroCard}>
+            <View style={styles.heroTop}>
+              <View style={styles.heroIconWrap}>
+                <MaterialCommunityIcons name="shield-check-outline" size={18} color="#86efac" />
+              </View>
+              <Text style={styles.heroTitle}>Your data, protected by design</Text>
+            </View>
+            <Text style={styles.heroBody}>
+              We collect only what is required to run your experience, keep your account secure,
+              and improve product quality.
+            </Text>
+            <Text style={styles.heroMeta}>Last updated: Apr 2026</Text>
           </View>
 
-          <View style={styles.divider} />
-
-          <View style={styles.sectionHead}>
-            <MaterialCommunityIcons name="file-document-outline" size={20} color="#4ade80" />
-            <Text style={styles.sectionTitle}>Policy</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHead}>
+              <MaterialCommunityIcons name="shield-lock-outline" size={20} color="#4ade80" />
+              <Text style={styles.sectionTitle}>Privacy</Text>
+            </View>
+            <View style={styles.copy}>
+              {privacyBody.map((p, i) => (
+                <View key={i} style={styles.pointRow}>
+                  <View style={styles.pointDot} />
+                  <Text style={styles.paragraph}>{p}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-          <View style={styles.copy}>
-            {policyBody.map((p, i) => (
-              <Text key={i} style={styles.paragraph}>
-                {p}
-              </Text>
-            ))}
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHead}>
+              <MaterialCommunityIcons name="file-document-outline" size={20} color="#4ade80" />
+              <Text style={styles.sectionTitle}>Policy</Text>
+            </View>
+            <View style={styles.copy}>
+              {policyBody.map((p, i) => (
+                <View key={i} style={styles.pointRow}>
+                  <View style={styles.pointDot} />
+                  <Text style={styles.paragraph}>{p}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         </ScrollView>
       </View>
@@ -68,31 +86,90 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 20,
     paddingTop: 20,
+    gap: 14,
+  },
+  heroCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.25)',
+    backgroundColor: 'rgba(6,18,14,0.55)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  heroTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,222,128,0.28)',
+  },
+  heroTitle: {
+    flex: 1,
+    fontFamily: FF.bold,
+    fontSize: 15,
+    color: WEB.white,
+    letterSpacing: -0.1,
+  },
+  heroBody: {
+    fontFamily: FF.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: 'rgba(226,232,240,0.86)',
+  },
+  heroMeta: {
+    fontFamily: FF.medium,
+    fontSize: 12,
+    color: 'rgba(148,163,184,0.95)',
+  },
+  sectionCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(15,23,42,0.62)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
   sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   sectionTitle: {
     fontFamily: FF.bold,
-    fontSize: 20,
-    letterSpacing: -0.2,
+    fontSize: 17,
+    letterSpacing: -0.1,
     color: WEB.white,
   },
   copy: {
-    gap: 12,
+    gap: 10,
+  },
+  pointRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  pointDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 8,
+    backgroundColor: 'rgba(74,222,128,0.9)',
   },
   paragraph: {
+    flex: 1,
     fontFamily: FF.regular,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 20,
     color: 'rgba(255,255,255,0.78)',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginVertical: 24,
   },
 });
