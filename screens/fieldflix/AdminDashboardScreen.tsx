@@ -361,6 +361,30 @@ export default function AdminDashboardScreen() {
     ]);
   };
 
+  const onRemoveFromFeed = (s: FlickShortDto) => {
+    Alert.alert(
+      'Remove from live feed',
+      `Hide "${s.title || s.id}" from user feed? You can approve it again later.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await approveFlickShort(s.id, false);
+                await load();
+              } catch (e) {
+                Alert.alert('Error', getFieldflixApiErrorMessage(e, 'Could not remove from feed'));
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
+
   const applyAdvancedRecordingId = async () => {
     const id = advancedIdInput.trim();
     if (!id) {
@@ -838,6 +862,9 @@ export default function AdminDashboardScreen() {
                   </View>
                   <Pressable onPress={() => setPreviewShort(s)} style={styles.viewPill}>
                     <Text style={styles.viewTxt}>View</Text>
+                  </Pressable>
+                  <Pressable onPress={() => onRemoveFromFeed(s)} style={styles.rejectPill}>
+                    <Text style={styles.rejectTxt}>Remove</Text>
                   </Pressable>
                 </View>
               ))

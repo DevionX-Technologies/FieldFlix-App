@@ -35,6 +35,18 @@ function formatHMS(totalSeconds: number) {
   return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
+function normalizeGroundLabel(groundNumber?: string, groundDescription?: string): string {
+  const rawNumber = String(groundNumber ?? '').trim();
+  const rawDesc = String(groundDescription ?? '').trim();
+  const source = rawNumber || rawDesc;
+  if (!source) return 'Court';
+  const normalized = source.replace(/\s+/g, ' ').trim();
+  if (/^court\b/i.test(normalized) || /^ground\b/i.test(normalized)) {
+    return normalized;
+  }
+  return `Court ${normalized}`;
+}
+
 export type RecordingTimeParams = {
   Name?: string;
   GroundLocation?: string;
@@ -50,9 +62,12 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const venueName = params.Name?.trim() || 'TGS Sports Arena';
-  const venueAddress = params.GroundLocation?.trim() || 'Andheri West, Mumbai';
-  const groundLabel = params.GroundNumber?.trim() || params.GroundDescription?.trim() || 'Court 1';
+  const venueName = params.Name?.trim() || 'Venue';
+  const venueAddress = params.GroundLocation?.trim() || 'Location unavailable';
+  const groundLabel = normalizeGroundLabel(
+    params.GroundNumber,
+    params.GroundDescription,
+  );
   const scanned =
     [params.GroundDescription, params.turfId, params.cameraId].filter(Boolean).join(' · ') || '';
 
@@ -134,7 +149,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
             <Pressable style={styles.court} accessibilityRole="button">
               <GridIcon />
               <Text style={styles.courtText} numberOfLines={1}>
-                {groundLabel.startsWith('Court') ? groundLabel : `Court ${groundLabel}`}
+                {groundLabel}
               </Text>
             </Pressable>
 

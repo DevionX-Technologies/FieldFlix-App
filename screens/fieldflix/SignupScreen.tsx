@@ -1,6 +1,6 @@
 import { Paths } from "@/data/paths";
 import { useCustomModal } from "@/hooks/useCustomModal";
-import { normalizeMobile } from "@/lib/fieldflix-api";
+import { checkPhoneAccountExists, normalizeMobile } from "@/lib/fieldflix-api";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { gradientPillInner } from "@/screens/fieldflix/fieldflixUi";
 import { FF } from "@/screens/fieldflix/fonts";
@@ -36,6 +36,7 @@ export default function FieldflixSignupScreen() {
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
   const [loading, setLoading] = useState(false);
+  const [existingAccount, setExistingAccount] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<"name" | "mobile" | null>(
     null,
   );
@@ -56,6 +57,12 @@ export default function FieldflixSignupScreen() {
     }
     setLoading(true);
     try {
+      const { exists } = await checkPhoneAccountExists(mobile);
+      if (exists) {
+        setExistingAccount(normalizeMobile(mobile));
+        return;
+      }
+      setExistingAccount(null);
       router.push({
         pathname: Paths.otp,
         params: {
@@ -64,6 +71,8 @@ export default function FieldflixSignupScreen() {
           isSignup: "1",
         },
       });
+    } catch {
+      showError("Sign up unavailable", "Could not verify this number right now. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -220,7 +229,10 @@ export default function FieldflixSignupScreen() {
                         value={mobile}
                         ref={mobileInputRef}
                         onChangeText={(v) =>
-                          setMobile(v.replace(/[^\d+\-\s()]/g, "").slice(0, 16))
+                          {
+                            setExistingAccount(null);
+                            setMobile(v.replace(/[^\d+\-\s()]/g, "").slice(0, 16));
+                          }
                         }
                         onFocus={() => setFocusedField("mobile")}
                         onBlur={() => setFocusedField(null)}
@@ -278,6 +290,21 @@ export default function FieldflixSignupScreen() {
                         </LinearGradient>
                       )}
                     </Pressable>
+
+                    {existingAccount ? (
+                      <View style={styles.loginPrompt}>
+                        <Text style={styles.loginPromptTitle}>Account already exists</Text>
+                        <Text style={styles.loginPromptBody}>
+                          {existingAccount} is already registered. Please log in instead.
+                        </Text>
+                        <Pressable
+                          onPress={() => router.push(Paths.login)}
+                          style={styles.loginPromptCta}
+                        >
+                          <Text style={styles.loginPromptCtaText}>Go to login</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={styles.footerRow}>
@@ -526,5 +553,43 @@ const styles = StyleSheet.create({
     fontFamily: FF.bold,
     fontSize: sf(15),
     color: WEB.green,
+  },
+  loginPrompt: {
+    marginTop: vs(8),
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(250,204,21,0.45)",
+    backgroundColor: "rgba(113,63,18,0.25)",
+    paddingHorizontal: s(12),
+    paddingVertical: vs(10),
+    gap: vs(6),
+  },
+  loginPromptTitle: {
+    fontFamily: FF.bold,
+    fontSize: sf(13),
+    color: "#fde68a",
+  },
+  loginPromptBody: {
+    fontFamily: FF.medium,
+    fontSize: sf(12),
+    lineHeight: sf(17),
+    color: "rgba(255,251,235,0.92)",
+  },
+  loginPromptCta: {
+    alignSelf: "flex-start",
+    marginTop: vs(2),
+    paddingHorizontal: s(12),
+    minHeight: 34,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(250,204,21,0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(250,204,21,0.55)",
+  },
+  loginPromptCtaText: {
+    fontFamily: FF.semiBold,
+    fontSize: sf(12),
+    color: "#fde68a",
   },
 });

@@ -89,6 +89,17 @@ export async function sendOtp(mobile: string) {
   return data;
 }
 
+export async function checkPhoneAccountExists(
+  mobile: string,
+): Promise<{ exists: boolean }> {
+  const m = normalizeMobile(mobile);
+  const { data } = await axiosInstance.post<{ exists: boolean }>(
+    '/auth/account-exists',
+    { mobile: m },
+  );
+  return { exists: !!data?.exists };
+}
+
 export type VerifyOtpResponse = {
   token: string;
   isFirstTimeLogin: boolean;
@@ -164,6 +175,19 @@ export async function getRecordingById(recordingId: string) {
 export async function getSharedWithMe() {
   const { data } = await axiosInstance.get('/recording/shared-with-me');
   return coerceToRecordingList(data);
+}
+
+export type SharedByMeRow = {
+  id: string;
+  shared_to_user_id: string;
+  shared_to_user_name: string;
+  shared_to_user_phone: string;
+  recording: any;
+};
+
+export async function getSharedByMe(): Promise<SharedByMeRow[]> {
+  const { data } = await axiosInstance.get('/recording/shared-by-me');
+  return Array.isArray(data) ? (data as SharedByMeRow[]) : [];
 }
 
 /** Backend `ESportsSupported`: e.g. `Pickleball`, `Paddle`, `Cricket`. */

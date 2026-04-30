@@ -1,6 +1,6 @@
 import { Paths } from "@/data/paths";
 import { useCustomModal } from "@/hooks/useCustomModal";
-import { normalizeMobile } from "@/lib/fieldflix-api";
+import { checkPhoneAccountExists, normalizeMobile } from "@/lib/fieldflix-api";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { gradientPillInner } from "@/screens/fieldflix/fieldflixUi";
 import { FF } from "@/screens/fieldflix/fonts";
@@ -35,6 +35,7 @@ export default function FieldflixLoginScreen() {
   const shellW = useShellWidth();
   const [mobile, setMobile] = useState("");
   const [loading, setLoading] = useState(false);
+  const [missingAccount, setMissingAccount] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<"mobile" | null>(null);
   const cardMax = Math.min(WEB.cardMaxW, shellW - s(48));
   const digits = mobile.replace(/\D/g, "");
@@ -47,10 +48,18 @@ export default function FieldflixLoginScreen() {
     }
     setLoading(true);
     try {
+      const { exists } = await checkPhoneAccountExists(mobile);
+      if (!exists) {
+        setMissingAccount(normalizeMobile(mobile));
+        return;
+      }
+      setMissingAccount(null);
       router.push({
         pathname: Paths.otp,
         params: { mobile: normalizeMobile(mobile) },
       });
+    } catch {
+      showError("Login unavailable", "Could not verify this number right now. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -166,7 +175,10 @@ export default function FieldflixLoginScreen() {
                         selectionColor="rgba(255,255,255,0.35)"
                         value={mobile}
                         onChangeText={(v) =>
-                          setMobile(v.replace(/[^\d+\-\s()]/g, "").slice(0, 16))
+                          {
+                            setMissingAccount(null);
+                            setMobile(v.replace(/[^\d+\-\s()]/g, "").slice(0, 16));
+                          }
                         }
                         onFocus={() => setFocusedField("mobile")}
                         onBlur={() => setFocusedField(null)}
@@ -224,6 +236,21 @@ export default function FieldflixLoginScreen() {
                         </LinearGradient>
                       )}
                     </Pressable>
+
+                    {missingAccount ? (
+                      <View style={styles.signupPrompt}>
+                        <Text style={styles.signupPromptTitle}>No account found</Text>
+                        <Text style={styles.signupPromptBody}>
+                          We couldn&apos;t find an account for {missingAccount}. Create one to continue.
+                        </Text>
+                        <Pressable
+                          onPress={() => router.push(Paths.signup)}
+                          style={styles.signupPromptCta}
+                        >
+                          <Text style={styles.signupPromptCtaText}>Create account</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                   </View>
 
                   <View style={styles.footerRow}>
@@ -476,5 +503,43 @@ const styles = StyleSheet.create({
     fontFamily: FF.bold,
     fontSize: sf(15),
     color: WEB.green,
+  },
+  signupPrompt: {
+    marginTop: vs(8),
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.45)",
+    backgroundColor: "rgba(20,83,45,0.25)",
+    paddingHorizontal: s(12),
+    paddingVertical: vs(10),
+    gap: vs(6),
+  },
+  signupPromptTitle: {
+    fontFamily: FF.bold,
+    fontSize: sf(13),
+    color: "#bbf7d0",
+  },
+  signupPromptBody: {
+    fontFamily: FF.medium,
+    fontSize: sf(12),
+    lineHeight: sf(17),
+    color: "rgba(226,232,240,0.92)",
+  },
+  signupPromptCta: {
+    alignSelf: "flex-start",
+    marginTop: vs(2),
+    paddingHorizontal: s(12),
+    minHeight: 34,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(74,222,128,0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.5)",
+  },
+  signupPromptCtaText: {
+    fontFamily: FF.semiBold,
+    fontSize: sf(12),
+    color: "#bbf7d0",
   },
 });

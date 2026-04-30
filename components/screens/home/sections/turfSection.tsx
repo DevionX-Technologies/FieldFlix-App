@@ -120,8 +120,7 @@ const Pickleturfs = [
   },
   {
     name: "TSG Sports Arena | Botanical Gardens",
-    description:
-      "Relive your game at TSG Sport Arena's top quality pickleball centre amidst the lively and vibrant atmosphere at the Botanical Gardens.",
+    description: "",
     turfImages: [
       {
         image: TurfImage7,

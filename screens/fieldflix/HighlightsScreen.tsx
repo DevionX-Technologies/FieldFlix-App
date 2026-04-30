@@ -1,15 +1,22 @@
-import { BASE_URL } from '@/data/constants';
+import { BASE_URL, RAZORPAY_KEY_ID } from '@/data/constants';
 import { Paths } from '@/data/paths';
 import {
+  createPlanOrder,
+  embedToHighlightDto,
   createShareLink,
+  getFieldflixApiErrorMessage,
   getFieldflixApiErrorDebug,
+  getPublicFlickShorts,
   getRecordingById,
   getRecordingHighlights,
   getRecordingPlayback,
+  type PlanId,
   type RecordingHighlightDto,
   type RecordingPlayback,
+  verifyRazorpayPayment,
 } from '@/lib/fieldflix-api';
-import { useEntitlement } from '@/lib/fieldflix-entitlement';
+import { buildHighlightsAppLink } from '@/utils/highlightsAppLink';
+import { refreshEntitlement, useEntitlement } from '@/lib/fieldflix-entitlement';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
@@ -44,6 +51,12 @@ import { FieldflixScreenHeader } from './FieldflixScreenHeader';
 const ACCENT = '#22C55E';
 const BG_COLOR = '#020617';
 const MUTED = 'rgba(255,255,255,0.62)';
+const GST_RATE = 0.18;
+const SPORT_PRICE_INR: Record<'pickleball' | 'padel' | 'cricket', number> = {
+  pickleball: 200,
+  padel: 250,
+  cricket: 350,
+};
 
 const ALERT_DEBUG_MAX = 3600;
 
@@ -84,6 +97,7 @@ type Props = {
 };
 
 const LIKED_HIGHLIGHTS_KEY = 'fieldflicks-liked-highlights-v1';
+const UNLOCKED_RECORDINGS_KEY = 'fieldflicks-unlocked-recordings-v1';
 
 type LikedHighlightCache = {
   recordingId: string;
@@ -91,6 +105,12 @@ type LikedHighlightCache = {
   title: string;
   thumbnail: string | null;
   savedAt: number;
+};
+
+type UiHighlight = RecordingHighlightDto & {
+  likes_count?: number;
+  comments_count?: number;
+  views_count?: number | null;
 };
 
 async function readLikedHighlights(): Promise<LikedHighlightCache[]> {
@@ -117,6 +137,62 @@ async function pushLikedHighlight(entry: LikedHighlightCache): Promise<void> {
   }
 }
 
+async function readUnlockedRecordings(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(UNLOCKED_RECORDINGS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed.map((x) => String(x)) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function unlockRecording(recordingId: string): Promise<string[]> {
+  try {
+    const id = String(recordingId);
+    if (!id) return [];
+    const list = await readUnlockedRecordings();
+    if (list.includes(id)) return list;
+    const next = [id, ...list].slice(0, 120);
+    await AsyncStorage.setItem(UNLOCKED_RECORDINGS_KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return [];
+  }
+}
+
+function formatClockFromSeconds(n: number): string {
+  const total = Math.max(0, Math.round(n));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+}
+
+function looksLikeZeroTimestamp(input: string | null | undefined): boolean {
+  const v = String(input ?? '').trim().toLowerCase();
+  return (
+    v === '' ||
+    v === '0' ||
+    v === '0s' ||
+    v === '0:00' ||
+    v === '00:00' ||
+    v === '00:00:00'
+  );
+}
+
+function highlightBadgeTimestamp(h: UiHighlight): string {
+  const raw = String(h.relative_timestamp ?? '').trim();
+  if (raw && !looksLikeZeroTimestamp(raw)) return raw;
+  const createdAt = h.button_click_timestamp ? new Date(h.button_click_timestamp) : null;
+  if (createdAt && !Number.isNaN(createdAt.getTime())) {
+    const hh = createdAt.getHours();
+    const mm = String(createdAt.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  }
+  return '15s';
+}
+
 /**
  * The Highlights screen surfaces a single recording with its hero card,
  * a list of READY highlights, and a "My Liked Highlights" footer powered by
@@ -136,11 +212,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
   const [recording, setRecording] = useState<any | null>(null);
   const [playback, setPlayback] = useState<RecordingPlayback | null>(null);
-  const [highlights, setHighlights] = useState<RecordingHighlightDto[]>([]);
+  const [highlights, setHighlights] = useState<UiHighlight[]>([]);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<LikedHighlightCache[]>([]);
+  const [unlockedRecordings, setUnlockedRecordings] = useState<string[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
   const [apiDebug, setApiDebug] = useState<string | null>(null);
+  const [showUnlockSheet, setShowUnlockSheet] = useState(false);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!recordingId) {
@@ -150,7 +229,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     setLoading(true);
     const debugLines: string[] = [];
     let rec: any = null;
-    let hs: any[] = [];
+    let hs: UiHighlight[] = [];
     let pb: RecordingPlayback | null = null;
     try {
       try {
@@ -161,11 +240,84 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         );
       }
       try {
-        const h = await getRecordingHighlights(recordingId);
-        hs = Array.isArray(h) ? h : [];
+        hs = await getRecordingHighlights(recordingId);
       } catch (e) {
         debugLines.push(
           `getRecordingHighlights:\n${getFieldflixApiErrorDebug(e)}`,
+        );
+      }
+      if (
+        rec &&
+        Array.isArray((rec as { recordingHighlights?: unknown }).recordingHighlights)
+      ) {
+        const embedded = (
+          rec as { recordingHighlights: Record<string, unknown>[] }
+        ).recordingHighlights
+          .map((eh) => embedToHighlightDto(eh))
+          .filter((x): x is RecordingHighlightDto => x != null)
+          .filter((x) => {
+            const st = String(x.status ?? '').toLowerCase();
+            return st === 'ready' || st === 'clip_created';
+          });
+        if (embedded.length > 0) {
+          const keyOf = (h: UiHighlight) =>
+            [h.playback_id ?? '', h.mux_public_playback_url ?? ''].join('|');
+          const seen = new Set(hs.map((h) => keyOf(h)));
+          for (const h of embedded) {
+            const k = keyOf(h);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            hs.push(h);
+          }
+        }
+      }
+      try {
+        const shorts = await getPublicFlickShorts(undefined);
+        const fromShorts = shorts
+          .filter((s) => String(s.recordingId) === String(recordingId))
+          .map((s): UiHighlight => {
+            const startSec = Number(s.startSec ?? 0);
+            const endSec = Number(s.endSec ?? startSec + 15);
+            const hasValidStart = Number.isFinite(startSec) && startSec > 0;
+            const clipLen = Number.isFinite(endSec) && endSec > startSec
+              ? formatClockFromSeconds(endSec - startSec)
+              : '15s';
+            return {
+              id: `flick-${s.id}`,
+              relative_timestamp: hasValidStart
+                ? formatClockFromSeconds(startSec)
+                : `${clipLen} clip`,
+            button_click_timestamp: s.createdAt,
+            playback_id: s.muxPlaybackId ?? null,
+            mux_public_playback_url: s.muxPlaybackId
+              ? `https://stream.mux.com/${s.muxPlaybackId}.m3u8`
+              : null,
+            thumbnail_url: s.muxPlaybackId
+              ? `https://image.mux.com/${s.muxPlaybackId}/thumbnail.jpg?time=2`
+              : null,
+            status: 'ready',
+            likes_count: Number(s.likesCount ?? 0),
+            comments_count: Array.isArray(s.comments) ? s.comments.length : 0,
+            views_count: Number.isFinite(Number(s.viewsCount))
+              ? Number(s.viewsCount)
+              : null,
+          };
+          })
+          .filter((h) => Boolean(h.playback_id || h.mux_public_playback_url));
+        if (fromShorts.length > 0) {
+          const keyOf = (h: UiHighlight) =>
+            [h.playback_id ?? '', h.mux_public_playback_url ?? ''].join('|');
+          const seen = new Set(hs.map((h) => keyOf(h)));
+          for (const h of fromShorts) {
+            const k = keyOf(h);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            hs.push(h);
+          }
+        }
+      } catch (e) {
+        debugLines.push(
+          `getPublicFlickShorts:\n${getFieldflixApiErrorDebug(e)}`,
         );
       }
       try {
@@ -192,6 +344,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   useEffect(() => {
     void load();
     void readLikedHighlights().then(setLiked);
+    void readUnlockedRecordings().then(setUnlockedRecordings);
     void refresh();
   }, [load, refresh]);
 
@@ -251,11 +404,93 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       ? (recording.turf.sports_supported as string[])
       : undefined,
   );
+  const sportPlan = useMemo<'cricket' | 'pickleball' | 'padel'>(() => {
+    const raw = String(sportLabel ?? '').toLowerCase();
+    if (raw.includes('cricket')) return 'cricket';
+    if (raw.includes('padel') || raw.includes('paddle')) return 'padel';
+    return 'pickleball';
+  }, [sportLabel]);
+  const basePrice = SPORT_PRICE_INR[sportPlan];
+  const discountedBase = sportPlan === 'cricket' ? 0 : basePrice;
+  const gstAmount = Math.round(discountedBase * GST_RATE);
+  const totalAmount = discountedBase + gstAmount;
+  const isFreeCricketOffer = sportPlan === 'cricket' && totalAmount === 0;
+  const hasRecordingAccess = isPaid || unlockedRecordings.includes(recordingId);
+  const openUnlockSheet = useCallback(() => {
+    setShowUnlockSheet(true);
+  }, []);
+  const closeUnlockSheet = useCallback(() => {
+    if (checkoutBusy) return;
+    setShowUnlockSheet(false);
+  }, [checkoutBusy]);
+  const runCheckout = useCallback(async () => {
+    if (checkoutBusy) return;
+    if (isFreeCricketOffer) {
+      setCheckoutBusy(true);
+      const next = await unlockRecording(recordingId);
+      setUnlockedRecordings(next);
+      setShowUnlockSheet(false);
+      setCheckoutBusy(false);
+      return;
+    }
+    if (!RAZORPAY_KEY_ID) {
+      Alert.alert(
+        'Payments',
+        'Add EXPO_PUBLIC_RAZORPAY_KEY_ID in .env to enable checkout.',
+      );
+      return;
+    }
+    setCheckoutBusy(true);
+    try {
+      const order = await createPlanOrder(sportPlan as PlanId);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const RazorpayCheckout = require('react-native-razorpay').default as {
+        open: (opts: Record<string, unknown>) => Promise<{
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+        }>;
+      };
+      const data = await RazorpayCheckout.open({
+        key: RAZORPAY_KEY_ID,
+        name: 'FieldFlicks',
+        description: `${sportLabel} video unlock`,
+        order_id: order.razorpay_order_id,
+        currency: order.currency ?? 'INR',
+        amount: String(totalAmount * 100),
+        theme: { color: '#22C55E' },
+      });
+      await verifyRazorpayPayment({
+        razorpay_order_id: data.razorpay_order_id,
+        razorpay_payment_id: data.razorpay_payment_id,
+        status: 'completed',
+      });
+      await refreshEntitlement().catch(() => null);
+      const next = await unlockRecording(recordingId);
+      setUnlockedRecordings(next);
+      setShowUnlockSheet(false);
+      Alert.alert('Payment successful', 'Your access is now unlocked.');
+      void refresh();
+    } catch (e) {
+      const msg = getFieldflixApiErrorMessage(e, 'Could not complete payment');
+      if (!String(msg).toLowerCase().includes('cancel')) {
+        Alert.alert('Payment', msg);
+      }
+    } finally {
+      setCheckoutBusy(false);
+    }
+  }, [
+    checkoutBusy,
+    isFreeCricketOffer,
+    sportPlan,
+    sportLabel,
+    totalAmount,
+    refresh,
+  ]);
 
   const onWatchHero = useCallback(() => {
     if (!recordingId) return;
-    if (!isPaid && !previewOnly) {
-      router.push(Paths.profilePremium);
+    if (!hasRecordingAccess && !previewOnly) {
+      openUnlockSheet();
       return;
     }
     if (!heroPlaybackUrl) {
@@ -272,12 +507,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         filename: recording?.turf?.name ?? 'Recording',
         recordingHighlights: JSON.stringify(highlights),
         recordingId,
-        previewMode: !isPaid ? '1' : '0',
+        previewMode: !hasRecordingAccess ? '1' : '0',
       },
     });
   }, [
     recordingId,
-    isPaid,
+    hasRecordingAccess,
     previewOnly,
     heroPlaybackUrl,
     recording,
@@ -285,6 +520,8 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     highlights,
     router,
     apiDebug,
+    openUnlockSheet,
+    isFreeCricketOffer,
   ]);
 
   const onPreviewHero = useCallback(() => {
@@ -317,17 +554,23 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         url: shareableLink,
       });
     } catch {
-      // user dismissed or share failed — silent
+      const appLink = buildHighlightsAppLink(recordingId);
+      await Share.share({
+        message: `Watch my game on FieldFlicks: ${appLink}`,
+      }).catch(() => null);
     }
   }, [recordingId]);
 
   const onHighlightPress = useCallback(
     async (h: RecordingHighlightDto) => {
-      if (!isPaid) {
-        router.push(Paths.profilePremium);
+      if (!hasRecordingAccess) {
+        openUnlockSheet();
         return;
       }
-      if (!h.mux_public_playback_url || h.status !== 'ready') return;
+      const st = String(h.status ?? '').toLowerCase();
+      if (!h.mux_public_playback_url || (st !== 'ready' && st !== 'clip_created')) {
+        return;
+      }
       const titleBase = recording?.turf?.name ?? 'Recording';
       void pushLikedHighlight({
         recordingId: recordingId,
@@ -347,7 +590,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         },
       });
     },
-    [isPaid, recording, recordingId, router],
+    [hasRecordingAccess, recording, recordingId, router, openUnlockSheet],
   );
 
   if (loading) {
@@ -407,7 +650,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   </Text>
                 </View>
 
-                {!isPaid ? (
+                {!hasRecordingAccess ? (
                   <View style={styles.previewPill}>
                     <LockIcon size={12} />
                     <Text style={styles.previewPillText}>Preview only</Text>
@@ -441,11 +684,11 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   />
                   <PlayIcon color="#fff" size={16} />
                   <Text style={styles.watchBtnText}>
-                    {isPaid ? 'Watch Now' : 'Unlock Full Match'}
+                    {hasRecordingAccess ? 'Watch Now' : 'Unlock Full Match'}
                   </Text>
                 </Pressable>
 
-                {!isPaid ? (
+                {!hasRecordingAccess ? (
                   <Pressable style={styles.previewBtn} onPress={onPreviewHero}>
                     <Text style={styles.previewBtnText}>Preview</Text>
                   </Pressable>
@@ -460,7 +703,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             <Pressable
               hitSlop={8}
               onPress={() => {
-                if (!isPaid) router.push(Paths.profilePremium);
+                if (!hasRecordingAccess) openUnlockSheet();
               }}
             >
               <View style={styles.viewAllPill}>
@@ -482,7 +725,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 key={h.id}
                 highlight={h}
                 index={idx}
-                isPaid={isPaid}
+                hasAccess={hasRecordingAccess}
                 onPress={() => void onHighlightPress(h)}
               />
             ))}
@@ -525,6 +768,56 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           <View style={{ height: 40 }} />
         </ScrollView>
 
+        {showUnlockSheet ? (
+          <View style={styles.sheetOverlay}>
+            <Pressable style={styles.sheetBackdrop} onPress={closeUnlockSheet} />
+            <View style={styles.sheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Recording + Highlights</Text>
+              <View style={styles.sheetPlanRow}>
+                <Text style={styles.sheetPlanName}>{sportLabel} video unlock</Text>
+                <Text style={styles.sheetPrice}>₹{discountedBase}</Text>
+              </View>
+              <Text style={styles.sheetSub}>
+                Full video + highlights
+                {isFreeCricketOffer ? ' (limited-time offer)' : ''}
+              </Text>
+              <View style={styles.sheetBill}>
+                <View style={styles.sheetBillRow}>
+                  <Text style={styles.sheetBillText}>Base amount</Text>
+                  <Text style={styles.sheetBillText}>₹{discountedBase}</Text>
+                </View>
+                <View style={styles.sheetBillRow}>
+                  <Text style={styles.sheetBillText}>GST (18%)</Text>
+                  <Text style={styles.sheetBillText}>₹{gstAmount}</Text>
+                </View>
+                <View style={[styles.sheetBillRow, styles.sheetBillTotal]}>
+                  <Text style={styles.sheetTotalText}>Total</Text>
+                  <Text style={styles.sheetTotalText}>₹{totalAmount}</Text>
+                </View>
+              </View>
+              <Pressable
+                style={[
+                  styles.sheetCta,
+                  checkoutBusy && { opacity: 0.65 },
+                ]}
+                onPress={() => void runCheckout()}
+                disabled={checkoutBusy}
+              >
+                <Text style={styles.sheetCtaText}>
+                  {checkoutBusy
+                    ? 'Processing...'
+                    : isFreeCricketOffer
+                      ? 'Continue Free'
+                      : 'Unlock & Pay'}
+                </Text>
+              </Pressable>
+              <Text style={styles.sheetFoot}>
+                Secure payment • Video-based unlock • Instant access
+              </Text>
+            </View>
+          </View>
+        ) : null}
         <FieldflixBottomNav active="recordings" />
       </View>
     </WebShell>
@@ -534,12 +827,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 function HighlightRow({
   highlight,
   index,
-  isPaid,
+  hasAccess,
   onPress,
 }: {
-  highlight: RecordingHighlightDto;
+  highlight: UiHighlight;
   index: number;
-  isPaid: boolean;
+  hasAccess: boolean;
   onPress: () => void;
 }) {
   const thumb = highlight.thumbnail_url
@@ -549,14 +842,14 @@ function HighlightRow({
     <Pressable style={styles.row} onPress={onPress}>
       <View style={styles.rowThumb}>
         <Image source={thumb} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-        {!isPaid ? (
+        {!hasAccess ? (
           <View style={styles.rowLockBadge}>
             <LockIcon size={12} />
           </View>
         ) : null}
         <View style={styles.rowDur}>
           <Text style={styles.rowDurText}>
-            {highlight.relative_timestamp ?? '0:30'}
+            {highlightBadgeTimestamp(highlight)}
           </Text>
         </View>
       </View>
@@ -565,12 +858,20 @@ function HighlightRow({
           Highlight {index + 1}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {highlight.status === 'ready' ? 'Ready to watch' : 'Processing…'}
+          {['ready', 'clip_created'].includes(
+            String(highlight.status ?? '').toLowerCase(),
+          )
+            ? 'Ready to watch'
+            : 'Processing…'}
         </Text>
         <View style={styles.rowStats}>
-          <Text style={styles.rowStat}>1.2K views</Text>
+          <Text style={styles.rowStat}>
+            {Number(highlight.likes_count ?? 0)} likes
+          </Text>
           <View style={styles.rowDot} />
-          <Text style={styles.rowStat}>89 likes</Text>
+          <Text style={styles.rowStat}>
+            {Number(highlight.comments_count ?? 0)} comments
+          </Text>
         </View>
       </View>
     </Pressable>
@@ -938,5 +1239,113 @@ const styles = StyleSheet.create({
     fontFamily: FF.semiBold,
     fontSize: 12,
     color: '#fff',
+  },
+  sheetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    zIndex: 120,
+  },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.55)',
+  },
+  sheet: {
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    backgroundColor: '#0b1320',
+    borderTopWidth: 1,
+    borderColor: 'rgba(34,197,94,0.35)',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 20,
+    minHeight: '48%',
+    zIndex: 1,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(148,163,184,0.6)',
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetTitle: {
+    fontFamily: FF.bold,
+    fontSize: 22,
+    color: WEB.white,
+    marginBottom: 10,
+  },
+  sheetPlanRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sheetPlanName: {
+    fontFamily: FF.semiBold,
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 16,
+  },
+  sheetPrice: {
+    fontFamily: FF.bold,
+    color: ACCENT,
+    fontSize: 34,
+  },
+  sheetSub: {
+    marginTop: 2,
+    color: 'rgba(203,213,225,0.82)',
+    fontFamily: FF.regular,
+    fontSize: 13,
+  },
+  sheetBill: {
+    marginTop: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(15,23,42,0.7)',
+    gap: 8,
+  },
+  sheetBillRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  sheetBillText: {
+    color: 'rgba(226,232,240,0.88)',
+    fontFamily: FF.regular,
+    fontSize: 14,
+  },
+  sheetBillTotal: {
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderColor: 'rgba(148,163,184,0.22)',
+    paddingTop: 8,
+  },
+  sheetTotalText: {
+    color: ACCENT,
+    fontFamily: FF.bold,
+    fontSize: 17,
+  },
+  sheetCta: {
+    marginTop: 16,
+    borderRadius: 16,
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4ade80',
+  },
+  sheetCtaText: {
+    color: '#03210e',
+    fontFamily: FF.bold,
+    fontSize: 28,
+    lineHeight: 34,
+  },
+  sheetFoot: {
+    marginTop: 10,
+    textAlign: 'center',
+    color: 'rgba(148,163,184,0.9)',
+    fontFamily: FF.semiBold,
+    fontSize: 12,
   },
 });

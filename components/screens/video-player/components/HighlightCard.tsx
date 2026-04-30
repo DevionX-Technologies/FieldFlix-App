@@ -14,6 +14,7 @@ import {
   Image,
   Modal,
   Pressable,
+  Share,
   StyleSheet,
   View
 } from "react-native";
@@ -291,25 +292,24 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                 style={styles.shareButton}
                 onPress={async () => {
                   try {
-                    // Show loading state
-                    showCustomAlert("loading", "Processing", "Preparing your video for sharing...", false);
-                    
-                    const response = await axiosInstance.post<{
-                      signedUrl?: string;
-                      data?: { signedUrl?: string };
-                    }>(`recording/highlight/${highlight.id}/process`);
-                    const p = response.data;
-                    const signedUrl = p.signedUrl ?? p.data?.signedUrl;
-                    console.log('Highlight processed successfully:', JSON.stringify(signedUrl, null, 2));
-                    if (signedUrl) {
-                      // Download and share the video file
-                      await downloadVideo(signedUrl, highlight.id);
-                    } else {
-                      showCustomAlert("error", "Processing Error", "No signed URL received from server. Please try again.");
+                    // Share directly with available playback URL to avoid processing failures.
+                    const playbackUrl =
+                      highlight.mux_public_playback_url ||
+                      (highlight.playback_id
+                        ? `https://stream.mux.com/${highlight.playback_id}.m3u8`
+                        : null);
+                    if (!playbackUrl) {
+                      showCustomAlert("error", "Share unavailable", "No playable URL found for this highlight.");
+                      return;
                     }
+                    await Share.share({
+                      message: `Watch this highlight on FieldFlicks: ${playbackUrl}`,
+                      url: playbackUrl,
+                      title: "FieldFlicks Highlight",
+                    });
                   } catch (error) {
-                    console.error('Error processing highlight for sharing:', error);
-                    showCustomAlert("error", "Processing Failed", "Failed to process highlight for sharing. Please check your connection and try again.");
+                    console.error('Error sharing highlight:', error);
+                    showCustomAlert("error", "Share Failed", "Failed to share highlight. Please try again.");
                   }
                 }}
               >

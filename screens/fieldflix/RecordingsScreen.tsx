@@ -3,6 +3,7 @@ import { useRecordingReadyToast } from "@/hooks/useRecordingReadyToast";
 import {
   createShareLink,
   getMyRecordings,
+  getSharedByMe,
   getPublicFlickShorts,
   getSharedWithMe,
 } from "@/lib/fieldflix-api";
@@ -22,6 +23,7 @@ import {
   recordingIsReady,
   recordingThumbUrl,
 } from "@/utils/recordingDisplay";
+import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
@@ -46,6 +48,7 @@ const ACCENT = "#22C55E";
 const MUTED = "#94a3b8";
 
 type TabId = "my" | "shared" | "find";
+type SharedSubTabId = "withMe" | "to";
 
 function parseClockOnDay(base: Date, clock: string): number | null {
   const t = clock.trim().toLowerCase();
@@ -66,8 +69,10 @@ export default function FieldflixRecordingsScreen() {
   const isCompact = width < 360;
   const router = useRouter();
   const [tab, setTab] = useState<TabId>("my");
+  const [sharedSubTab, setSharedSubTab] = useState<SharedSubTabId>("withMe");
   const [my, setMy] = useState<any[]>([]);
   const [shared, setShared] = useState<any[]>([]);
+  const [sharedByMe, setSharedByMe] = useState<any[]>([]);
   /** Approved FlickShorts are a separate table from `recordingHighlights` — tally per recording for counts. */
   const [shortsPerRecording, setShortsPerRecording] = useState<
     Record<string, number>
@@ -99,7 +104,12 @@ export default function FieldflixRecordingsScreen() {
           title,
         });
       } catch {
-        // user dismissed or share unavailable — silent
+        // Fallback to in-app deep link when share token generation fails.
+        const appLink = buildHighlightsAppLink(recordingId);
+        await Share.share({
+          message: `Watch my game on FieldFlicks: ${appLink}`,
+          title,
+        }).catch(() => null);
       }
     },
     [],
@@ -150,13 +160,15 @@ export default function FieldflixRecordingsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b, flickList] = await Promise.all([
+      const [a, b, c, flickList] = await Promise.all([
         getMyRecordings(),
         getSharedWithMe(),
+        getSharedByMe().catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
       ]);
       setMy(a);
       setShared(b);
+      setSharedByMe(c);
       const tally: Record<string, number> = {};
       const mine = Array.isArray(a)
         ? new Set<string>(
@@ -221,6 +233,30 @@ export default function FieldflixRecordingsScreen() {
             highlights: highlightCountFromRecording(rec),
             shareWith: s?.shared_with_user_name || "—",
             ownerName: rec?.owner_name ?? "",
+            ownerPhone: rec?.owner_phone ?? "",
+            location: loc,
+            thumbUrl: recordingThumbUrl(rec),
+            duration: recordingDurationLabel(rec),
+          };
+        })
+      : [];
+
+  const sharedToRows =
+    sharedByMe.length > 0
+      ? sharedByMe.map((s: any, i: number) => {
+          const rec = s?.recording;
+          const td = rec?.turf_detail;
+          const loc =
+            [td?.city, td?.state].filter(Boolean).join(", ") ||
+            td?.address_line ||
+            "";
+          return {
+            id: String(s?.id ?? i),
+            recordingId: rec?.id ? String(rec.id) : null,
+            title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
+            highlights: highlightCountFromRecording(rec),
+            sharedToPhone: String(s?.shared_to_user_phone ?? ""),
+            sharedToName: String(s?.shared_to_user_name ?? ""),
             location: loc,
             thumbUrl: recordingThumbUrl(rec),
             duration: recordingDurationLabel(rec),
@@ -411,13 +447,54 @@ export default function FieldflixRecordingsScreen() {
 
           {tab === "shared" && (
             <View style={styles.sharedList}>
-              {sharedRows.length === 0 ? (
+              <View style={styles.sharedSubTabs}>
+                <Pressable
+                  style={[
+                    styles.sharedSubTab,
+                    sharedSubTab === "to" && styles.sharedSubTabActive,
+                  ]}
+                  onPress={() => setSharedSubTab("to")}
+                >
+                  <Text
+                    style={[
+                      styles.sharedSubTabText,
+                      sharedSubTab === "to" && styles.sharedSubTabTextActive,
+                    ]}
+                  >
+                    Shared To
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.sharedSubTab,
+                    sharedSubTab === "withMe" && styles.sharedSubTabActive,
+                  ]}
+                  onPress={() => setSharedSubTab("withMe")}
+                >
+                  <Text
+                    style={[
+                      styles.sharedSubTabText,
+                      sharedSubTab === "withMe" && styles.sharedSubTabTextActive,
+                    ]}
+                  >
+                    Shared With Me
+                  </Text>
+                </Pressable>
+              </View>
+
+              {sharedSubTab === "withMe" && sharedRows.length === 0 ? (
                 <Text style={styles.emptyList}>
                   Nothing shared with you yet. When someone shares a recording,
                   it will show here.
                 </Text>
               ) : null}
-              {sharedRows.map((card) => (
+              {sharedSubTab === "to" && sharedToRows.length === 0 ? (
+                <Text style={styles.emptyList}>
+                  You have not shared any recordings yet.
+                </Text>
+              ) : null}
+              {(sharedSubTab === "withMe" ? sharedRows : sharedToRows).map(
+                (card) => (
                 <Pressable
                   key={card.id}
                   style={styles.sharedCard}
@@ -481,7 +558,9 @@ export default function FieldflixRecordingsScreen() {
                         </View>
                         <View style={styles.sharedPill}>
                           <Text style={styles.sharedPillText} numberOfLines={1}>
-                            From: {card.ownerName || "—"}
+                            {sharedSubTab === "withMe"
+                              ? `From: ${card.ownerName || "—"}${card.ownerPhone ? ` • ${card.ownerPhone}` : ""}`
+                              : `To: ${card.sharedToPhone || card.sharedToName || "—"}`}
                           </Text>
                         </View>
                       </View>
@@ -500,7 +579,8 @@ export default function FieldflixRecordingsScreen() {
                     </View>
                   </View>
                 </Pressable>
-              ))}
+              ),
+              )}
             </View>
           )}
 
@@ -1281,6 +1361,33 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.45,
     shadowRadius: 18,
     elevation: 10,
+  },
+  sharedSubTabs: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 4,
+  },
+  sharedSubTab: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.35)",
+    backgroundColor: "rgba(15,23,42,0.55)",
+  },
+  sharedSubTabActive: {
+    borderColor: ACCENT,
+    backgroundColor: "rgba(34,197,94,0.15)",
+  },
+  sharedSubTabText: {
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    color: "rgba(203,213,225,0.85)",
+  },
+  sharedSubTabTextActive: {
+    color: ACCENT,
   },
 
   findWrap: { gap: 14, marginTop: 8 },

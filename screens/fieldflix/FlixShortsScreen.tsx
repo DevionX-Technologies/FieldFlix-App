@@ -7,6 +7,7 @@ import {
   likeFlickShort,
   type FlickShortDto,
 } from "@/lib/fieldflix-api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
 import { FIELD_FLIX_HEADER_HEIGHT, FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { FF } from "@/screens/fieldflix/fonts";
@@ -52,6 +53,26 @@ const SPORT_TILES = [
 ] as const;
 
 type SportId = (typeof SPORT_TILES)[number]["id"];
+const LIKED_SHORTS_KEY = "fieldflicks-liked-shorts-v1";
+
+async function readLikedShorts(): Promise<Record<string, boolean>> {
+  try {
+    const raw = await AsyncStorage.getItem(LIKED_SHORTS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, boolean>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeLikedShorts(next: Record<string, boolean>): Promise<void> {
+  try {
+    await AsyncStorage.setItem(LIKED_SHORTS_KEY, JSON.stringify(next));
+  } catch {
+    // best effort
+  }
+}
 
 /**
  * FlickShorts: server-backed approved shorts, filtered by sport tab.
@@ -97,6 +118,10 @@ export default function FieldflixFlixShortsScreen() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void readLikedShorts().then(setLiked);
+  }, []);
+
   const onViewable = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index != null) {
@@ -114,7 +139,9 @@ export default function FieldflixFlixShortsScreen() {
 
     setLikingId(row.id);
     // Optimistic UX: instantly reflect toggle and count change.
-    setLiked((prev) => ({ ...prev, [row.id]: nextLiked }));
+    const nextMap = { ...liked, [row.id]: nextLiked };
+    setLiked(nextMap);
+    void writeLikedShorts(nextMap);
     setItems((prev) =>
       prev.map((r) =>
         r.id === row.id
@@ -126,19 +153,15 @@ export default function FieldflixFlixShortsScreen() {
     try {
       const u = await likeFlickShort(row.id);
       setItems((prev) => prev.map((r) => (r.id === u.id ? u : r)));
-      setLiked((prev) => {
-        const current = !!prev[row.id];
-        if (!u || typeof u.likesCount !== "number") return prev;
-        // Infer final liked state from count movement when backend returns toggled row.
-        const oldCount = Number(row.likesCount || 0);
-        const newCount = Number(u.likesCount || 0);
-        if (newCount > oldCount) return { ...prev, [row.id]: true };
-        if (newCount < oldCount) return { ...prev, [row.id]: false };
-        return { ...prev, [row.id]: current };
-      });
+      // Keep explicit user intent as source of truth for toggle UI.
+      const stable = { ...nextMap, [row.id]: nextLiked };
+      setLiked(stable);
+      void writeLikedShorts(stable);
     } catch (e) {
       // Rollback optimistic state on failure.
-      setLiked((prev) => ({ ...prev, [row.id]: wasLiked }));
+      const rollback = { ...nextMap, [row.id]: wasLiked };
+      setLiked(rollback);
+      void writeLikedShorts(rollback);
       setItems((prev) =>
         prev.map((r) =>
           r.id === row.id

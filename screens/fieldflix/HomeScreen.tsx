@@ -45,6 +45,7 @@ import {
   FIELD_FLIX_BOTTOM_NAV_SPACE,
   FieldflixBottomNav,
 } from "@/screens/fieldflix/BottomNav";
+import { useIsAdminRole } from "@/hooks/useIsAdminRole";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
 const AUTO_H = require("@/assets/fieldflix-web/autohiglhight.png");
@@ -199,6 +200,7 @@ export default function FieldflixHomeScreen() {
   const sportIconMain = Math.min(48, Math.round(sportBoxSize * 0.4));
 
   const router = useRouter();
+  const { isAdmin } = useIsAdminRole();
   const [sport, setSport] = useState<"pickleball" | "padel" | "cricket">(
     "pickleball",
   );
@@ -416,6 +418,19 @@ export default function FieldflixHomeScreen() {
             </View>
           </View>
           <View style={styles.headerRight}>
+            {isAdmin ? (
+              <Pressable
+                onPress={() => router.push(Paths.admin)}
+                style={styles.iconBtn}
+                hitSlop={8}
+              >
+                <MaterialCommunityIcons
+                  name="shield-crown-outline"
+                  size={23}
+                  color={WEB.white}
+                />
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => router.push(Paths.notifications)}
               style={styles.iconBtn}
