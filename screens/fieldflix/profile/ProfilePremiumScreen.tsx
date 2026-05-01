@@ -11,6 +11,10 @@ import { WebShell } from "@/screens/fieldflix/WebShell";
 import { gradientPillInner } from "@/screens/fieldflix/fieldflixUi";
 import { FF } from "@/screens/fieldflix/fonts";
 import { WEB } from "@/screens/fieldflix/webDesign";
+import {
+  GST_RATE,
+  SPORT_PLAN_BASE_INR,
+} from "@/utils/sportPlanPricing";
 import axios from "axios";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -89,45 +93,51 @@ const PLAN_ORDER: {
   img: number;
 }[] = [
   {
+    id: "cricket",
+    name: "Cricket Plan",
+    sub: "(Sport Access)",
+    basePrice: SPORT_PLAN_BASE_INR.cricket,
+    img: RASTER.planFree,
+  },
+  {
     id: "pickleball",
     name: "Pickleball Plan",
     sub: "(Sport Access)",
-    basePrice: 200,
-    img: RASTER.planFree,
+    basePrice: SPORT_PLAN_BASE_INR.pickleball,
+    img: RASTER.planPro,
   },
   {
     id: "padel",
     name: "Padel Plan",
     sub: "(Sport Access)",
-    basePrice: 250,
-    img: RASTER.planPro,
-  },
-  {
-    id: "cricket",
-    name: "Cricket Plan",
-    sub: "(Sport Access)",
-    basePrice: 350,
+    basePrice: SPORT_PLAN_BASE_INR.padel,
     img: RASTER.planPrem,
   },
 ];
 
-const GST_RATE = 0.18;
 const PLAN_BASE_PRICE: Record<PlanId, number> = {
-  pickleball: 200,
-  padel: 250,
-  cricket: 350,
+  cricket: SPORT_PLAN_BASE_INR.cricket,
+  pickleball: SPORT_PLAN_BASE_INR.pickleball,
+  padel: SPORT_PLAN_BASE_INR.padel,
   pro: 0,
   premium: 0,
   free: 0,
 };
 
-function formatBasePrice(basePrice: number): string {
-  return `₹${basePrice}`;
-}
-
+/** Total charged at checkout (GST-inclusive); cricket is ₹0. */
 function checkoutAmountInr(planId: PlanId): number {
   const base = PLAN_BASE_PRICE[planId] ?? 0;
   return Math.round(base * (1 + GST_RATE));
+}
+
+function planPriceHeadline(p: { basePrice: number; id: PlanId }): string {
+  if (p.basePrice === 0) return "Free";
+  return `₹${checkoutAmountInr(p.id)}`;
+}
+
+function planPriceSubline(p: { basePrice: number; id: PlanId }): string {
+  if (p.basePrice === 0) return "No payment — tap to activate";
+  return `Base ₹${p.basePrice} + 18% GST`;
 }
 
 /**
@@ -139,7 +149,7 @@ export default function FieldflixProfilePremiumScreen() {
   const params = useLocalSearchParams<{ sport?: string }>();
   const insets = useSafeAreaInsets();
   const [pay, setPay] = useState<Pay>("upi");
-  const [plan, setPlan] = useState<PlanId>("padel");
+  const [plan, setPlan] = useState<PlanId>("pickleball");
   const [submitting, setSubmitting] = useState(false);
   const planScroll = useRef<ScrollView | null>(null);
   const planScrollViewportW = useRef(0);
@@ -184,13 +194,6 @@ export default function FieldflixProfilePremiumScreen() {
   }, [plan]);
 
   const onUpgrade = async () => {
-    if (!RAZORPAY_KEY_ID) {
-      Alert.alert(
-        "Payments",
-        "Add EXPO_PUBLIC_RAZORPAY_KEY_ID to your .env (publishable key from Razorpay).",
-      );
-      return;
-    }
     const token = await SecureStore.getItemAsync("token");
     if (!token?.trim()) {
       Alert.alert(
@@ -203,6 +206,26 @@ export default function FieldflixProfilePremiumScreen() {
     setSubmitting(true);
     try {
       const order = await createPlanOrder(plan);
+      const orderAmount = Number(order.amount);
+      if (orderAmount === 0 || order.status === "completed") {
+        try {
+          await refreshEntitlement();
+        } catch {
+          // non-fatal
+        }
+        Alert.alert(
+          "Cricket access",
+          "Cricket is active on your account at no charge.",
+        );
+        return;
+      }
+      if (!RAZORPAY_KEY_ID) {
+        Alert.alert(
+          "Payments",
+          "Add EXPO_PUBLIC_RAZORPAY_KEY_ID to your .env (publishable key from Razorpay).",
+        );
+        return;
+      }
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const RazorpayCheckout = require("react-native-razorpay").default as {
         open: (opts: Record<string, unknown>) => Promise<{
@@ -211,7 +234,7 @@ export default function FieldflixProfilePremiumScreen() {
           razorpay_signature?: string;
         }>;
       };
-      const amountPaise = String(checkoutAmountInr(plan) * 100);
+      const amountPaise = String(Math.round(orderAmount * 100));
       // Native module exports a class: call `RazorpayCheckout.open(...)`, not `RazorpayCheckout(...)`.
       const data = await RazorpayCheckout.open({
         key: RAZORPAY_KEY_ID,
@@ -371,12 +394,11 @@ export default function FieldflixProfilePremiumScreen() {
                         <Text style={styles.planSub}>{p.sub}</Text>
                         <View style={styles.priceRow}>
                           <Text style={styles.priceNum}>
-                            {formatBasePrice(p.basePrice)}
+                            {planPriceHeadline(p)}
                           </Text>
-                          <Text style={styles.priceMo}> /month</Text>
                         </View>
                         <Text style={styles.priceGstNote}>
-                          +{Math.round(GST_RATE * 100)}% GST extra
+                          {planPriceSubline(p)}
                         </Text>
                         {/* <View style={styles.planBullets}>
                           {bullets.map((line, bi) => (
@@ -552,7 +574,9 @@ export default function FieldflixProfilePremiumScreen() {
                   {submitting ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
-                    <Text style={styles.upText}>Upgrade Now</Text>
+                    <Text style={styles.upText}>
+                      {plan === "cricket" ? "Activate Cricket" : "Upgrade Now"}
+                    </Text>
                   )}
                 </LinearGradient>
               </Pressable>
@@ -799,7 +823,6 @@ const styles = StyleSheet.create({
     color: TEXT_PRIMARY,
     lineHeight: 30,
   },
-  priceMo: { fontFamily: FF.medium, fontSize: 11, color: TEXT_SECONDARY },
   priceGstNote: {
     marginTop: 2,
     fontFamily: FF.medium,

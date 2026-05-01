@@ -1,12 +1,19 @@
 import { Paths } from '@/data/paths';
 import { FF } from '@/screens/fieldflix/fonts';
+import { sportPricingTotalAfterGst } from '@/utils/sportPlanPricing';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-const ACCENT = '#22C55E';
+const ACCENT = '#22c55e';
+
+/** Same maths as Highlights unlock sheet + Premium (18% GST included in paid totals). */
+const PAYWALL_PRICE_HINT =
+  `Cricket free · Pickleball ₹${sportPricingTotalAfterGst('pickleball')} · Padel ₹${sportPricingTotalAfterGst(
+    'padel',
+  )} (all incl. GST)`;
 
 type Props = {
   visible: boolean;
@@ -45,6 +52,7 @@ export function PaywallSheet({ visible, onClose, onUpgradePress, message }: Prop
             {message ??
               "You've watched the free preview. Unlock full match playback with a sport plan (Cricket, Pickleball, or Padel)."}
           </Text>
+          <Text style={styles.priceHint}>{PAYWALL_PRICE_HINT}</Text>
           <Pressable
             onPress={handleUpgrade}
             style={styles.cta}
@@ -123,6 +131,15 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.72)',
     textAlign: 'center',
     paddingHorizontal: 8,
+    marginBottom: 4,
+  },
+  priceHint: {
+    fontFamily: FF.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: 'rgba(187,247,208,0.85)',
+    textAlign: 'center',
+    paddingHorizontal: 10,
     marginBottom: 8,
   },
   cta: {

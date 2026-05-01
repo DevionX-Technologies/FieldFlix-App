@@ -40,16 +40,21 @@ export interface CameraInfo {
 
 export interface RecordingHighlight {
   id: string;
-  recordingId: string;
+  recordingId?: string;
   button_click_timestamp: string; // ISO timestamp
-  source_asset_id: string;
+  source_asset_id?: string;
   asset_id: string | null;
-  status: "ready" | "processing" | "failed";
+  /** Allow clip_created rows from Highlights API JSON. */
+  status: string;
   failed_message: string | null;
   playback_id: string | null;
   mux_public_playback_url: string | null;
-  createdAt: string; // ISO timestamp
-  updatedAt: string; // ISO timestamp
+  createdAt?: string; // ISO timestamp
+  updatedAt?: string; // ISO timestamp
+  likesCount?: number;
+  likes_count?: number;
+  viewerLiked?: boolean;
+  viewerSaved?: boolean;
 }
 
 export interface SharedRecording {

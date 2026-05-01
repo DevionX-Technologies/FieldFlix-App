@@ -3,6 +3,7 @@ import ScanOverlay from '@/components/screens/recording/components/ScanOverlay';
 import type { QrCodeDataSchema } from '@/components/screens/recording/data/recordingSchema';
 import { useQrCamera } from '@/components/screens/recording/hooks/useQRCamera';
 import { Paths } from '@/data/paths';
+import { navigateBackOrHome } from '@/utils/navigateBackOrHome';
 import {
   FIELD_FLIX_HEADER_HEIGHT,
   FieldflixScreenHeader,
@@ -41,8 +42,8 @@ export default function FieldflixScanQrScreen() {
       <View style={styles.blank}>
         <FieldflixScreenHeader
           title="Scan QR"
-          onBack={() => router.replace(Paths.home)}
-          backAccessibilityLabel="Back to home"
+          onBack={() => navigateBackOrHome(router)}
+          backAccessibilityLabel="Go back"
         />
       </View>
     );
@@ -53,8 +54,8 @@ export default function FieldflixScanQrScreen() {
       <View style={styles.blank}>
         <FieldflixScreenHeader
           title="Scan QR"
-          onBack={() => router.replace(Paths.home)}
-          backAccessibilityLabel="Back to home"
+          onBack={() => navigateBackOrHome(router)}
+          backAccessibilityLabel="Go back"
         />
         <PermissionRequestView
           status={permissionInfo.status}
@@ -71,8 +72,8 @@ export default function FieldflixScanQrScreen() {
     <View style={styles.container}>
       <FieldflixScreenHeader
         title="Scan QR"
-        onBack={() => router.replace(Paths.home)}
-        backAccessibilityLabel="Back to home"
+        onBack={() => navigateBackOrHome(router)}
+        backAccessibilityLabel="Go back"
       />
       {!scanned ? (
         <CameraView

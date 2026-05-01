@@ -28,6 +28,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  type ImageSourcePropType,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
@@ -53,10 +54,19 @@ const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
 /** Static promos (3) until the API supplies Coming Soon assets. */
 const COMING_SOON_CAROUSEL_IMAGES = [
   AUTO_H,
-  require("@/assets/fieldflix-web/image515.png"),
-  require("@/assets/fieldflix-web/image151.png"),
+  require("@/assets/fieldflix-web/coming-soon/coming-soon-2.png"),
+  require("@/assets/fieldflix-web/coming-soon/coming-soon-3.png"),
 ] as const;
 const COMING_SOON_CARD_HEIGHT = 158;
+const EXPLICIT_VENUE_IMAGE_BY_NAME: Record<string, ImageSourcePropType> = {
+  "tsg sports arena": BG.homeHero,
+  "play sport andheri": BG.sessionCard,
+  "playsport andheri": BG.sessionCard,
+  "playsports andheri": BG.sessionCard,
+  "play sport": BG.sessionCard,
+  playsport: BG.sessionCard,
+  "fieldflix arena": BG.arena,
+};
 
 type TurfRow = {
   id: string;
@@ -76,6 +86,7 @@ type ArenaRow = {
   rating: number;
   distanceKm: number;
   pricePerHr: number;
+  imageSource: ImageSourcePropType;
 };
 
 type RecentRow = {
@@ -148,14 +159,27 @@ function mapTurfToArena(
         haversineKm(user.latitude, user.longitude, turfPt.lat, turfPt.lng) * 10,
       ) / 10;
   }
+  const arenaName = t.name ?? "Arena";
+  const key = arenaName
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const namedImage: ImageSourcePropType | undefined =
+    EXPLICIT_VENUE_IMAGE_BY_NAME[key];
+  const fallbackPool: ImageSourcePropType[] = [BG.arena, BG.sessionCard, BG.homeHero];
+  const hash = Array.from(key).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const imageSource = namedImage ?? fallbackPool[hash % fallbackPool.length];
+
   return {
     id: String(t.id ?? i),
-    name: t.name ?? "Arena",
+    name: arenaName,
     location: loc,
     status: "Indoor • Available Now",
     rating: 4.5,
     distanceKm,
     pricePerHr: price,
+    imageSource,
   };
 }
 
@@ -646,7 +670,7 @@ export default function FieldflixHomeScreen() {
                     accessibilityLabel={`Open QR scan for ${arena.name}`}
                   >
                     <View style={styles.arenaImgWrap}>
-                      <Image source={BG.arena} style={styles.arenaImg} />
+                      <Image source={arena.imageSource} style={styles.arenaImg} />
                       <LinearGradient
                         colors={[
                           "rgba(2,6,23,0)",
@@ -853,6 +877,7 @@ export default function FieldflixHomeScreen() {
                             { height: comingSoonTileHeight },
                           ]}
                           contentFit="cover"
+                          contentPosition="top"
                           transition={220}
                           cachePolicy="memory-disk"
                         />

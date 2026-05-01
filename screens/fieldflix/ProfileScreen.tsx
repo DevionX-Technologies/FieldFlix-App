@@ -1,4 +1,5 @@
 import { Paths } from "@/data/paths";
+import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import {
   getFieldflixApiErrorMessage,
   getMyProfile,
@@ -268,7 +269,7 @@ export default function FieldflixProfileScreen() {
       <View style={styles.flex}>
         <FieldflixScreenHeader
           title="Profile"
-          onBack={() => router.push(Paths.home)}
+          onBack={() => navigateBackOrHome(router)}
           backAccessibilityLabel="Back to home"
         />
 

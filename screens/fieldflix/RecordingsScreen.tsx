@@ -24,9 +24,10 @@ import {
   recordingThumbUrl,
 } from "@/utils/recordingDisplay";
 import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
+import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
@@ -64,6 +65,39 @@ function parseClockOnDay(base: Date, clock: string): number | null {
   return d.getTime();
 }
 
+function compactText(v: unknown): string {
+  return String(v ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function recordingLocationLabel(r: any): string {
+  const turf = r?.turf;
+  return compactText(
+    turf?.city ?? turf?.location ?? turf?.address_line ?? r?.location ?? "",
+  );
+}
+
+function recordingArenaLabel(r: any): string {
+  const turf = r?.turf;
+  return compactText(turf?.name ?? r?.recording_name ?? r?.name ?? "");
+}
+
+function recordingGroundLabel(r: any): string {
+  const turf = r?.turf;
+  const raw = compactText(
+    r?.GroundNumber ??
+      turf?.ground_number ??
+      r?.GroundDescription ??
+      turf?.ground_description ??
+      r?.cameraId ??
+      "",
+  );
+  if (!raw) return "";
+  if (/^court\b/i.test(raw) || /^ground\b/i.test(raw)) return raw;
+  return `Court ${raw}`;
+}
+
 export default function FieldflixRecordingsScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
@@ -79,15 +113,76 @@ export default function FieldflixRecordingsScreen() {
   >({});
 
   const [findLocation, setFindLocation] = useState("");
+  const [findArena, setFindArena] = useState("");
   const [findGround, setFindGround] = useState("");
   const [findDate, setFindDate] = useState("");
   const [findStart, setFindStart] = useState("");
   const [findEnd, setFindEnd] = useState("");
   const [findPhone, setFindPhone] = useState("");
   const [findMatches, setFindMatches] = useState<any[] | null>(null);
+  const [showLocationOptions, setShowLocationOptions] = useState(false);
+  const [showArenaOptions, setShowArenaOptions] = useState(false);
+  const [showGroundOptions, setShowGroundOptions] = useState(false);
+
+  const optionMaps = useMemo(() => {
+    const locationToArenas = new Map<string, Set<string>>();
+    const arenaToGrounds = new Map<string, Set<string>>();
+    for (const r of my) {
+      const location = recordingLocationLabel(r);
+      const arena = recordingArenaLabel(r);
+      const ground = recordingGroundLabel(r);
+      if (location && arena) {
+        const key = location.toLowerCase();
+        const curr = locationToArenas.get(key) ?? new Set<string>();
+        curr.add(arena);
+        locationToArenas.set(key, curr);
+      }
+      if (arena && ground) {
+        const key = arena.toLowerCase();
+        const curr = arenaToGrounds.get(key) ?? new Set<string>();
+        curr.add(ground);
+        arenaToGrounds.set(key, curr);
+      }
+    }
+    return { locationToArenas, arenaToGrounds };
+  }, [my]);
+
+  const locationOptions = useMemo(() => {
+    const q = findLocation.trim().toLowerCase();
+    const all = Array.from(optionMaps.locationToArenas.keys())
+      .map((k) => {
+        const original = my.find(
+          (r) => recordingLocationLabel(r).toLowerCase() === k,
+        );
+        return recordingLocationLabel(original);
+      })
+      .filter(Boolean);
+    return all
+      .filter((x) => !q || x.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [findLocation, my, optionMaps.locationToArenas]);
+
+  const arenaOptions = useMemo(() => {
+    const q = findArena.trim().toLowerCase();
+    const locationKey = findLocation.trim().toLowerCase();
+    const fromLocation = locationKey
+      ? Array.from(optionMaps.locationToArenas.get(locationKey) ?? [])
+      : Array.from(new Set(my.map((r) => recordingArenaLabel(r)).filter(Boolean)));
+    return fromLocation.filter((x) => !q || x.toLowerCase().includes(q)).slice(0, 8);
+  }, [findArena, findLocation, my, optionMaps.locationToArenas]);
+
+  const groundOptions = useMemo(() => {
+    const q = findGround.trim().toLowerCase();
+    const arenaKey = findArena.trim().toLowerCase();
+    const fromArena = arenaKey
+      ? Array.from(optionMaps.arenaToGrounds.get(arenaKey) ?? [])
+      : [];
+    return fromArena.filter((x) => !q || x.toLowerCase().includes(q)).slice(0, 8);
+  }, [findArena, findGround, optionMaps.arenaToGrounds]);
 
   const isLocationComplete = findLocation.trim().length > 0;
   const isScheduleComplete =
+    findArena.trim().length > 0 &&
     findGround.trim().length > 0 &&
     findDate.trim().length > 0 &&
     findStart.trim().length > 0 &&
@@ -117,6 +212,7 @@ export default function FieldflixRecordingsScreen() {
 
   const runFindInMyRecordings = useCallback(() => {
     const locQ = findLocation.trim().toLowerCase();
+    const arenaQ = findArena.trim().toLowerCase();
     const g = findGround.trim().toLowerCase();
     const out = my.filter((r: any) => {
       const turf = r.turf;
@@ -132,7 +228,14 @@ export default function FieldflixRecordingsScreen() {
         const anyPart = parts.some((p) => p.length > 0 && hay.includes(p));
         if (!anyPart && !hay.includes(locQ)) return false;
       }
-      if (g && !hay.includes(g)) return false;
+      if (arenaQ) {
+        const arena = recordingArenaLabel(r).toLowerCase();
+        if (!arena.includes(arenaQ)) return false;
+      }
+      if (g) {
+        const ground = recordingGroundLabel(r).toLowerCase();
+        if (!ground.includes(g) && !hay.includes(g)) return false;
+      }
       const st = r.startTime ? new Date(String(r.startTime)) : null;
       if (st && findDate.trim()) {
         const fd = Date.parse(findDate);
@@ -156,7 +259,10 @@ export default function FieldflixRecordingsScreen() {
       return true;
     });
     setFindMatches(out);
-  }, [my, findLocation, findGround, findDate, findStart, findEnd]);
+    setShowLocationOptions(false);
+    setShowArenaOptions(false);
+    setShowGroundOptions(false);
+  }, [my, findLocation, findArena, findGround, findDate, findStart, findEnd]);
 
   const load = useCallback(async () => {
     try {
@@ -275,8 +381,8 @@ export default function FieldflixRecordingsScreen() {
           keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
         >
         <FieldflixScreenHeader
-          title="Recordings"
-          onBack={() => router.replace(Paths.home)}
+          title="Your Recordings"
+          onBack={() => navigateBackOrHome(router)}
           backAccessibilityLabel="Back to home"
         />
 
@@ -693,10 +799,34 @@ export default function FieldflixRecordingsScreen() {
                 </View>
                 <TextInput
                   value={findLocation}
-                  onChangeText={setFindLocation}
+                  onFocus={() => setShowLocationOptions(true)}
+                  onChangeText={(v) => {
+                    setFindLocation(v);
+                    setShowLocationOptions(true);
+                    setFindArena("");
+                    setFindGround("");
+                  }}
                   style={styles.findInput}
                   placeholderTextColor="rgba(255,255,255,0.35)"
                 />
+                {showLocationOptions && locationOptions.length > 0 ? (
+                  <View style={styles.findDropdown}>
+                    {locationOptions.map((opt) => (
+                      <Pressable
+                        key={`loc-${opt}`}
+                        style={styles.findDropdownItem}
+                        onPress={() => {
+                          setFindLocation(opt);
+                          setFindArena("");
+                          setFindGround("");
+                          setShowLocationOptions(false);
+                        }}
+                      >
+                        <Text style={styles.findDropdownItemText}>{opt}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.findPanel}>
@@ -721,14 +851,37 @@ export default function FieldflixRecordingsScreen() {
                           />
                         </Svg>
                       </View>
-                      <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
+                      <Text style={styles.findLabel}>ARENA</Text>
                     </View>
                     <TextInput
-                      value={findGround}
-                      onChangeText={setFindGround}
+                      value={findArena}
+                      onFocus={() => setShowArenaOptions(true)}
+                      onChangeText={(v) => {
+                        setFindArena(v);
+                        setShowArenaOptions(true);
+                        setFindGround("");
+                      }}
                       style={styles.findInput}
+                      placeholder="Type arena"
                       placeholderTextColor="rgba(255,255,255,0.35)"
                     />
+                    {showArenaOptions && arenaOptions.length > 0 ? (
+                      <View style={styles.findDropdown}>
+                        {arenaOptions.map((opt) => (
+                          <Pressable
+                            key={`arena-${opt}`}
+                            style={styles.findDropdownItem}
+                            onPress={() => {
+                              setFindArena(opt);
+                              setFindGround("");
+                              setShowArenaOptions(false);
+                            }}
+                          >
+                            <Text style={styles.findDropdownItemText}>{opt}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                   <View style={styles.findGridCol}>
                     <View style={styles.findLabelRow}>
@@ -743,6 +896,45 @@ export default function FieldflixRecordingsScreen() {
                     />
                   </View>
                 </View>
+              </View>
+
+              <View style={styles.findPanel}>
+                <View style={styles.findLabelRow}>
+                  <View style={styles.findSmallIcon}>
+                    <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                      <Circle cx={12} cy={12} r={9} stroke={MUTED} strokeWidth={2} />
+                    </Svg>
+                  </View>
+                  <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
+                </View>
+                <TextInput
+                  value={findGround}
+                  onFocus={() => setShowGroundOptions(true)}
+                  onChangeText={(v) => {
+                    setFindGround(v);
+                    setShowGroundOptions(true);
+                  }}
+                  style={styles.findInput}
+                  placeholder={findArena.trim() ? "Type ground/court" : "Select arena first"}
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  editable={findArena.trim().length > 0}
+                />
+                {showGroundOptions && groundOptions.length > 0 ? (
+                  <View style={styles.findDropdown}>
+                    {groundOptions.map((opt) => (
+                      <Pressable
+                        key={`ground-${opt}`}
+                        style={styles.findDropdownItem}
+                        onPress={() => {
+                          setFindGround(opt);
+                          setShowGroundOptions(false);
+                        }}
+                      >
+                        <Text style={styles.findDropdownItemText}>{opt}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
               </View>
 
               <View style={styles.findPanel}>
@@ -1579,6 +1771,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "#fff",
+  },
+  findDropdown: {
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.28)",
+    backgroundColor: "rgba(2,6,23,0.98)",
+    overflow: "hidden",
+  },
+  findDropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(148,163,184,0.25)",
+  },
+  findDropdownItemText: {
+    fontFamily: FF.medium,
     fontSize: 13,
     color: "#fff",
   },

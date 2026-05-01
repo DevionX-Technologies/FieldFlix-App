@@ -149,7 +149,7 @@ export const VideoPlayerControls: React.FC<VideoPlayerControlsProps> = ({
             {!stallHint ? <ActivityIndicator size="large" color="#fff" /> : null}
             <Text style={stallHint ? styles.stallHintText : styles.bufferingText}>
               {stallHint ??
-                "Loading stream — HLS often needs 10–30s the first time (manifest + first segment)."}
+                "Loading your video. This can take a few seconds on first play."}
             </Text>
           </View>
         ) : null}

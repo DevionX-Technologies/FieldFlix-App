@@ -10,13 +10,24 @@ import {
   getRecordingById,
   getRecordingHighlights,
   getRecordingPlayback,
+  getSavedRecordingHighlights,
   type PlanId,
   type RecordingHighlightDto,
   type RecordingPlayback,
+  type SavedRecordingHighlightSummary,
+  toggleRecordingHighlightLike,
+  toggleRecordingHighlightSave,
   verifyRazorpayPayment,
 } from '@/lib/fieldflix-api';
 import { buildHighlightsAppLink } from '@/utils/highlightsAppLink';
+import { navigateBackOrHome } from '@/utils/navigateBackOrHome';
+import {
+  SPORT_PLAN_BASE_INR,
+  sportPricingGstAmount,
+  sportPricingTotalAfterGst,
+} from '@/utils/sportPlanPricing';
 import { refreshEntitlement, useEntitlement } from '@/lib/fieldflix-entitlement';
+import { appendLocalPaymentHistory } from '@/lib/paymentHistoryLocal';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
@@ -31,6 +42,9 @@ import {
   sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -51,13 +65,6 @@ import { FieldflixScreenHeader } from './FieldflixScreenHeader';
 const ACCENT = '#22C55E';
 const BG_COLOR = '#020617';
 const MUTED = 'rgba(255,255,255,0.62)';
-const GST_RATE = 0.18;
-const SPORT_PRICE_INR: Record<'pickleball' | 'padel' | 'cricket', number> = {
-  pickleball: 200,
-  padel: 250,
-  cricket: 350,
-};
-
 const ALERT_DEBUG_MAX = 3600;
 
 function formatPlaybackBlockedMessage(
@@ -96,45 +103,28 @@ type Props = {
   forcePreview?: boolean;
 };
 
-const LIKED_HIGHLIGHTS_KEY = 'fieldflicks-liked-highlights-v1';
 const UNLOCKED_RECORDINGS_KEY = 'fieldflicks-unlocked-recordings-v1';
-
-type LikedHighlightCache = {
-  recordingId: string;
-  highlightId: string;
-  title: string;
-  thumbnail: string | null;
-  savedAt: number;
-};
 
 type UiHighlight = RecordingHighlightDto & {
   likes_count?: number;
+  viewerLiked?: boolean;
+  viewerSaved?: boolean;
   comments_count?: number;
   views_count?: number | null;
 };
 
-async function readLikedHighlights(): Promise<LikedHighlightCache[]> {
-  try {
-    const raw = await AsyncStorage.getItem(LIKED_HIGHLIGHTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as LikedHighlightCache[];
-    return Array.isArray(parsed) ? parsed.slice(0, 12) : [];
-  } catch {
-    return [];
-  }
+function isEngagementHighlightId(id: string): boolean {
+  return Boolean(id) && !id.startsWith('flick-') && id !== 'main-video';
 }
 
-async function pushLikedHighlight(entry: LikedHighlightCache): Promise<void> {
-  try {
-    const list = await readLikedHighlights();
-    const dedup = list.filter(
-      (l) => l.highlightId !== entry.highlightId,
-    );
-    const next = [entry, ...dedup].slice(0, 12);
-    await AsyncStorage.setItem(LIKED_HIGHLIGHTS_KEY, JSON.stringify(next));
-  } catch {
-    // best-effort cache, ignore failures
-  }
+function toUiHighlight(h: RecordingHighlightDto): UiHighlight {
+  const v = {
+    ...h,
+    likes_count: Number(h.likesCount ?? 0),
+    viewerLiked: h.viewerLiked ?? false,
+    viewerSaved: h.viewerSaved ?? false,
+  } as UiHighlight;
+  return v;
 }
 
 async function readUnlockedRecordings(): Promise<string[]> {
@@ -194,13 +184,8 @@ function highlightBadgeTimestamp(h: UiHighlight): string {
 }
 
 /**
- * The Highlights screen surfaces a single recording with its hero card,
- * a list of READY highlights, and a "My Liked Highlights" footer powered by
- * a small `AsyncStorage` cache.
- *
- * Entitlement is read from `useEntitlement()`. Free users only see the
- * preview pill and lock badges on highlight rows; tapping anywhere that
- * starts full playback routes them to the premium screen.
+ * Highlights: hero recording, READY highlight list (like/save backed by API),
+ * and a horizontal carousel of clips you saved (`GET /recording/highlights/saved`).
  */
 export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Props = {}) {
   const router = useRouter();
@@ -214,7 +199,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const [playback, setPlayback] = useState<RecordingPlayback | null>(null);
   const [highlights, setHighlights] = useState<UiHighlight[]>([]);
   const [loading, setLoading] = useState(true);
-  const [liked, setLiked] = useState<LikedHighlightCache[]>([]);
+  const [savedHighlights, setSavedHighlights] = useState<
+    SavedRecordingHighlightSummary[]
+  >([]);
+  const [engageBusy, setEngageBusy] = useState<string | null>(null);
   const [unlockedRecordings, setUnlockedRecordings] = useState<string[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
   const [apiDebug, setApiDebug] = useState<string | null>(null);
@@ -240,7 +228,8 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         );
       }
       try {
-        hs = await getRecordingHighlights(recordingId);
+        const apiRows = await getRecordingHighlights(recordingId);
+        hs = apiRows.map(toUiHighlight);
       } catch (e) {
         debugLines.push(
           `getRecordingHighlights:\n${getFieldflixApiErrorDebug(e)}`,
@@ -267,7 +256,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             const k = keyOf(h);
             if (seen.has(k)) continue;
             seen.add(k);
-            hs.push(h);
+            hs.push(toUiHighlight(h));
           }
         }
       }
@@ -296,6 +285,8 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
               ? `https://image.mux.com/${s.muxPlaybackId}/thumbnail.jpg?time=2`
               : null,
             status: 'ready',
+            viewerLiked: false,
+            viewerSaved: false,
             likes_count: Number(s.likesCount ?? 0),
             comments_count: Array.isArray(s.comments) ? s.comments.length : 0,
             views_count: Number.isFinite(Number(s.viewsCount))
@@ -341,9 +332,23 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     }
   }, [recordingId]);
 
+  const refreshSavedHighlights = useCallback(async () => {
+    try {
+      const list = await getSavedRecordingHighlights();
+      setSavedHighlights(list);
+    } catch {
+      setSavedHighlights([]);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSavedHighlights();
+    }, [refreshSavedHighlights]),
+  );
+
   useEffect(() => {
     void load();
-    void readLikedHighlights().then(setLiked);
     void readUnlockedRecordings().then(setUnlockedRecordings);
     void refresh();
   }, [load, refresh]);
@@ -410,11 +415,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     if (raw.includes('padel') || raw.includes('paddle')) return 'padel';
     return 'pickleball';
   }, [sportLabel]);
-  const basePrice = SPORT_PRICE_INR[sportPlan];
-  const discountedBase = sportPlan === 'cricket' ? 0 : basePrice;
-  const gstAmount = Math.round(discountedBase * GST_RATE);
-  const totalAmount = discountedBase + gstAmount;
-  const isFreeCricketOffer = sportPlan === 'cricket' && totalAmount === 0;
+  const basePrice = SPORT_PLAN_BASE_INR[sportPlan];
+  const totalAmount = sportPricingTotalAfterGst(sportPlan);
+  const gstAmount = sportPricingGstAmount(sportPlan);
+  const isFreeSportUnlock = totalAmount === 0;
   const hasRecordingAccess = isPaid || unlockedRecordings.includes(recordingId);
   const openUnlockSheet = useCallback(() => {
     setShowUnlockSheet(true);
@@ -425,24 +429,48 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   }, [checkoutBusy]);
   const runCheckout = useCallback(async () => {
     if (checkoutBusy) return;
-    if (isFreeCricketOffer) {
-      setCheckoutBusy(true);
-      const next = await unlockRecording(recordingId);
-      setUnlockedRecordings(next);
-      setShowUnlockSheet(false);
-      setCheckoutBusy(false);
-      return;
-    }
-    if (!RAZORPAY_KEY_ID) {
-      Alert.alert(
-        'Payments',
-        'Add EXPO_PUBLIC_RAZORPAY_KEY_ID in .env to enable checkout.',
-      );
+    const token = await SecureStore.getItemAsync('token');
+    if (!token?.trim()) {
+      Alert.alert('Sign in required', 'Log in to unlock this recording.');
       return;
     }
     setCheckoutBusy(true);
     try {
       const order = await createPlanOrder(sportPlan as PlanId);
+      const orderAmount = Number(order.amount);
+
+      if (orderAmount === 0 || order.status === 'completed') {
+        await refreshEntitlement().catch(() => null);
+        const next = await unlockRecording(recordingId);
+        setUnlockedRecordings(next);
+        await appendLocalPaymentHistory({
+          id: `free-${recordingId}-${Date.now()}`,
+          kind: 'recording_unlock',
+          recordingId: String(recordingId),
+          sport: sportPlan,
+          amountInr: 0,
+          currency: 'INR',
+          status: 'completed',
+          createdAtIso: new Date().toISOString(),
+          note: 'Cricket plan (free) — server activated',
+        });
+        setShowUnlockSheet(false);
+        Alert.alert(
+          'Unlocked',
+          'Cricket access is active. This recording is now unlocked.',
+        );
+        void refresh();
+        return;
+      }
+
+      if (!RAZORPAY_KEY_ID) {
+        Alert.alert(
+          'Payments',
+          'Add EXPO_PUBLIC_RAZORPAY_KEY_ID in .env to enable checkout.',
+        );
+        return;
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const RazorpayCheckout = require('react-native-razorpay').default as {
         open: (opts: Record<string, unknown>) => Promise<{
@@ -450,13 +478,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           razorpay_order_id: string;
         }>;
       };
+      const amountPaise = String(Math.round(orderAmount * 100));
       const data = await RazorpayCheckout.open({
         key: RAZORPAY_KEY_ID,
         name: 'FieldFlicks',
         description: `${sportLabel} video unlock`,
         order_id: order.razorpay_order_id,
         currency: order.currency ?? 'INR',
-        amount: String(totalAmount * 100),
+        amount: amountPaise,
         theme: { color: '#22C55E' },
       });
       await verifyRazorpayPayment({
@@ -467,6 +496,17 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       await refreshEntitlement().catch(() => null);
       const next = await unlockRecording(recordingId);
       setUnlockedRecordings(next);
+      await appendLocalPaymentHistory({
+        id: `paid-${recordingId}-${data.razorpay_order_id}-${Date.now()}`,
+        kind: 'recording_unlock',
+        recordingId: String(recordingId),
+        sport: sportPlan,
+        amountInr: orderAmount,
+        currency: 'INR',
+        status: 'completed',
+        createdAtIso: new Date().toISOString(),
+        note: `${sportLabel} recording unlock`,
+      });
       setShowUnlockSheet(false);
       Alert.alert('Payment successful', 'Your access is now unlocked.');
       void refresh();
@@ -478,14 +518,62 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     } finally {
       setCheckoutBusy(false);
     }
-  }, [
-    checkoutBusy,
-    isFreeCricketOffer,
-    sportPlan,
-    sportLabel,
-    totalAmount,
-    refresh,
-  ]);
+  }, [checkoutBusy, sportPlan, sportLabel, recordingId, refresh]);
+
+  const onToggleHighlightLike = useCallback(async (highlightId: string) => {
+    if (!isEngagementHighlightId(highlightId)) return;
+    const token = await SecureStore.getItemAsync('token');
+    if (!token?.trim()) {
+      Alert.alert('Sign in', 'Log in to like highlights.');
+      return;
+    }
+    setEngageBusy(`like-${highlightId}`);
+    try {
+      const r = await toggleRecordingHighlightLike(highlightId);
+      setHighlights((prev) =>
+        prev.map((h) =>
+          h.id === highlightId
+            ? {
+                ...h,
+                likes_count: r.likesCount,
+                likesCount: r.likesCount,
+                viewerLiked: r.liked,
+              }
+            : h,
+        ),
+      );
+    } catch (e) {
+      Alert.alert('Like', getFieldflixApiErrorMessage(e, 'Could not update like'));
+    } finally {
+      setEngageBusy(null);
+    }
+  }, []);
+
+  const onToggleHighlightSave = useCallback(
+    async (highlightId: string) => {
+      if (!isEngagementHighlightId(highlightId)) return;
+      const token = await SecureStore.getItemAsync('token');
+      if (!token?.trim()) {
+        Alert.alert('Sign in', 'Log in to save highlights.');
+        return;
+      }
+      setEngageBusy(`save-${highlightId}`);
+      try {
+        const r = await toggleRecordingHighlightSave(highlightId);
+        setHighlights((prev) =>
+          prev.map((h) =>
+            h.id === highlightId ? { ...h, viewerSaved: r.saved } : h,
+          ),
+        );
+        void refreshSavedHighlights();
+      } catch (e) {
+        Alert.alert('Save', getFieldflixApiErrorMessage(e, 'Could not update save'));
+      } finally {
+        setEngageBusy(null);
+      }
+    },
+    [refreshSavedHighlights],
+  );
 
   const onWatchHero = useCallback(() => {
     if (!recordingId) return;
@@ -521,7 +609,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     router,
     apiDebug,
     openUnlockSheet,
-    isFreeCricketOffer,
   ]);
 
   const onPreviewHero = useCallback(() => {
@@ -572,25 +659,25 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         return;
       }
       const titleBase = recording?.turf?.name ?? 'Recording';
-      void pushLikedHighlight({
-        recordingId: recordingId,
-        highlightId: h.id,
-        title: `${titleBase} highlight`,
-        thumbnail: h.thumbnail_url,
-        savedAt: Date.now(),
-      });
-      setLiked(await readLikedHighlights());
       router.push({
         pathname: Paths.VideoRecording,
         params: {
           source: h.mux_public_playback_url,
           filename: `${titleBase} — Highlight`,
+          recordingHighlights: JSON.stringify(highlights),
           recordingId,
           previewMode: '0',
         },
       });
     },
-    [hasRecordingAccess, recording, recordingId, router, openUnlockSheet],
+    [
+      hasRecordingAccess,
+      recording,
+      recordingId,
+      highlights,
+      router,
+      openUnlockSheet,
+    ],
   );
 
   if (loading) {
@@ -608,8 +695,8 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       <View style={styles.flex}>
         <FieldflixScreenHeader
           title="Highlights"
-          onBack={() => router.push(Paths.home)}
-          backAccessibilityLabel="Back to home"
+          onBack={() => navigateBackOrHome(router)}
+          backAccessibilityLabel="Go back"
         />
 
         <ScrollView
@@ -726,23 +813,25 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 highlight={h}
                 index={idx}
                 hasAccess={hasRecordingAccess}
+                engageBusy={engageBusy}
                 onPress={() => void onHighlightPress(h)}
+                onToggleLike={() => void onToggleHighlightLike(h.id)}
+                onToggleSave={() => void onToggleHighlightSave(h.id)}
               />
             ))}
           </View>
 
-          {/* MY LIKED HIGHLIGHTS */}
-          {liked.length > 0 ? (
+          {savedHighlights.length > 0 ? (
             <View style={styles.likedSection}>
-              <Text style={styles.sectionTitle}>My Liked Highlights</Text>
+              <Text style={styles.sectionTitle}>Saved highlights</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.likedRowContent}
               >
-                {liked.map((l) => (
+                {savedHighlights.map((l) => (
                   <Pressable
-                    key={l.highlightId}
+                    key={`${l.recordingId}-${l.highlightId}`}
                     style={styles.likedCard}
                     onPress={() => {
                       router.push({
@@ -752,12 +841,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                     }}
                   >
                     <Image
-                      source={l.thumbnail ? { uri: l.thumbnail } : BG.arena}
+                      source={
+                        l.thumbnailUrl ? { uri: l.thumbnailUrl } : BG.arena
+                      }
                       style={styles.likedThumb}
                       resizeMode="cover"
                     />
                     <Text style={styles.likedTitle} numberOfLines={2}>
-                      {l.title}
+                      {l.relativeTimestamp ?? 'Saved clip'}
                     </Text>
                   </Pressable>
                 ))}
@@ -776,16 +867,20 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
               <Text style={styles.sheetTitle}>Recording + Highlights</Text>
               <View style={styles.sheetPlanRow}>
                 <Text style={styles.sheetPlanName}>{sportLabel} video unlock</Text>
-                <Text style={styles.sheetPrice}>₹{discountedBase}</Text>
+                <Text style={styles.sheetPrice}>
+                  {isFreeSportUnlock ? 'Free' : `₹${totalAmount}`}
+                </Text>
               </View>
               <Text style={styles.sheetSub}>
                 Full video + highlights
-                {isFreeCricketOffer ? ' (limited-time offer)' : ''}
+                {isFreeSportUnlock
+                  ? ' — same sport plans as Premium (Cricket included)'
+                  : ''}
               </Text>
               <View style={styles.sheetBill}>
                 <View style={styles.sheetBillRow}>
                   <Text style={styles.sheetBillText}>Base amount</Text>
-                  <Text style={styles.sheetBillText}>₹{discountedBase}</Text>
+                  <Text style={styles.sheetBillText}>₹{basePrice}</Text>
                 </View>
                 <View style={styles.sheetBillRow}>
                   <Text style={styles.sheetBillText}>GST (18%)</Text>
@@ -807,13 +902,15 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 <Text style={styles.sheetCtaText}>
                   {checkoutBusy
                     ? 'Processing...'
-                    : isFreeCricketOffer
-                      ? 'Continue Free'
+                    : isFreeSportUnlock
+                      ? 'Activate Free'
                       : 'Unlock & Pay'}
                 </Text>
               </Pressable>
               <Text style={styles.sheetFoot}>
-                Secure payment • Video-based unlock • Instant access
+                {isFreeSportUnlock
+                  ? 'No charge — activates Cricket on your account'
+                  : 'Secure payment • Matches Premium plan totals (incl. GST)'}
               </Text>
             </View>
           </View>
@@ -828,53 +925,101 @@ function HighlightRow({
   highlight,
   index,
   hasAccess,
+  engageBusy,
   onPress,
+  onToggleLike,
+  onToggleSave,
 }: {
   highlight: UiHighlight;
   index: number;
   hasAccess: boolean;
+  engageBusy: string | null;
   onPress: () => void;
+  onToggleLike: () => void;
+  onToggleSave: () => void;
 }) {
   const thumb = highlight.thumbnail_url
     ? { uri: highlight.thumbnail_url }
     : BG.arena;
+  const showEngage = hasAccess && isEngagementHighlightId(highlight.id);
+  const busyLike = engageBusy === `like-${highlight.id}`;
+  const busySave = engageBusy === `save-${highlight.id}`;
+  const liked = Boolean(highlight.viewerLiked);
+  const saved = Boolean(highlight.viewerSaved);
+
   return (
-    <Pressable style={styles.row} onPress={onPress}>
-      <View style={styles.rowThumb}>
-        <Image source={thumb} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-        {!hasAccess ? (
-          <View style={styles.rowLockBadge}>
-            <LockIcon size={12} />
+    <View style={styles.row}>
+      <Pressable style={styles.rowMain} onPress={onPress}>
+        <View style={styles.rowThumb}>
+          <Image source={thumb} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          {!hasAccess ? (
+            <View style={styles.rowLockBadge}>
+              <LockIcon size={12} />
+            </View>
+          ) : null}
+          <View style={styles.rowDur}>
+            <Text style={styles.rowDurText}>
+              {highlightBadgeTimestamp(highlight)}
+            </Text>
           </View>
-        ) : null}
-        <View style={styles.rowDur}>
-          <Text style={styles.rowDurText}>
-            {highlightBadgeTimestamp(highlight)}
-          </Text>
         </View>
-      </View>
-      <View style={styles.rowBody}>
-        <Text style={styles.rowTitle} numberOfLines={2}>
-          Highlight {index + 1}
-        </Text>
-        <Text style={styles.rowMeta} numberOfLines={1}>
-          {['ready', 'clip_created'].includes(
-            String(highlight.status ?? '').toLowerCase(),
-          )
-            ? 'Ready to watch'
-            : 'Processing…'}
-        </Text>
-        <View style={styles.rowStats}>
-          <Text style={styles.rowStat}>
-            {Number(highlight.likes_count ?? 0)} likes
+        <View style={styles.rowBody}>
+          <Text style={styles.rowTitle} numberOfLines={2}>
+            Highlight {index + 1}
+            {saved ? ' · Saved' : ''}
           </Text>
-          <View style={styles.rowDot} />
-          <Text style={styles.rowStat}>
-            {Number(highlight.comments_count ?? 0)} comments
+          <Text style={styles.rowMeta} numberOfLines={1}>
+            {['ready', 'clip_created'].includes(
+              String(highlight.status ?? '').toLowerCase(),
+            )
+              ? 'Ready to watch'
+              : 'Processing…'}
           </Text>
+          <View style={styles.rowStats}>
+            <Text style={styles.rowStat}>
+              {Number(highlight.likes_count ?? 0)} likes
+            </Text>
+            <View style={styles.rowDot} />
+            <Text style={styles.rowStat}>
+              {Number(highlight.comments_count ?? 0)} comments
+            </Text>
+          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+
+      {showEngage ? (
+        <View style={styles.rowEngageRail}>
+          <Pressable
+            hitSlop={10}
+            style={styles.rowEngageBtn}
+            onPress={onToggleLike}
+            disabled={busyLike || busySave}
+            accessibilityRole="button"
+            accessibilityLabel={liked ? 'Unlike highlight' : 'Like highlight'}
+          >
+            <Ionicons
+              name={liked ? 'heart' : 'heart-outline'}
+              size={22}
+              color={liked ? '#f43f5e' : '#e2e8f0'}
+            />
+          </Pressable>
+          <Pressable
+            hitSlop={10}
+            style={styles.rowEngageBtn}
+            onPress={onToggleSave}
+            disabled={busyLike || busySave}
+            accessibilityRole="button"
+            accessibilityLabel={saved ? 'Remove saved highlight' : 'Save highlight'}
+          >
+            <Ionicons
+              name={saved ? 'bookmark' : 'bookmark-outline'}
+              size={22}
+              color={saved ? ACCENT : '#e2e8f0'}
+            />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -1154,13 +1299,34 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
+    alignItems: 'stretch',
+    gap: 10,
     padding: 12,
     borderRadius: 16,
     backgroundColor: '#0c1218',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+  },
+  rowMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    minWidth: 0,
+  },
+  rowEngageRail: {
+    justifyContent: 'center',
+    gap: 6,
+    paddingLeft: 2,
+    paddingVertical: 4,
+  },
+  rowEngageBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   rowThumb: {
     width: 110,

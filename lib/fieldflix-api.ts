@@ -394,6 +394,22 @@ export type PlanOrderResponse = {
   expires_at?: string;
 };
 
+export type PaymentHistoryRow = {
+  id: string;
+  user_id: string;
+  recording_id: string | null;
+  razorpay_order_id: string;
+  razorpay_payment_id: string | null;
+  amount: number | string;
+  base_amount: number | string;
+  currency: string;
+  status: 'pending' | 'completed' | 'failed' | 'cancelled' | 'refunded' | string;
+  payment_type: 'recording_access' | 'highlight_access' | 'media_access' | string;
+  description: string | null;
+  paid_at: string | null;
+  created_at: string;
+};
+
 /** Creates a Razorpay order for the premium / plan screen (`POST /payments/plan/create-order`). */
 export async function createPlanOrder(plan: PlanId): Promise<PlanOrderResponse> {
   const { data } = await axiosInstance.post<PlanOrderResponse>('/payments/plan/create-order', {
@@ -410,6 +426,11 @@ export async function verifyRazorpayPayment(body: {
 }) {
   const { data } = await axiosInstance.post('/payments/verify', body);
   return data;
+}
+
+export async function getPaymentHistory(): Promise<PaymentHistoryRow[]> {
+  const { data } = await axiosInstance.get<PaymentHistoryRow[]>('/payments/history');
+  return Array.isArray(data) ? data : [];
 }
 
 export type ActivePlan = {
@@ -434,6 +455,10 @@ export type RecordingHighlightDto = {
   mux_public_playback_url: string | null;
   thumbnail_url: string | null;
   status: string;
+  /** Server: total like count (recording highlights). */
+  likesCount?: number;
+  viewerLiked?: boolean;
+  viewerSaved?: boolean;
 };
 
 /** Normalizes occasional wrapped/nested payloads into a highlight row array. */
@@ -487,6 +512,23 @@ export function embedToHighlightDto(raw: {
       ? `https://image.mux.com/${pid}/thumbnail.jpg?time=2`
       : null,
     status: raw.status ?? 'unknown',
+    likesCount: Number((raw as { likesCount?: unknown }).likesCount ?? 0),
+    viewerLiked: Boolean((raw as { viewerLiked?: unknown }).viewerLiked),
+    viewerSaved: Boolean((raw as { viewerSaved?: unknown }).viewerSaved),
+  };
+}
+
+function mergeHighlightEngagementFromPayload(
+  row: RecordingHighlightDto,
+): RecordingHighlightDto {
+  const o = row as unknown as Record<string, unknown>;
+  return {
+    ...row,
+    likesCount: Number(
+      o.likesCount ?? o.likes_count ?? row.likesCount ?? 0,
+    ),
+    viewerLiked: Boolean(o.viewerLiked ?? o.viewer_liked ?? row.viewerLiked),
+    viewerSaved: Boolean(o.viewerSaved ?? o.viewer_saved ?? row.viewerSaved),
   };
 }
 
@@ -497,7 +539,46 @@ export async function getRecordingHighlights(
   const { data } = await axiosInstance.get<unknown>(
     `/recording/${recordingId}/highlights`,
   );
-  return coerceHighlightList(data);
+  return coerceHighlightList(data).map(mergeHighlightEngagementFromPayload);
+}
+
+export async function toggleRecordingHighlightLike(highlightId: string): Promise<{
+  liked: boolean;
+  likesCount: number;
+}> {
+  const { data } = await axiosInstance.post<{
+    liked: boolean;
+    likesCount: number;
+  }>(`/recording/highlights/${highlightId}/like`, {});
+  return data;
+}
+
+export async function toggleRecordingHighlightSave(highlightId: string): Promise<{
+  saved: boolean;
+}> {
+  const { data } = await axiosInstance.post<{ saved: boolean }>(
+    `/recording/highlights/${highlightId}/save`,
+    {},
+  );
+  return data;
+}
+
+export type SavedRecordingHighlightSummary = {
+  recordingId: string;
+  highlightId: string;
+  relativeTimestamp: string | null;
+  muxPublicPlaybackUrl: string | null;
+  thumbnailUrl: string | null;
+  status: string;
+};
+
+export async function getSavedRecordingHighlights(): Promise<
+  SavedRecordingHighlightSummary[]
+> {
+  const { data } = await axiosInstance.get<SavedRecordingHighlightSummary[]>(
+    '/recording/highlights/saved',
+  );
+  return Array.isArray(data) ? data : [];
 }
 
 export type RecordingPlayback = {

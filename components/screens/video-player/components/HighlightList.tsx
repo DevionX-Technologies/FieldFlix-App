@@ -91,9 +91,11 @@ export const HighlightList: React.FC<HighlightListProps> = ({
   const allHighlights = [mainVideoHighlight, ...recordingHighlights];
   
   // Filter highlights by status
-  const playableHighlights = allHighlights.filter(highlight => 
-    highlight.id === "main-video" || highlight.status === "ready" || highlight.status === "processing"
-  );
+  const playableHighlights = allHighlights.filter((highlight) => {
+    if (highlight.id === "main-video") return true;
+    const st = String(highlight.status ?? "").toLowerCase();
+    return st === "ready" || st === "clip_created" || st === "processing";
+  });
   
   const failedHighlights = recordingHighlights.filter(highlight => 
     highlight.status === "failed"

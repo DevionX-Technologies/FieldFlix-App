@@ -88,8 +88,12 @@ export const useVideoPlayerState = (
    * Handles switching to a highlight video
    */
   const handleHighlightPress = (highlight: RecordingHighlight, index: number) => {
-    if (highlight.mux_public_playback_url && highlight.status === "ready") {
-      setCurrentVideoSource(highlight.mux_public_playback_url);
+    const st = String(highlight.status ?? "").toLowerCase();
+    const playable =
+      highlight.mux_public_playback_url &&
+      (st === "ready" || st === "clip_created");
+    if (playable) {
+      setCurrentVideoSource(highlight.mux_public_playback_url!);
       setActiveHighlightIndex(index);
     }
   };

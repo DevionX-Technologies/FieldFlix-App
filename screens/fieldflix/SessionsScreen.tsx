@@ -14,6 +14,7 @@ import {
   type SessionRowLocal,
 } from "@/screens/fieldflix/sessionsData";
 import { WEB } from "@/screens/fieldflix/webDesign";
+import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import {
   formatRecordingListWhen,
   recordingDurationLabel,
@@ -140,7 +141,7 @@ export default function FieldflixSessionsScreen() {
               <>
                 {/* Header */}
                 <View style={styles.header}>
-                  <Pressable onPress={() => router.push(Paths.home)}>
+                  <Pressable onPress={() => navigateBackOrHome(router)}>
                     <Image
                       source={SESSIONS_BACK_ARROW}
                       style={styles.backIcon}

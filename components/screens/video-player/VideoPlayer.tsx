@@ -1,9 +1,17 @@
 import { BASE_URL } from "@/data/constants";
+import {
+  getFieldflixApiErrorMessage,
+  toggleRecordingHighlightLike,
+  toggleRecordingHighlightSave,
+} from "@/lib/fieldflix-api";
 import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { extractMuxStreamId } from "@/utils/muxStreamId";
+import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
+import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import * as SecureStore from "expo-secure-store";
 import { router } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Modal,
@@ -79,6 +87,25 @@ export default function VideoPlayer({
     handleHighlightPress,
     handleMainVideoPress,
   } = useVideoPlayerState(source, previewCap);
+
+  const activeEngageHighlight = useMemo((): RecordingHighlight | null => {
+    if (
+      activeHighlightIndex == null ||
+      activeHighlightIndex < 0 ||
+      !recordingHighlights.length
+    )
+      return null;
+    const h = recordingHighlights[activeHighlightIndex];
+    const hid = h?.id;
+    if (
+      !hid ||
+      hid === "main-video" ||
+      String(hid).startsWith("flick-")
+    ) {
+      return null;
+    }
+    return h;
+  }, [activeHighlightIndex, recordingHighlights]);
 
   const logText = useMemo(() => {
     const paid = previewCap?.isPaid ?? true;
@@ -169,9 +196,10 @@ export default function VideoPlayer({
       ) : null}
       <FieldflixScreenHeader
         title="Highlights"
-        onBack={() => router.back()}
-        backAccessibilityLabel="Back to home"
+        onBack={() => navigateBackOrHome(router)}
+        backAccessibilityLabel="Go back"
       />
+      <HighlightPlaybackEngageBar highlight={activeEngageHighlight} />
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
@@ -250,6 +278,132 @@ export default function VideoPlayer({
 }
 
 const LOG_GREEN = "#22C55E";
+
+function HighlightPlaybackEngageBar({
+  highlight,
+}: {
+  highlight: RecordingHighlight | null;
+}) {
+  const hid = highlight?.id;
+  const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!highlight || !hid) return;
+    setLiked(Boolean(highlight.viewerLiked));
+    setSaved(Boolean(highlight.viewerSaved));
+    setLikesCount(
+      Number(highlight.likesCount ?? highlight.likes_count ?? 0),
+    );
+  }, [hid, highlight]);
+
+  if (!highlight || !hid) return null;
+
+  const runLike = async () => {
+    const token = await SecureStore.getItemAsync("token");
+    if (!token?.trim()) {
+      Alert.alert("Sign in", "Log in to like highlights.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await toggleRecordingHighlightLike(String(hid));
+      setLiked(r.liked);
+      setLikesCount(r.likesCount);
+    } catch (e) {
+      Alert.alert(
+        "Like",
+        getFieldflixApiErrorMessage(e, "Could not update like."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runSave = async () => {
+    const token = await SecureStore.getItemAsync("token");
+    if (!token?.trim()) {
+      Alert.alert("Sign in", "Log in to save highlights.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await toggleRecordingHighlightSave(String(hid));
+      setSaved(r.saved);
+    } catch (e) {
+      Alert.alert(
+        "Save",
+        getFieldflixApiErrorMessage(e, "Could not update save."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={engageStyles.strip}>
+      <Text style={engageStyles.meta}>{likesCount} likes</Text>
+      <View style={engageStyles.actions}>
+        <Pressable
+          onPress={() => void runLike()}
+          disabled={busy}
+          style={engageStyles.iconBtn}
+          accessibilityRole="button"
+          accessibilityLabel={liked ? "Unlike" : "Like"}
+        >
+          <Ionicons
+            name={liked ? "heart" : "heart-outline"}
+            size={24}
+            color={liked ? "#f43f5e" : "#e2e8f0"}
+          />
+        </Pressable>
+        <Pressable
+          onPress={() => void runSave()}
+          disabled={busy}
+          style={engageStyles.iconBtn}
+          accessibilityRole="button"
+          accessibilityLabel={saved ? "Unsave" : "Save"}
+        >
+          <Ionicons
+            name={saved ? "bookmark" : "bookmark-outline"}
+            size={24}
+            color={saved ? LOG_GREEN : "#e2e8f0"}
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const engageStyles = StyleSheet.create({
+  strip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "#0f172a",
+  },
+  meta: {
+    fontSize: 13,
+    color: "rgba(226,232,240,0.85)",
+    fontWeight: "600",
+  },
+  actions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  iconBtn: {
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+});
 
 const styles = StyleSheet.create({
   root: {

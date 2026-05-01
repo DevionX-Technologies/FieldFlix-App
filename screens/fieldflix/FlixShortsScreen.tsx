@@ -13,6 +13,7 @@ import { FIELD_FLIX_HEADER_HEIGHT, FieldflixScreenHeader } from "@/screens/field
 import { FF } from "@/screens/fieldflix/fonts";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { WebShell } from "@/screens/fieldflix/WebShell";
+import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -200,7 +201,7 @@ export default function FieldflixFlixShortsScreen() {
       <View style={styles.flex}>
         <FieldflixScreenHeader
           title="FlickShorts"
-          onBack={() => router.replace(Paths.home)}
+          onBack={() => navigateBackOrHome(router)}
           backAccessibilityLabel="Back to home"
         />
         <View style={styles.sportsStrip}>
