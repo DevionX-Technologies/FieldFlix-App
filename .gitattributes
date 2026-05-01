@@ -1,2 +1,6 @@
 *.apk filter=lfs diff=lfs merge=lfs -text
 *.aab filter=lfs diff=lfs merge=lfs -text
+
+# Xcode / EAS archive runs POSIX sh; CRLF yields ".xcode.env: line N: : command not found"
+ios/.xcode.env text eol=lf
+ios/.xcode.env.local text eol=lf
