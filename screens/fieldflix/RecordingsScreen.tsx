@@ -143,6 +143,70 @@ function recordingArenaLabel(r: any): string {
   return compactText(turf?.name ?? r?.recording_name ?? r?.name ?? "");
 }
 
+/** Pagination size + cap mirror HomeScreen's `fetchAllSportTurfs` so Find Recordings sees the same arena set. */
+const FIND_TURF_PAGE_LIMIT = 100;
+const FIND_MAX_TURF_PAGES = 40;
+const FIND_TURF_SPORT_ENUMS = ["Pickleball", "Paddle", "Cricket"] as const;
+
+async function fetchAllTurfsForFind(apiSport: string): Promise<any[]> {
+  const merged: any[] = [];
+  for (let page = 1; page <= FIND_MAX_TURF_PAGES; page++) {
+    let turfRes: unknown;
+    try {
+      turfRes = await getTurfsPage(page, FIND_TURF_PAGE_LIMIT, {
+        sports_supported: apiSport,
+      });
+    } catch {
+      break;
+    }
+    let itemsRaw: unknown;
+    let totalPages = 1;
+    if (Array.isArray(turfRes)) {
+      itemsRaw = turfRes;
+    } else if (turfRes && typeof turfRes === "object") {
+      const bag = turfRes as {
+        items?: unknown;
+        data?: unknown;
+        meta?: { totalPages?: number };
+      };
+      itemsRaw = bag.items ?? bag.data ?? [];
+      if (typeof bag.meta?.totalPages === "number" && bag.meta.totalPages >= 1) {
+        totalPages = bag.meta.totalPages;
+      }
+    } else {
+      itemsRaw = [];
+    }
+    const chunk = (Array.isArray(itemsRaw) ? itemsRaw : []) as any[];
+    merged.push(...chunk);
+    if (chunk.length === 0) break;
+    if (page >= totalPages) break;
+    if (chunk.length < FIND_TURF_PAGE_LIMIT) break;
+  }
+  return merged;
+}
+
+/** Aggregate arenas across every FieldFlix sport, then collapse duplicate venue rows by name. */
+async function fetchAllTurfsForFindAcrossSports(): Promise<any[]> {
+  const perSport = await Promise.all(
+    FIND_TURF_SPORT_ENUMS.map((s) =>
+      fetchAllTurfsForFind(s).catch(() => [] as any[]),
+    ),
+  );
+  const flat = perSport.flat();
+  const groups = new Map<string, any>();
+  for (const t of flat) {
+    const id = String(t?.id ?? "");
+    const nameKey = String(t?.name ?? "")
+      .toLowerCase()
+      .replace(/\|/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const key = nameKey || (id ? `id:${id}` : `idx:${groups.size}`);
+    if (!groups.has(key)) groups.set(key, t);
+  }
+  return [...groups.values()];
+}
+
 export default function FieldflixRecordingsScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
@@ -232,8 +296,14 @@ export default function FieldflixRecordingsScreen() {
   const venueDropdownOptions = useMemo(() => {
     const q = findVenue.trim().toLowerCase();
     return systemTurfs
-      .filter((x) => !q || (x.name || "").toLowerCase().includes(q))
-      .slice(0, 12);
+      .filter((x) => x && x.id && (x.name ?? "").toString().trim().length > 0)
+      .filter((x) => !q || String(x.name).toLowerCase().includes(q))
+      .sort((a, b) =>
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
+          sensitivity: "base",
+        }),
+      )
+      .slice(0, 20);
   }, [findVenue, systemTurfs]);
 
   useEffect(() => {
@@ -247,8 +317,15 @@ export default function FieldflixRecordingsScreen() {
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
     return systemCameras
-      .filter((x) => !q || (x.name || "").toLowerCase().includes(q))
-      .slice(0, 12);
+      .filter((x) => x && x.id && (x.name ?? "").toString().trim().length > 0)
+      .filter((x) => !q || String(x.name).toLowerCase().includes(q))
+      .sort((a, b) =>
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
+          sensitivity: "base",
+          numeric: true,
+        }),
+      )
+      .slice(0, 20);
   }, [findGround, systemCameras]);
 
   const isLocationComplete = !!findVenueId;
@@ -323,17 +400,18 @@ export default function FieldflixRecordingsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b, c, flickList, turfsRes] = await Promise.all([
+      const [a, b, c, flickList, allTurfs] = await Promise.all([
         getMyRecordings(),
         getSharedWithMe(),
         getSharedByMe().catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
-        getTurfsPage(1, 100).catch(() => ({ items: [] })),
+        // Mirror HomeScreen: paginate per FieldFlix sport, merge across sports, dedupe by venue name.
+        fetchAllTurfsForFindAcrossSports().catch(() => [] as any[]),
       ]);
       setMy(a);
       setShared(b);
       setSharedByMe(c);
-      setSystemTurfs(Array.isArray(turfsRes) ? turfsRes : (turfsRes.items || turfsRes.data || []));
+      setSystemTurfs(Array.isArray(allTurfs) ? allTurfs : []);
       const tally: Record<string, number> = {};
       const mine = Array.isArray(a)
         ? new Set<string>(
@@ -1892,13 +1970,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 0.5,
     color: MUTED,
-  },
-  findVenueHint: {
-    fontFamily: FF.regular,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "rgba(255,255,255,0.45)",
-    marginBottom: 10,
   },
   findInput: {
     width: "100%",
