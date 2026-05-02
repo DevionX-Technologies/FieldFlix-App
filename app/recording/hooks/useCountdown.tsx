@@ -289,6 +289,15 @@ export function useCountdown(
         console.warn("Recording start notification failed:", e);
       }
 
+      // Mirror the stop flow: alongside the system notification, surface an in-app
+      // pop-up so the user gets immediate visual confirmation regardless of OS
+      // notification permissions or focus state.
+      showModal(
+        "success",
+        "Recording Started",
+        "Your session is live. We'll notify you when processing finishes."
+      );
+
       const nowIso = new Date().toISOString();
       await SecureStore.setItemAsync(
         RECORDING_KEY,
