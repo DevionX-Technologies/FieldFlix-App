@@ -331,7 +331,7 @@ export async function uploadProfilePicture(params: {
       // Do NOT set Content-Type here — RN adds `multipart/form-data;
       // boundary=...` automatically from the FormData body. Setting it
       // manually drops the boundary and the server rejects the payload.
-    },
+    } as Record<string, string>,
     body: form as unknown as BodyInit,
   });
 
@@ -866,4 +866,35 @@ export async function commentOnFlickShort(
     text,
   });
   return data as FlickShortDto;
+}
+
+export type Camera = {
+  id: string;
+  name: string;
+  turfId: string;
+};
+
+export async function getCameras(turfId?: string): Promise<Camera[]> {
+  const params = turfId ? { turfId } : {};
+  const { data } = await axiosInstance.get('/cameras', { params });
+  if (data && Array.isArray(data.data)) {
+    return data.data;
+  }
+  return Array.isArray(data) ? data : [];
+}
+
+export type FindAndClaimRecordingPayload = {
+  turfId: string;
+  cameraId?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  phoneLast10: string;
+};
+
+export async function findAndClaimRecording(
+  payload: FindAndClaimRecordingPayload,
+): Promise<any[]> {
+  const { data } = await axiosInstance.post('/recording/find-and-claim', payload);
+  return coerceToRecordingList(data);
 }

@@ -37,7 +37,8 @@ function shouldSkipGlobalAuthLogout(url: string): boolean {
   return (
     url.includes("/auth/send-otp") ||
     url.includes("/auth/verify-otp") ||
-    url.includes("/recording/shared/media/")
+    // Share acceptance + public media URLs may return 401 even with a valid session.
+    url.includes("/recording/shared/")
   );
 }
 

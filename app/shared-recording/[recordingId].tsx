@@ -89,10 +89,13 @@ export default function SharedRecordingLandingScreen() {
       if (recordingId) {
         console.log('🚀 DEBUG: Modal closed, navigating to shared recordings tab...');
         // Navigate to the RecordingPlaybackScreen with shared tab parameter
-        router.replace(`${Paths.RecordingPlaybackScreen}?tab=shared` as any);
+        router.replace({
+          pathname: Paths.recordings,
+          params: { tab: "shared" },
+        });
       } else {
         console.log('🚀 DEBUG: Modal closed, navigating to home (invalid link)...');
-        router.replace('/');
+        router.replace(Paths.home);
       }
     }
   }, [modalVisible, shouldNavigateOnModalClose, recordingId, router]);

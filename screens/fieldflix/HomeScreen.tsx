@@ -40,6 +40,7 @@ import {
   type ImageSourcePropType,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Linking,
   Platform,
   Pressable,
   RefreshControl,
@@ -95,7 +96,90 @@ type ArenaRow = {
   imageSource: ImageSourcePropType;
   /** FieldFlix sports from `turf.sports_supported` (Pickleball / Padel / Cricket). */
   sportsLine: string | null;
+  /** Rough distance when user coords + turf geo known; sorting only uses this UX hint. */
+  distanceKm: number | null;
 };
+
+const TURF_PAGE_LIMIT = 100;
+const MAX_TURF_PAGES = 40;
+
+async function fetchAllSportTurfs(apiSport: string): Promise<TurfRow[]> {
+  const merged: TurfRow[] = [];
+  for (let page = 1; page <= MAX_TURF_PAGES; page++) {
+    const turfRes = await getTurfsPage(page, TURF_PAGE_LIMIT, {
+      sports_supported: apiSport,
+    });
+    let itemsRaw: unknown;
+    let totalPages = 1;
+    if (Array.isArray(turfRes)) {
+      itemsRaw = turfRes;
+    } else if (turfRes && typeof turfRes === "object") {
+      const bag = turfRes as {
+        items?: unknown;
+        meta?: { totalPages?: number };
+      };
+      itemsRaw = bag.items ?? [];
+      if (typeof bag.meta?.totalPages === "number" && bag.meta.totalPages >= 1) {
+        totalPages = bag.meta.totalPages;
+      }
+    } else {
+      itemsRaw = [];
+    }
+    const chunk = (Array.isArray(itemsRaw) ? itemsRaw : []) as TurfRow[];
+    merged.push(...chunk);
+    if (chunk.length === 0) break;
+    if (page >= totalPages) break;
+    if (chunk.length < TURF_PAGE_LIMIT) break;
+  }
+  return merged;
+}
+
+function haversineKm(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number,
+): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+function formatDistanceKmLabel(km: number): string {
+  if (!Number.isFinite(km)) return "";
+  if (km < 1) return "< 1 km";
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+}
+
+/** Full sport list client-side ordering: nearer first when coords exist; venues missing geo last. */
+function sortTurfsForHome(
+  rows: TurfRow[],
+  coords: { latitude: number; longitude: number } | null,
+): TurfRow[] {
+  const list = [...rows];
+  if (!coords) {
+    return list.sort((a, b) =>
+      String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }
+  return list.sort((a, b) => {
+    const ga = extractTurfLngLat(a.geo_location);
+    const gb = extractTurfLngLat(b.geo_location);
+    const da = ga ? haversineKm(coords.latitude, coords.longitude, ga.lat, ga.lng) : Number.POSITIVE_INFINITY;
+    const db = gb ? haversineKm(coords.latitude, coords.longitude, gb.lat, gb.lng) : Number.POSITIVE_INFINITY;
+    if (da !== db) return da - db;
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
+      sensitivity: "base",
+    });
+  });
+}
 
 type RecentRow = {
   id: string;
@@ -231,6 +315,7 @@ function mapTurfToArena(t: TurfRow, i: number): ArenaRow {
     status: "Indoor • Available Now",
     imageSource,
     sportsLine: summarizeTurfSportsLine(t.sports_supported),
+    distanceKm: null,
   };
 }
 
@@ -287,61 +372,73 @@ export default function FieldflixHomeScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
-  const [locationLabel, setLocationLabel] = useState("Locating…");
+  const [locationLabel, setLocationLabel] = useState(
+    "Checking location permission…",
+  );
+  const [locationPermission, setLocationPermission] =
+    useState<Location.LocationPermissionResponse | null>(null);
   const [turfsLoading, setTurfsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { status: existing } =
-          await Location.getForegroundPermissionsAsync();
-        if (cancelled) return;
-        let status = existing;
-        if (status === "undetermined") {
-          const r = await Location.requestForegroundPermissionsAsync();
-          status = r.status;
-        }
-        if (cancelled) return;
-        if (status !== "granted") {
-          setLocationLabel("Location access denied");
-          setUserCoords(null);
-          return;
-        }
-        const pos = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        const { latitude, longitude } = pos.coords;
-        setUserCoords({ latitude, longitude });
-        const places = await Location.reverseGeocodeAsync({
-          latitude,
-          longitude,
-        });
-        if (cancelled) return;
-        const p = places[0];
-        if (p) {
-          const city = p.city || p.subregion || p.district || "";
-          const country = p.country || "";
-          const line = [city, country].filter(Boolean).join(", ");
-          setLocationLabel(
-            line || `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`,
-          );
-        } else {
-          setLocationLabel(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
-        }
-      } catch {
-        if (!cancelled) {
-          setLocationLabel("Location unavailable");
-          setUserCoords(null);
-        }
+  /**
+   * `auto`: only prompts when iOS/Android status is undetermined — avoids noisy re-prompt loops.
+   * `user`: user tapped "Turn on sorting" — always runs `requestForegroundPermissionsAsync()`
+   *         so Android/iOS shows the sheet when OS still allows it.
+   */
+  const refreshHomeLocation = useCallback(async (mode: "auto" | "user") => {
+    try {
+      let perm = await Location.getForegroundPermissionsAsync();
+      let status = perm.status;
+      const requestNow =
+        mode === "user" ? true : perm.status === "undetermined";
+      if (requestNow) {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        perm = requested;
+        setLocationPermission(requested);
+        status = requested.status;
+      } else {
+        setLocationPermission(perm);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+
+      if (status !== "granted") {
+        setUserCoords(null);
+        setLocationLabel(
+          status === "denied"
+            ? "Location off — sorting A–Z"
+            : "Location unavailable",
+        );
+        return;
+      }
+
+      const pos = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = pos.coords;
+      setUserCoords({ latitude, longitude });
+      const places = await Location.reverseGeocodeAsync({
+        latitude,
+        longitude,
+      });
+      const p = places[0];
+      if (p) {
+        const city = p.city || p.subregion || p.district || "";
+        const country = p.country || "";
+        const line = [city, country].filter(Boolean).join(", ");
+        setLocationLabel(
+          line || `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`,
+        );
+      } else {
+        setLocationLabel(`${latitude.toFixed(2)}, ${longitude.toFixed(2)}`);
+      }
+    } catch {
+      setLocationLabel("Could not read location");
+      setUserCoords(null);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshHomeLocation("auto");
+  }, [refreshHomeLocation]);
 
   useEffect(() => {
     void readPreferredHomeSport().then((p) => {
@@ -358,31 +455,17 @@ export default function FieldflixHomeScreen() {
     setTurfsLoading(true);
     try {
       const sportEnum = homeSportToApiEnum(sport);
-      const [turfRes, recRes, n, flickList] = await Promise.all([
-        getTurfsPage(1, 24, {
-          sports_supported: sportEnum,
-          ...(userCoords
-            ? {
-              latitude: userCoords.latitude,
-              longitude: userCoords.longitude,
-              radiusKm: 100,
-            }
-            : {}),
-        }),
+      const [rawList, recRes, n, flickList] = await Promise.all([
+        fetchAllSportTurfs(sportEnum),
         getMyRecordings(),
         getNotifications(1, 50).catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
       ]);
-      const items = Array.isArray(turfRes)
-        ? turfRes
-        : turfRes?.items && Array.isArray(turfRes.items)
-          ? turfRes.items
-          : [];
-      const rawList = items as TurfRow[];
       const filtered = rawList.filter((t) =>
         turfSupportsHomeSport(t.sports_supported, sport),
       );
-      const deduped = dedupeTurfsForHomeDisplay(filtered).sort((a, b) =>
+      const deduped = dedupeTurfsForHomeDisplay(filtered);
+      deduped.sort((a, b) =>
         String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
           sensitivity: "base",
         }),
@@ -413,7 +496,12 @@ export default function FieldflixHomeScreen() {
     } finally {
       setTurfsLoading(false);
     }
-  }, [sport, userCoords]);
+  }, [sport]);
+
+  const orderedVenueTurfs = useMemo(
+    () => sortTurfsForHome(turfs, userCoords),
+    [turfs, userCoords],
+  );
 
   useEffect(() => {
     void load();
@@ -428,15 +516,30 @@ export default function FieldflixHomeScreen() {
   const onRefreshHome = useCallback(async () => {
     setRefreshing(true);
     try {
+      await refreshHomeLocation("auto");
       await load();
     } finally {
       setRefreshing(false);
     }
-  }, [load]);
+  }, [load, refreshHomeLocation]);
 
   const arenaRows: ArenaRow[] = useMemo(
-    () => turfs.map((t, i) => mapTurfToArena(t, i)),
-    [turfs],
+    () =>
+      orderedVenueTurfs.map((t, i) => {
+        const row = mapTurfToArena(t, i);
+        const g = extractTurfLngLat(t.geo_location);
+        const distanceKm =
+          userCoords && g
+            ? haversineKm(
+                userCoords.latitude,
+                userCoords.longitude,
+                g.lat,
+                g.lng,
+              )
+            : null;
+        return { ...row, distanceKm };
+      }),
+    [orderedVenueTurfs, userCoords],
   );
 
   const homeSportLabel =
@@ -717,8 +820,10 @@ export default function FieldflixHomeScreen() {
               <View style={styles.venuesHeadLeft}>
                 <View style={styles.sportsAccent} />
                 <View>
-                  <Text style={styles.venuesTitle}>Nearby Venues</Text>
-                  <Text style={styles.venuesSportHint}>{homeSportLabel}</Text>
+                  <Text style={styles.venuesTitle}>{homeSportLabel} venues</Text>
+                  <Text style={styles.venuesSportHint}>
+                    Venues near you
+                  </Text>
                 </View>
               </View>
               {/* <Pressable onPress={() => router.push(Paths.scan)} hitSlop={8}>
@@ -739,7 +844,7 @@ export default function FieldflixHomeScreen() {
               ) : arenaRows.length === 0 ? (
                 <View style={styles.arenaEmptyWrap}>
                   <Text style={styles.arenaEmptyText}>
-                    No arenas for this sport{userCoords ? " near you" : ""} yet.
+                    No arenas for {homeSportLabel} yet — check another sport above.
                   </Text>
                 </View>
               ) : (
@@ -802,6 +907,19 @@ export default function FieldflixHomeScreen() {
                         >
                           {arena.location}
                         </Text>
+                        {arena.distanceKm != null ? (
+                          <>
+                            <Text style={styles.arenaMetaSep}>•</Text>
+                            <MaterialCommunityIcons
+                              name="navigation-variant"
+                              size={14}
+                              color="#22C55E"
+                            />
+                            <Text style={styles.arenaDistText} numberOfLines={1}>
+                              {formatDistanceKmLabel(arena.distanceKm)}
+                            </Text>
+                          </>
+                        ) : null}
                         <Text style={styles.arenaMetaSep}>•</Text>
                         <Text style={styles.arenaStatusInline} numberOfLines={1}>
                           {arena.status}
@@ -1052,7 +1170,7 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
     paddingHorizontal: 16,
@@ -1070,12 +1188,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 14,
   },
   logoWrap: {
     width: 48,
     height: 48,
+    marginTop: 2,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1095,10 +1214,47 @@ const styles = StyleSheet.create({
     color: WEB.white,
     letterSpacing: -0.25,
   },
+  locationExplanation: {
+    marginTop: 6,
+    fontFamily: FF.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: "rgba(255,255,255,0.42)",
+    maxWidth: "100%",
+  },
+  locationActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 12,
+    marginTop: 8,
+    rowGap: 6,
+  },
+  locationActionPri: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    letterSpacing: 0.15,
+    color: "#22C55E",
+  },
+  locationActionSec: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    letterSpacing: 0.15,
+    color: "rgba(255,255,255,0.55)",
+    textDecorationLine: "underline",
+  },
+  locationSortHint: {
+    marginTop: 6,
+    fontFamily: FF.medium,
+    fontSize: 10,
+    color: "rgba(34,197,94,0.88)",
+    letterSpacing: 0.2,
+  },
   headerRight: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    paddingTop: 4,
   },
   iconBtn: {
     width: 40,
@@ -1520,7 +1676,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    flexWrap: "nowrap",
+    flexWrap: "wrap",
   },
   arenaMetaGrow: {
     flex: 1,
@@ -1536,6 +1692,13 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 12,
     color: "#64748b",
+  },
+  arenaDistText: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    color: "#86efac",
+    flexShrink: 0,
+    maxWidth: 72,
   },
   arenaStatusInline: {
     fontFamily: FF.medium,

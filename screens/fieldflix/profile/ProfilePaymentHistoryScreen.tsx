@@ -152,7 +152,18 @@ export default function FieldflixProfilePaymentHistoryScreen() {
             </>
           ) : (
             <View style={styles.list}>
-              {rows.map((r) => (
+              {rows.map((r) => {
+                const isSuccess = ['paid', 'success', 'completed'].includes(r.status.toLowerCase());
+                const isFailed = ['failed', 'error'].includes(r.status.toLowerCase());
+                const statusColor = isSuccess ? '#22C55E' : isFailed ? '#EF4444' : '#94A3B8';
+                const statusText = isSuccess ? 'Paid' : isFailed ? 'Failed' : r.status;
+                
+                const d = new Date(r.ts);
+                const dateStr = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                const timeLabel = `${dateStr}, ${timeStr}`;
+
+                return (
                 <Pressable
                   key={r.key}
                   style={styles.row}
@@ -160,22 +171,24 @@ export default function FieldflixProfilePaymentHistoryScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`View receipt ${r.title}`}
                 >
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.rowIconBox}>
+                    <MaterialCommunityIcons
+                      name={isSuccess ? "check-circle" : isFailed ? "close-circle" : "clock"}
+                      size={28}
+                      color={statusColor}
+                    />
+                  </View>
+                  <View style={styles.rowCenter}>
                     <Text style={styles.rowTitle}>{r.title}</Text>
                     <Text style={styles.rowSub}>{r.subtitle}</Text>
+                    <Text style={styles.rowTs}>{timeLabel}</Text>
                   </View>
                   <View style={styles.rowRight}>
                     <Text style={styles.rowAmt}>₹{Math.round(r.amount)}</Text>
-                    <Text style={styles.rowStatus}>{r.status}</Text>
-                    <MaterialCommunityIcons
-                      name="chevron-right"
-                      size={18}
-                      color="rgba(255,255,255,0.35)"
-                      style={{ marginTop: 4 }}
-                    />
+                    <Text style={[styles.rowStatus, { color: statusColor }]}>{statusText}</Text>
                   </View>
                 </Pressable>
-              ))}
+              )})}
             </View>
           )}
         </ScrollView>
@@ -211,46 +224,56 @@ const styles = StyleSheet.create({
   },
   list: {
     width: '100%',
-    gap: 10,
+    gap: 16,
     alignSelf: 'stretch',
   },
   row: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'flex-start',
     width: '100%',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: '#111620',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     alignSelf: 'stretch',
+  },
+  rowIconBox: {
+    marginRight: 14,
+    paddingTop: 2,
+  },
+  rowCenter: {
+    flex: 1,
   },
   rowTitle: {
     fontFamily: FF.semiBold,
-    fontSize: 13,
+    fontSize: 14,
     color: '#fff',
   },
   rowSub: {
-    marginTop: 2,
+    marginTop: 4,
     fontFamily: FF.regular,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+  },
+  rowTs: {
+    marginTop: 12,
+    fontFamily: FF.medium,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
   },
   rowRight: {
     alignItems: 'flex-end',
-    justifyContent: 'center',
+    paddingTop: 2,
   },
   rowAmt: {
     fontFamily: FF.bold,
-    fontSize: 14,
-    color: '#4ade80',
+    fontSize: 15,
+    color: '#fff',
   },
   rowStatus: {
-    marginTop: 2,
+    marginTop: 4,
     fontFamily: FF.medium,
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.65)',
+    fontSize: 11,
     textTransform: 'capitalize',
   },
 });

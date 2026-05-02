@@ -7,6 +7,10 @@ import {
   getSharedByMe,
   getPublicFlickShorts,
   getSharedWithMe,
+  getTurfsPage,
+  getCameras,
+  findAndClaimRecording,
+  type Camera,
 } from "@/lib/fieldflix-api";
 import {
   FIELD_FLIX_BOTTOM_NAV_SPACE,
@@ -29,13 +33,18 @@ import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
 import { useFocusEffect } from "@react-navigation/native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import type { ComponentProps, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BackHandler,
   Image,
-  KeyboardAvoidingView,
   InteractionManager,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -129,29 +138,6 @@ function recordingGroundLabel(r: any): string {
   return "";
 }
 
-function inferLocationFromRecordingTurfName(arenaName: string): string {
-  const n = compactText(arenaName);
-  if (!n) return "";
-  const pipeParts = n.split("|").map((p) => compactText(p));
-  if (pipeParts.length >= 2) {
-    const tail = pipeParts[pipeParts.length - 1];
-    if (tail.length >= 2) return tail;
-  }
-  const doubleGap = n.match(/\s{2,}([^|]+)$/);
-  if (doubleGap?.[1]) return compactText(doubleGap[1]);
-  return "";
-}
-
-function recordingLocationLabel(r: any): string {
-  const turf = r?.turf;
-  const line = compactText(
-    turf?.city ?? turf?.location ?? turf?.address_line ?? r?.location ?? "",
-  );
-  const first = line.split(",")[0]?.trim() ?? "";
-  if (first) return first;
-  return inferLocationFromRecordingTurfName(compactText(turf?.name ?? ""));
-}
-
 function recordingArenaLabel(r: any): string {
   const turf = r?.turf;
   return compactText(turf?.name ?? r?.recording_name ?? r?.name ?? "");
@@ -161,8 +147,8 @@ export default function FieldflixRecordingsScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const router = useRouter();
-  const findLocationInputRef = useRef<TextInput>(null);
-  const findArenaInputRef = useRef<TextInput>(null);
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const findVenueInputRef = useRef<TextInput>(null);
   const findGroundInputRef = useRef<TextInput>(null);
   const [tab, setTab] = useState<TabId>("my");
   const [sharedSubTab, setSharedSubTab] = useState<SharedSubTabId>("withMe");
@@ -191,89 +177,102 @@ export default function FieldflixRecordingsScreen() {
     }, [refreshUnlockedIds]),
   );
 
+  useEffect(() => {
+    const t = String(params.tab ?? "").toLowerCase();
+    if (t === "shared" || t === "find" || t === "my") {
+      setTab(t as TabId);
+    }
+  }, [params.tab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== "android") return;
+      const onBack = () => {
+        if (tab === "shared" || tab === "find") {
+          setTab("my");
+          return true;
+        }
+        navigateMainTabBackToHome(router);
+        return true;
+      };
+      const sub = BackHandler.addEventListener("hardwareBackPress", onBack);
+      return () => sub.remove();
+    }, [router, tab]),
+  );
+
   const recordingUnlockedPlayback = useCallback(
     (recordingId: string) => unlockedRecordingIds.includes(String(recordingId)),
     [unlockedRecordingIds],
   );
 
-  const [findLocation, setFindLocation] = useState("");
-  const [findArena, setFindArena] = useState("");
+  const [findVenue, setFindVenue] = useState("");
+  const [findVenueId, setFindVenueId] = useState<string | null>(null);
   const [findGround, setFindGround] = useState("");
-  const [findDate, setFindDate] = useState("");
+  const [findGroundId, setFindGroundId] = useState<string | null>(null);
+  const [systemTurfs, setSystemTurfs] = useState<any[]>([]);
+  const [systemCameras, setSystemCameras] = useState<Camera[]>([]);
+  const [findPickDate, setFindPickDate] = useState(() => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    return d;
+  });
+  const [showFindDatePicker, setShowFindDatePicker] = useState(false);
   const [findStart, setFindStart] = useState("");
   const [findEnd, setFindEnd] = useState("");
   const [findPhone, setFindPhone] = useState("");
   const [findMatches, setFindMatches] = useState<any[] | null>(null);
-  const [showLocationOptions, setShowLocationOptions] = useState(false);
-  const [showArenaOptions, setShowArenaOptions] = useState(false);
+  const [showVenueOptions, setShowVenueOptions] = useState(false);
   const [showGroundOptions, setShowGroundOptions] = useState(false);
 
-  const optionMaps = useMemo(() => {
-    const locationToArenas = new Map<string, Set<string>>();
-    const arenaToGrounds = new Map<string, Set<string>>();
-    for (const r of my) {
-      const location = recordingLocationLabel(r);
-      const arena = recordingArenaLabel(r);
-      const ground = recordingGroundLabel(r);
-      const groundUsable =
-        ground.length > 0 && !isUuidCourtLabel(ground);
-      if (location && arena) {
-        const key = location.toLowerCase();
-        const curr = locationToArenas.get(key) ?? new Set<string>();
-        curr.add(arena);
-        locationToArenas.set(key, curr);
-      }
-      if (arena && groundUsable) {
-        const key = arena.toLowerCase();
-        const curr = arenaToGrounds.get(key) ?? new Set<string>();
-        curr.add(ground);
-        arenaToGrounds.set(key, curr);
-      }
+  const findDateLabel = useMemo(
+    () => findPickDate.toDateString(),
+    [findPickDate],
+  );
+
+  const venueDropdownOptions = useMemo(() => {
+    const q = findVenue.trim().toLowerCase();
+    return systemTurfs
+      .filter((x) => !q || (x.name || "").toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [findVenue, systemTurfs]);
+
+  useEffect(() => {
+    if (findVenueId) {
+      getCameras(findVenueId).then(setSystemCameras).catch(() => setSystemCameras([]));
+    } else {
+      setSystemCameras([]);
     }
-    return { locationToArenas, arenaToGrounds };
-  }, [my]);
-
-  const locationOptions = useMemo(() => {
-    const q = findLocation.trim().toLowerCase();
-    const all = Array.from(optionMaps.locationToArenas.keys())
-      .map((k) => {
-        const original = my.find(
-          (r) => recordingLocationLabel(r).toLowerCase() === k,
-        );
-        return recordingLocationLabel(original);
-      })
-      .filter(Boolean);
-    return all
-      .filter((x) => !q || x.toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [findLocation, my, optionMaps.locationToArenas]);
-
-  const arenaOptions = useMemo(() => {
-    const q = findArena.trim().toLowerCase();
-    const locationKey = findLocation.trim().toLowerCase();
-    const fromLocation = locationKey
-      ? Array.from(optionMaps.locationToArenas.get(locationKey) ?? [])
-      : Array.from(new Set(my.map((r) => recordingArenaLabel(r)).filter(Boolean)));
-    return fromLocation.filter((x) => !q || x.toLowerCase().includes(q)).slice(0, 8);
-  }, [findArena, findLocation, my, optionMaps.locationToArenas]);
+  }, [findVenueId]);
 
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
-    const arenaKey = findArena.trim().toLowerCase();
-    const fromArena = arenaKey
-      ? Array.from(optionMaps.arenaToGrounds.get(arenaKey) ?? [])
-      : [];
-    return fromArena.filter((x) => !q || x.toLowerCase().includes(q)).slice(0, 8);
-  }, [findArena, findGround, optionMaps.arenaToGrounds]);
+    return systemCameras
+      .filter((x) => !q || (x.name || "").toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [findGround, systemCameras]);
 
-  const isLocationComplete = findLocation.trim().length > 0;
+  const isLocationComplete = !!findVenueId;
   const isScheduleComplete =
-    findArena.trim().length > 0 &&
-    findGround.trim().length > 0 &&
-    findDate.trim().length > 0 &&
+    !!findVenueId &&
     findStart.trim().length > 0 &&
     findEnd.trim().length > 0;
   const isVerifyComplete = findPhone.trim().length === 10;
+
+  const onFindDateChange = (_e: DateTimePickerEvent, selected?: Date) => {
+    if (Platform.OS === "android") setShowFindDatePicker(false);
+    if (selected) {
+      const d = new Date(selected);
+      d.setHours(12, 0, 0, 0);
+      setFindPickDate(d);
+    }
+  };
+
+  const findDateFormatted = findPickDate.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   const onShareRecording = useCallback(
     async (recordingId: string, title: string) => {
@@ -296,71 +295,45 @@ export default function FieldflixRecordingsScreen() {
     [],
   );
 
-  const runFindInMyRecordings = useCallback(() => {
-    const locQ = findLocation.trim().toLowerCase();
-    const arenaQ = findArena.trim().toLowerCase();
-    const g = findGround.trim().toLowerCase();
-    const out = my.filter((r: any) => {
-      const turf = r.turf;
-      const hay = [turf?.name, turf?.address_line, turf?.city, turf?.location]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      if (locQ) {
-        const parts = locQ
-          .split(/[,\n]+/)
-          .map((p) => p.trim())
-          .filter(Boolean);
-        const anyPart = parts.some((p) => p.length > 0 && hay.includes(p));
-        if (!anyPart && !hay.includes(locQ)) return false;
-      }
-      if (arenaQ) {
-        const arena = recordingArenaLabel(r).toLowerCase();
-        if (!arena.includes(arenaQ)) return false;
-      }
-      if (g) {
-        const ground = recordingGroundLabel(r).toLowerCase();
-        if (!ground.includes(g) && !hay.includes(g)) return false;
-      }
-      const st = r.startTime ? new Date(String(r.startTime)) : null;
-      if (st && findDate.trim()) {
-        const fd = Date.parse(findDate);
-        if (
-          !Number.isNaN(fd) &&
-          st.toDateString() !== new Date(fd).toDateString()
-        ) {
-          return false;
-        }
-      }
-      if (findStart.trim() && findEnd.trim() && st) {
-        const t0 = parseClockOnDay(st, findStart);
-        const t1 = parseClockOnDay(st, findEnd);
-        if (t0 != null && t1 != null) {
-          const t = st.getTime();
-          const lo = Math.min(t0, t1);
-          const hi = Math.max(t0, t1);
-          if (t < lo || t > hi) return false;
-        }
-      }
-      return true;
-    });
-    setFindMatches(out);
-    setShowLocationOptions(false);
-    setShowArenaOptions(false);
+  const runFindGame = useCallback(async () => {
+    if (!findVenueId || !findStart.trim() || !findEnd.trim() || findPhone.trim().length !== 10) return;
+    try {
+      const fd = new Date(findPickDate);
+      const m = String(fd.getMonth() + 1).padStart(2, "0");
+      const d = String(fd.getDate()).padStart(2, "0");
+      const payload = {
+        turfId: findVenueId,
+        cameraId: findGroundId || undefined,
+        date: `${fd.getFullYear()}-${m}-${d}`,
+        startTime: findStart.trim(),
+        endTime: findEnd.trim(),
+        phoneLast10: findPhone.trim(),
+      };
+      const res = await findAndClaimRecording(payload);
+      setFindMatches(res);
+      // Automatically refresh the library/shared tabs so the claimed recording shows up
+      load();
+    } catch (e) {
+      console.warn("Error finding game", e);
+      setFindMatches([]);
+    }
+    setShowVenueOptions(false);
     setShowGroundOptions(false);
-  }, [my, findLocation, findArena, findGround, findDate, findStart, findEnd]);
+  }, [findVenueId, findGroundId, findPickDate, findStart, findEnd, findPhone, load]);
 
   const load = useCallback(async () => {
     try {
-      const [a, b, c, flickList] = await Promise.all([
+      const [a, b, c, flickList, turfsRes] = await Promise.all([
         getMyRecordings(),
         getSharedWithMe(),
         getSharedByMe().catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
+        getTurfsPage(1, 100).catch(() => ({ items: [] })),
       ]);
       setMy(a);
       setShared(b);
       setSharedByMe(c);
+      setSystemTurfs(Array.isArray(turfsRes) ? turfsRes : (turfsRes.items || turfsRes.data || []));
       const tally: Record<string, number> = {};
       const mine = Array.isArray(a)
         ? new Set<string>(
@@ -489,8 +462,16 @@ export default function FieldflixRecordingsScreen() {
         >
         <FieldflixScreenHeader
           title="Your Recordings"
-          onBack={() => navigateMainTabBackToHome(router)}
-          backAccessibilityLabel="Back to home"
+          onBack={() => {
+            if (tab === "shared" || tab === "find") {
+              setTab("my");
+              return;
+            }
+            navigateMainTabBackToHome(router);
+          }}
+          backAccessibilityLabel={
+            tab === "my" ? "Back to home" : "Back to my recordings"
+          }
         />
 
         <View style={styles.segOuter}>
@@ -919,37 +900,39 @@ export default function FieldflixRecordingsScreen() {
               <View style={styles.findPanel}>
                 <View style={styles.findLabelRow}>
                   <MapPinIcon color={MUTED} size={14} />
-                  <Text style={styles.findLabel}>LOCATION</Text>
+                  <Text style={styles.findLabel}>VENUES</Text>
                 </View>
+
                 <TextInput
-                  ref={findLocationInputRef}
-                  value={findLocation}
-                  onFocus={() => setShowLocationOptions(true)}
-                  onBlur={() => scheduleScrollFilledInputToStart(findLocationInputRef)}
+                  ref={findVenueInputRef}
+                  value={findVenue}
+                  onFocus={() => setShowVenueOptions(true)}
+                  onBlur={() => scheduleScrollFilledInputToStart(findVenueInputRef)}
                   onChangeText={(v) => {
-                    setFindLocation(v);
-                    setShowLocationOptions(true);
-                    setFindArena("");
+                    setFindVenue(v);
+                    setFindVenueId(null);
+                    setShowVenueOptions(true);
                     setFindGround("");
                   }}
                   style={styles.findInput}
+                  placeholder="Select venue"
                   placeholderTextColor="rgba(255,255,255,0.35)"
                 />
-                {showLocationOptions && locationOptions.length > 0 ? (
+                {showVenueOptions && venueDropdownOptions.length > 0 ? (
                   <View style={styles.findDropdown}>
-                    {locationOptions.map((opt) => (
+                    {venueDropdownOptions.map((opt) => (
                       <Pressable
-                        key={`loc-${opt}`}
+                        key={`venue-${opt.id}`}
                         style={styles.findDropdownItem}
                         onPress={() => {
-                          setFindLocation(opt);
-                          setFindArena("");
+                          setFindVenue(opt.name);
+                          setFindVenueId(opt.id);
                           setFindGround("");
-                          setShowLocationOptions(false);
-                          scheduleScrollFilledInputToStart(findLocationInputRef);
+                          setShowVenueOptions(false);
+                          scheduleScrollFilledInputToStart(findVenueInputRef);
                         }}
                       >
-                        <Text style={styles.findDropdownItemText}>{opt}</Text>
+                        <Text style={styles.findDropdownItemText}>{opt.name}</Text>
                       </Pressable>
                     ))}
                   </View>
@@ -957,76 +940,63 @@ export default function FieldflixRecordingsScreen() {
               </View>
 
               <View style={styles.findPanel}>
-                <View
-                  style={[styles.findGrid2, isCompact && styles.findGridStack]}
+                <View style={styles.findLabelRow}>
+                  <CalendarIcon color={MUTED} size={14} />
+                  <Text style={styles.findLabel}>DATE</Text>
+                </View>
+                <Pressable
+                  onPress={() => setShowFindDatePicker(true)}
+                  style={styles.findInputPressable}
+                  accessibilityRole="button"
+                  accessibilityLabel="Choose date"
                 >
-                  <View style={styles.findGridCol}>
-                    <View style={styles.findLabelRow}>
-                      <View style={styles.findSmallIcon}>
-                        <Svg
-                          width={12}
-                          height={12}
-                          viewBox="0 0 24 24"
-                          fill="none"
-                        >
-                          <Circle
-                            cx={12}
-                            cy={12}
-                            r={9}
-                            stroke={MUTED}
-                            strokeWidth={2}
-                          />
-                        </Svg>
-                      </View>
-                      <Text style={styles.findLabel}>ARENA</Text>
+                  <Text style={styles.findInputPressableText}>
+                    {findDateFormatted}
+                  </Text>
+                </Pressable>
+                {showFindDatePicker && Platform.OS === "android" ? (
+                  <DateTimePicker
+                    value={findPickDate}
+                    mode="date"
+                    display="default"
+                    themeVariant="dark"
+                    maximumDate={new Date()}
+                    onChange={onFindDateChange}
+                  />
+                ) : null}
+              </View>
+
+              <Modal
+                visible={showFindDatePicker && Platform.OS === "ios"}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowFindDatePicker(false)}
+              >
+                <View style={styles.findDateModalRoot}>
+                  <Pressable
+                    style={styles.findDateModalTouchOut}
+                    onPress={() => setShowFindDatePicker(false)}
+                  />
+                  <View style={styles.findDateModalSheet}>
+                    <View style={styles.findDateModalHeader}>
+                      <Pressable
+                        onPress={() => setShowFindDatePicker(false)}
+                        hitSlop={12}
+                      >
+                        <Text style={styles.findDateModalDone}>Done</Text>
+                      </Pressable>
                     </View>
-                    <TextInput
-                      ref={findArenaInputRef}
-                      value={findArena}
-                      onFocus={() => setShowArenaOptions(true)}
-                      onBlur={() => scheduleScrollFilledInputToStart(findArenaInputRef)}
-                      onChangeText={(v) => {
-                        setFindArena(v);
-                        setShowArenaOptions(true);
-                        setFindGround("");
-                      }}
-                      style={styles.findInput}
-                      placeholder="Type arena"
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
-                    {showArenaOptions && arenaOptions.length > 0 ? (
-                      <View style={styles.findDropdown}>
-                        {arenaOptions.map((opt) => (
-                          <Pressable
-                            key={`arena-${opt}`}
-                            style={styles.findDropdownItem}
-                            onPress={() => {
-                              setFindArena(opt);
-                              setFindGround("");
-                              setShowArenaOptions(false);
-                              scheduleScrollFilledInputToStart(findArenaInputRef);
-                            }}
-                          >
-                            <Text style={styles.findDropdownItemText}>{opt}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    ) : null}
-                  </View>
-                  <View style={styles.findGridCol}>
-                    <View style={styles.findLabelRow}>
-                      <CalendarIcon color={MUTED} size={14} />
-                      <Text style={styles.findLabel}>DATE</Text>
-                    </View>
-                    <TextInput
-                      value={findDate}
-                      onChangeText={setFindDate}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
+                    <DateTimePicker
+                      value={findPickDate}
+                      mode="date"
+                      display="spinner"
+                      themeVariant="dark"
+                      maximumDate={new Date()}
+                      onChange={onFindDateChange}
                     />
                   </View>
                 </View>
-              </View>
+              </Modal>
 
               <View style={styles.findPanel}>
                 <View style={styles.findLabelRow}>
@@ -1050,26 +1020,32 @@ export default function FieldflixRecordingsScreen() {
                   }}
                   onChangeText={(v) => {
                     setFindGround(v);
+                    setFindGroundId(null);
                     setShowGroundOptions(true);
                   }}
                   style={styles.findInput}
-                  placeholder={findArena.trim() ? "Type ground/court" : "Select arena first"}
+                  placeholder={
+                    findVenue.trim()
+                      ? "Select or type court"
+                      : "Select venue first"
+                  }
                   placeholderTextColor="rgba(255,255,255,0.35)"
-                  editable={findArena.trim().length > 0}
+                  editable={findVenue.trim().length > 0}
                 />
                 {showGroundOptions && groundOptions.length > 0 ? (
                   <View style={styles.findDropdown}>
                     {groundOptions.map((opt) => (
                       <Pressable
-                        key={`ground-${opt}`}
+                        key={`ground-${opt.id}`}
                         style={styles.findDropdownItem}
                         onPress={() => {
-                          setFindGround(opt);
+                          setFindGround(opt.name);
+                          setFindGroundId(opt.id);
                           setShowGroundOptions(false);
                           scheduleScrollFilledInputToStart(findGroundInputRef);
                         }}
                       >
-                        <Text style={styles.findDropdownItemText}>{opt}</Text>
+                        <Text style={styles.findDropdownItemText}>{opt.name}</Text>
                       </Pressable>
                     ))}
                   </View>
@@ -1147,7 +1123,7 @@ export default function FieldflixRecordingsScreen() {
                 </View>
               </View>
 
-              <Pressable style={styles.findCta} onPress={runFindInMyRecordings}>
+              <Pressable style={styles.findCta} onPress={runFindGame}>
                 <PlayIcon color="#fff" size={18} />
                 <Text style={styles.findCtaText}>Find My Game</Text>
               </Pressable>
@@ -1917,6 +1893,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: MUTED,
   },
+  findVenueHint: {
+    fontFamily: FF.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "rgba(255,255,255,0.45)",
+    marginBottom: 10,
+  },
   findInput: {
     width: "100%",
     minHeight: 44,
@@ -1935,6 +1918,52 @@ const styles = StyleSheet.create({
       android: { textAlignVertical: "center" },
       default: {},
     }),
+  },
+  findInputPressable: {
+    width: "100%",
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.28)",
+    backgroundColor: "rgba(2,6,23,0.92)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    justifyContent: "center",
+  },
+  findInputPressableText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "#fff",
+    textAlign: "left",
+  },
+  findDateModalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  findDateModalTouchOut: {
+    flex: 1,
+  },
+  findDateModalSheet: {
+    backgroundColor: "#0f172a",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    overflow: "hidden",
+    paddingBottom: Platform.OS === "ios" ? 28 : 12,
+  },
+  findDateModalHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(148,163,184,0.2)",
+  },
+  findDateModalDone: {
+    fontFamily: FF.semiBold,
+    fontSize: 15,
+    color: ACCENT,
   },
   findDropdown: {
     marginTop: 8,

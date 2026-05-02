@@ -53,7 +53,10 @@ const config: ExpoConfig = {
     permissions: [
       "android.permission.CAMERA",
       "android.permission.RECORD_AUDIO",
-      "com.google.android.gms.permission.AD_ID"
+      /** Used with `expo-location` — sort venues + show city label on home */
+      "android.permission.ACCESS_COARSE_LOCATION",
+      "android.permission.ACCESS_FINE_LOCATION",
+      "com.google.android.gms.permission.AD_ID",
     ],
     package: "com.fieldflicks",
     googleServicesFile: "./google-services.json",
@@ -123,8 +126,12 @@ const config: ExpoConfig = {
     [
       "expo-location",
       {
-        locationAlwaysAndWhenInUsePermission: "Allow $(PRODUCT_NAME) to use your location."
-      }
+        /** `NSLocationWhenInUseUsageDescription` — shown with the foreground permission sheet */
+        locationWhenInUsePermission:
+          "FieldFlicks uses your location while the app is open to sort arenas by distance. Nothing is uploaded when you browse the home feed.",
+        locationAlwaysAndWhenInUsePermission:
+          "Location helps FieldFlicks order venues nearest-first on your home screen.",
+      },
     ],
     "expo-mail-composer",
     "expo-secure-store",
