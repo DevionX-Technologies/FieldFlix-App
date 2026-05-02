@@ -102,7 +102,7 @@
     "react-native-gesture-handler": "~2.24.0",
     "react-native-maps": "1.20.1",
     "react-native-pager-view": "6.7.1",
-    "react-native-razorpay": "^2.3.0",
+    "react-native-razorpay": "^3.0.0",
     "react-native-reanimated": "~3.17.4",
     "react-native-reanimated-carousel": "^4.0.2",
     "react-native-safe-area-context": "5.4.0",
