@@ -201,7 +201,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   scroll: {
     paddingHorizontal: 24,
-    paddingTop: 80,
+    paddingTop: 16,
     alignItems: 'center',
   },
   emptyIcon: {
