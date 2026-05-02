@@ -1060,15 +1060,6 @@ function HighlightRow({
               ? 'Ready to watch'
               : 'Processing…'}
           </Text>
-          <View style={styles.rowStats}>
-            <Text style={styles.rowStat}>
-              {Number(highlight.likes_count ?? 0)} likes
-            </Text>
-            <View style={styles.rowDot} />
-            <Text style={styles.rowStat}>
-              {Number(highlight.comments_count ?? 0)} comments
-            </Text>
-          </View>
         </View>
       </Pressable>
 

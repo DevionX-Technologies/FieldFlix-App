@@ -4,6 +4,7 @@ import {
   useSessionsMyRecordings,
   type SessionRowForUi,
 } from "@/hooks/useSessionsMyRecordings";
+import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
 import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { FF } from "@/screens/fieldflix/fonts";
@@ -127,6 +128,15 @@ export default function FieldflixSessionsScreen() {
 
   const prefHydratedRef = useRef(false);
   const [sportFilter, setSportFilter] = useState<SessionsSportFilter>("all");
+  /** Recordings the user has paid to unlock — drives the lock/unlock badge on each card,
+   *  mirroring the same source of truth used on RecordingsScreen. */
+  const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>([]);
+  const refreshUnlockedIds = useCallback(() => {
+    void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
+  }, []);
+  useEffect(() => {
+    refreshUnlockedIds();
+  }, [refreshUnlockedIds]);
 
   useEffect(() => {
     if (prefHydratedRef.current) return;
@@ -152,6 +162,7 @@ export default function FieldflixSessionsScreen() {
         <View style={styles.listItemCardWrap}>
           <SessionCard
             row={item}
+            unlocked={unlockedRecordingIds.includes(String(item.recordingId))}
             onPress={() =>
               router.push({
                 pathname: Paths.highlights as never,
@@ -162,13 +173,14 @@ export default function FieldflixSessionsScreen() {
         </View>
       </View>
     ),
-    [router],
+    [router, unlockedRecordingIds],
   );
 
   useFocusEffect(
     useCallback(() => {
       void load();
-    }, [load]),
+      refreshUnlockedIds();
+    }, [load, refreshUnlockedIds]),
   );
 
   return (
@@ -263,9 +275,13 @@ export default function FieldflixSessionsScreen() {
 
 function SessionCard({
   row,
+  unlocked,
   onPress,
 }: {
   row: SessionRowExtended;
+  /** True when the user has paid to unlock this recording. Drives the same lock badge
+   *  used on RecordingsScreen so paid/unpaid state is visually consistent across screens. */
+  unlocked: boolean;
   onPress: () => void;
 }) {
   const isProcessing = !row.isReady;
@@ -304,25 +320,38 @@ function SessionCard({
             <Text style={styles.sport}>{row.sport}</Text>
           </View>
 
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              void onShare();
-            }}
-            style={({ pressed }) => [
-              styles.shareChip,
-              pressed && styles.shareChipPressed,
-            ]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={`Share ${row.sport} session`}
-          >
-            <MaterialCommunityIcons
-              name="share-variant-outline"
-              size={18}
-              color="#cbd5e1"
-            />
-          </Pressable>
+          <View style={styles.topRightCluster}>
+            <View
+              style={styles.lockBadge}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              <MaterialCommunityIcons
+                name={unlocked ? "lock-open-outline" : "lock-outline"}
+                size={14}
+                color="#ffffff"
+              />
+            </View>
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                void onShare();
+              }}
+              style={({ pressed }) => [
+                styles.shareChip,
+                pressed && styles.shareChipPressed,
+              ]}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Share ${row.sport} session`}
+            >
+              <MaterialCommunityIcons
+                name="share-variant-outline"
+                size={18}
+                color="#cbd5e1"
+              />
+            </Pressable>
+          </View>
         </View>
 
         {/* Arena */}
@@ -510,6 +539,23 @@ const styles = StyleSheet.create({
   shareChipPressed: {
     opacity: 0.82,
     transform: [{ scale: 0.96 }],
+  },
+  /** Same visual treatment as `thumbLockState` on RecordingsScreen — a small dark
+   *  circular badge that shows lock-outline (unpaid) or lock-open-outline (paid). */
+  topRightCluster: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  lockBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   metaCol: {
     flex: 1,

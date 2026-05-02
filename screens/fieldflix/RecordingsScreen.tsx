@@ -30,7 +30,7 @@ import {
 } from "@/utils/recordingDisplay";
 import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
 import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
-import { useFocusEffect } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -211,6 +211,7 @@ export default function FieldflixRecordingsScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const router = useRouter();
+  const navigation = useNavigation();
   const params = useLocalSearchParams<{ tab?: string }>();
   const findVenueInputRef = useRef<TextInput>(null);
   const findGroundInputRef = useRef<TextInput>(null);
@@ -248,11 +249,21 @@ export default function FieldflixRecordingsScreen() {
     }
   }, [params.tab]);
 
+  /** Latest tab in a ref so listeners read the current value without re-subscribing.
+   *  Re-registering on every tab change can lose the LIFO race against the
+   *  layout-level `BackHandler` in `app/_layout.tsx` (which re-registers on `pathname`
+   *  changes and would otherwise call `router.back()` first, popping us to Home). */
+  const tabRef = useRef<TabId>(tab);
+  useEffect(() => {
+    tabRef.current = tab;
+  }, [tab]);
+
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS !== "android") return;
       const onBack = () => {
-        if (tab === "shared" || tab === "find") {
+        const t = tabRef.current;
+        if (t === "shared" || t === "find") {
           setTab("my");
           return true;
         }
@@ -261,8 +272,28 @@ export default function FieldflixRecordingsScreen() {
       };
       const sub = BackHandler.addEventListener("hardwareBackPress", onBack);
       return () => sub.remove();
-    }, [router, tab]),
+    }, [router]),
   );
+
+  /** iOS swipe-back (and any react-navigation `pop` triggered by the root layout's
+   *  `BackHandler` on Android) goes through `beforeRemove`. Intercepting here is
+   *  platform-agnostic and survives the LIFO race with other hardwareBackPress listeners. */
+  useEffect(() => {
+    const nav: any = navigation;
+    if (!nav?.addListener) return;
+    const handler = (e: any) => {
+      const t = tabRef.current;
+      if (t === "shared" || t === "find") {
+        e.preventDefault?.();
+        setTab("my");
+      }
+    };
+    const sub = nav.addListener("beforeRemove", handler);
+    return () => {
+      if (typeof sub === "function") sub();
+      else nav.removeListener?.("beforeRemove", handler);
+    };
+  }, [navigation]);
 
   const recordingUnlockedPlayback = useCallback(
     (recordingId: string) => unlockedRecordingIds.includes(String(recordingId)),

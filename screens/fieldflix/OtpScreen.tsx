@@ -201,11 +201,9 @@ export default function FieldflixOtpScreen() {
     try {
       const res = await verifyOtp(mobile, code);
       await SecureStore.setItemAsync("token", res.token);
-      if (isSignup === "1") {
-        router.replace(Paths.accountType);
-      } else {
-        router.replace(Paths.home);
-      }
+      // Public/Private account-type screen is intentionally skipped on signup —
+      // user can change visibility later from Profile → App Settings.
+      router.replace(Paths.home);
     } catch (e: unknown) {
       showError(
         "Verification failed",
