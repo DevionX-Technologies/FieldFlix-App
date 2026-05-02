@@ -1,5 +1,6 @@
 import { Paths } from "@/data/paths";
 import { useRecordingReadyToast } from "@/hooks/useRecordingReadyToast";
+import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
 import {
   createShareLink,
   getMyRecordings,
@@ -24,13 +25,17 @@ import {
   recordingThumbUrl,
 } from "@/utils/recordingDisplay";
 import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
-import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
+import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
+import { useFocusEffect } from "@react-navigation/native";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ComponentProps, RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   KeyboardAvoidingView,
+  InteractionManager,
   Platform,
   Pressable,
   ScrollView,
@@ -50,6 +55,21 @@ const MUTED = "#94a3b8";
 
 type TabId = "my" | "shared" | "find";
 type SharedSubTabId = "withMe" | "to";
+
+/** Long single-line TextInputs on Android pin the viewport at the trailing end — jump selection to start so the beginning is readable. */
+function scheduleScrollFilledInputToStart(ref: RefObject<TextInput | null>) {
+  const apply = () => {
+    ref.current?.setNativeProps?.({ selection: { start: 0, end: 0 } });
+  };
+  InteractionManager.runAfterInteractions(() => {
+    requestAnimationFrame(() => {
+      apply();
+      if (Platform.OS === "android") {
+        setTimeout(apply, 48);
+      }
+    });
+  });
+}
 
 function parseClockOnDay(base: Date, clock: string): number | null {
   const t = clock.trim().toLowerCase();
@@ -71,11 +91,65 @@ function compactText(v: unknown): string {
     .trim();
 }
 
+/** Matches backend camera UUID — never show raw in "court" UI. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidCourtLabel(label: string): boolean {
+  const rest = label.replace(/^court\s+/i, "").trim();
+  return UUID_RE.test(rest);
+}
+
+function recordingGroundLabel(r: any): string {
+  const turf = r?.turf;
+  const camName = compactText(r?.camera?.name ?? "");
+  const fromFields = compactText(
+    r?.GroundNumber ??
+      turf?.ground_number ??
+      r?.GroundDescription ??
+      turf?.ground_description ??
+      "",
+  );
+  if (fromFields) {
+    if (/^court\b/i.test(fromFields) || /^ground\b/i.test(fromFields)) {
+      return fromFields;
+    }
+    return `Court ${fromFields}`;
+  }
+  if (camName) {
+    const m = camName.match(/(\d+)/);
+    if (m) return `Court ${m[1]}`;
+    return camName;
+  }
+  const rawId = compactText(r?.cameraId ?? "");
+  if (rawId && !UUID_RE.test(rawId)) {
+    if (/^court\b/i.test(rawId) || /^ground\b/i.test(rawId)) return rawId;
+    return `Court ${rawId}`;
+  }
+  return "";
+}
+
+function inferLocationFromRecordingTurfName(arenaName: string): string {
+  const n = compactText(arenaName);
+  if (!n) return "";
+  const pipeParts = n.split("|").map((p) => compactText(p));
+  if (pipeParts.length >= 2) {
+    const tail = pipeParts[pipeParts.length - 1];
+    if (tail.length >= 2) return tail;
+  }
+  const doubleGap = n.match(/\s{2,}([^|]+)$/);
+  if (doubleGap?.[1]) return compactText(doubleGap[1]);
+  return "";
+}
+
 function recordingLocationLabel(r: any): string {
   const turf = r?.turf;
-  return compactText(
+  const line = compactText(
     turf?.city ?? turf?.location ?? turf?.address_line ?? r?.location ?? "",
   );
+  const first = line.split(",")[0]?.trim() ?? "";
+  if (first) return first;
+  return inferLocationFromRecordingTurfName(compactText(turf?.name ?? ""));
 }
 
 function recordingArenaLabel(r: any): string {
@@ -83,25 +157,13 @@ function recordingArenaLabel(r: any): string {
   return compactText(turf?.name ?? r?.recording_name ?? r?.name ?? "");
 }
 
-function recordingGroundLabel(r: any): string {
-  const turf = r?.turf;
-  const raw = compactText(
-    r?.GroundNumber ??
-      turf?.ground_number ??
-      r?.GroundDescription ??
-      turf?.ground_description ??
-      r?.cameraId ??
-      "",
-  );
-  if (!raw) return "";
-  if (/^court\b/i.test(raw) || /^ground\b/i.test(raw)) return raw;
-  return `Court ${raw}`;
-}
-
 export default function FieldflixRecordingsScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const router = useRouter();
+  const findLocationInputRef = useRef<TextInput>(null);
+  const findArenaInputRef = useRef<TextInput>(null);
+  const findGroundInputRef = useRef<TextInput>(null);
   const [tab, setTab] = useState<TabId>("my");
   const [sharedSubTab, setSharedSubTab] = useState<SharedSubTabId>("withMe");
   const [my, setMy] = useState<any[]>([]);
@@ -111,6 +173,28 @@ export default function FieldflixRecordingsScreen() {
   const [shortsPerRecording, setShortsPerRecording] = useState<
     Record<string, number>
   >({});
+  const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>(
+    [],
+  );
+
+  const refreshUnlockedIds = useCallback(() => {
+    void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
+  }, []);
+
+  useEffect(() => {
+    refreshUnlockedIds();
+  }, [refreshUnlockedIds]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshUnlockedIds();
+    }, [refreshUnlockedIds]),
+  );
+
+  const recordingUnlockedPlayback = useCallback(
+    (recordingId: string) => unlockedRecordingIds.includes(String(recordingId)),
+    [unlockedRecordingIds],
+  );
 
   const [findLocation, setFindLocation] = useState("");
   const [findArena, setFindArena] = useState("");
@@ -131,13 +215,15 @@ export default function FieldflixRecordingsScreen() {
       const location = recordingLocationLabel(r);
       const arena = recordingArenaLabel(r);
       const ground = recordingGroundLabel(r);
+      const groundUsable =
+        ground.length > 0 && !isUuidCourtLabel(ground);
       if (location && arena) {
         const key = location.toLowerCase();
         const curr = locationToArenas.get(key) ?? new Set<string>();
         curr.add(arena);
         locationToArenas.set(key, curr);
       }
-      if (arena && ground) {
+      if (arena && groundUsable) {
         const key = arena.toLowerCase();
         const curr = arenaToGrounds.get(key) ?? new Set<string>();
         curr.add(ground);
@@ -291,6 +377,7 @@ export default function FieldflixRecordingsScreen() {
     } catch {
       setMy([]);
       setShared([]);
+      setSharedByMe([]);
     }
   }, []);
 
@@ -322,53 +409,73 @@ export default function FieldflixRecordingsScreen() {
         })
       : [];
 
-  const sharedRows =
-    shared.length > 0
-      ? shared.map((s: any, i: number) => {
-          const rec = s?.recording;
-          const td = rec?.turf_detail;
-          const loc =
-            [td?.city, td?.state].filter(Boolean).join(", ") ||
-            td?.address_line ||
-            "";
-          return {
-            id: String(s?.id ?? i),
-            recordingId: rec?.id ? String(rec.id) : null,
-            shareToken: s?.share_token ?? rec?.share_token ?? null,
-            title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
-            highlights: highlightCountFromRecording(rec),
-            shareWith: s?.shared_with_user_name || "—",
-            ownerName: rec?.owner_name ?? "",
-            ownerPhone: rec?.owner_phone ?? "",
-            location: loc,
-            thumbUrl: recordingThumbUrl(rec),
-            duration: recordingDurationLabel(rec),
-          };
-        })
-      : [];
+  const sharedRows = useMemo(() => {
+    if (!Array.isArray(shared) || shared.length === 0) return [];
+    const byRec = new Map<string, any[]>();
+    for (const s of shared) {
+      const rec = s?.recording;
+      const rid = String(rec?.id ?? "");
+      if (!rid) continue;
+      byRec.set(rid, [...(byRec.get(rid) ?? []), s]);
+    }
+    return [...byRec.values()].map((group, i) => {
+      const s = group[0];
+      const rec = s?.recording;
+      const td = rec?.turf_detail;
+      const loc =
+        [td?.city, td?.state].filter(Boolean).join(", ") ||
+        td?.address_line ||
+        "";
+      const sharerIds = new Set(
+        group.map((x: any) => x?.recording?.userId).filter(Boolean),
+      );
+      const peopleCount = Math.max(1, sharerIds.size || group.length);
+      return {
+        id: String(rec?.id ?? i),
+        recordingId: rec?.id ? String(rec.id) : null,
+        shareToken: s?.share_token ?? rec?.share_token ?? null,
+        title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
+        highlights: highlightCountFromRecording(rec),
+        location: loc,
+        thumbUrl: recordingThumbUrl(rec),
+        duration: recordingDurationLabel(rec),
+        peopleCount,
+      };
+    });
+  }, [shared]);
 
-  const sharedToRows =
-    sharedByMe.length > 0
-      ? sharedByMe.map((s: any, i: number) => {
-          const rec = s?.recording;
-          const td = rec?.turf_detail;
-          const loc =
-            [td?.city, td?.state].filter(Boolean).join(", ") ||
-            td?.address_line ||
-            "";
-          return {
-            id: String(s?.id ?? i),
-            recordingId: rec?.id ? String(rec.id) : null,
-            title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
-            highlights: highlightCountFromRecording(rec),
-            sharedToPhone: String(s?.shared_to_user_phone ?? ""),
-            sharedToName: String(s?.shared_to_user_name ?? ""),
-            location: loc,
-            thumbUrl: recordingThumbUrl(rec),
-            duration: recordingDurationLabel(rec),
-          };
-        })
-      : [];
+  const sharedToRows = useMemo(() => {
+    if (!Array.isArray(sharedByMe) || sharedByMe.length === 0) return [];
+    const byRec = new Map<string, any[]>();
+    for (const s of sharedByMe) {
+      const rid = String(s?.recording?.id ?? "");
+      if (!rid) continue;
+      byRec.set(rid, [...(byRec.get(rid) ?? []), s]);
+    }
+    return [...byRec.values()].map((group, i) => {
+      const s = group[0];
+      const rec = s?.recording;
+      const td = rec?.turf_detail;
+      const loc =
+        [td?.city, td?.state].filter(Boolean).join(", ") ||
+        td?.address_line ||
+        "";
+      const recipientIds = new Set(
+        group.map((x: any) => String(x?.shared_to_user_id ?? "")).filter(Boolean),
+      );
+      const peopleCount = Math.max(1, recipientIds.size);
+      return {
+        id: String(rec?.id ?? i),
+        recordingId: rec?.id ? String(rec.id) : null,
+        title: td?.name ?? rec?.owner_name ?? `Recording #${i + 1}`,
+        highlights: highlightCountFromRecording(rec),
+        location: loc,
+        thumbUrl: recordingThumbUrl(rec),
+        duration: recordingDurationLabel(rec),
+        peopleCount,
+      };
+    });
+  }, [sharedByMe]);
 
   const { state: readyState, dismiss: dismissReady } = useRecordingReadyToast();
 
@@ -382,7 +489,7 @@ export default function FieldflixRecordingsScreen() {
         >
         <FieldflixScreenHeader
           title="Your Recordings"
-          onBack={() => navigateBackOrHome(router)}
+          onBack={() => navigateMainTabBackToHome(router)}
           backAccessibilityLabel="Back to home"
         />
 
@@ -391,21 +498,21 @@ export default function FieldflixRecordingsScreen() {
             <SegTab
               active={tab === "my"}
               onPress={() => setTab("my")}
-              iconSource={RECORDINGS_REC_LOCAL.tabMy}
+              iconName="video-outline"
               label="My Recordings"
               compact={isCompact}
             />
             <SegTab
               active={tab === "shared"}
               onPress={() => setTab("shared")}
-              iconSource={RECORDINGS_REC_LOCAL.tabShared}
+              iconName="share-variant-outline"
               label="Shared Recordings"
               compact={isCompact}
             />
             <SegTab
               active={tab === "find"}
               onPress={() => setTab("find")}
-              iconSource={RECORDINGS_REC_LOCAL.tabFind}
+              iconName="magnify"
               label="Find Recordings"
               compact={isCompact}
             />
@@ -513,6 +620,24 @@ export default function FieldflixRecordingsScreen() {
                         <PlayIcon color="#0a0a0a" size={18} />
                       </View>
                     </View>
+                    {row.recordingId ? (
+                      <View
+                        style={styles.thumbLockState}
+                        pointerEvents="none"
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      >
+                        <MaterialCommunityIcons
+                          name={
+                            recordingUnlockedPlayback(row.recordingId)
+                              ? "lock-open-outline"
+                              : "lock-outline"
+                          }
+                          size={14}
+                          color="#ffffff"
+                        />
+                      </View>
+                    ) : null}
                   </View>
                   <View style={styles.myBody}>
                     <Text style={styles.myTitle} numberOfLines={2}>
@@ -664,9 +789,8 @@ export default function FieldflixRecordingsScreen() {
                         </View>
                         <View style={styles.sharedPill}>
                           <Text style={styles.sharedPillText} numberOfLines={1}>
-                            {sharedSubTab === "withMe"
-                              ? `From: ${card.ownerName || "—"}${card.ownerPhone ? ` • ${card.ownerPhone}` : ""}`
-                              : `To: ${card.sharedToPhone || card.sharedToName || "—"}`}
+                            {card.peopleCount}{" "}
+                            {card.peopleCount === 1 ? "person" : "people"}
                           </Text>
                         </View>
                       </View>
@@ -798,8 +922,10 @@ export default function FieldflixRecordingsScreen() {
                   <Text style={styles.findLabel}>LOCATION</Text>
                 </View>
                 <TextInput
+                  ref={findLocationInputRef}
                   value={findLocation}
                   onFocus={() => setShowLocationOptions(true)}
+                  onBlur={() => scheduleScrollFilledInputToStart(findLocationInputRef)}
                   onChangeText={(v) => {
                     setFindLocation(v);
                     setShowLocationOptions(true);
@@ -820,6 +946,7 @@ export default function FieldflixRecordingsScreen() {
                           setFindArena("");
                           setFindGround("");
                           setShowLocationOptions(false);
+                          scheduleScrollFilledInputToStart(findLocationInputRef);
                         }}
                       >
                         <Text style={styles.findDropdownItemText}>{opt}</Text>
@@ -854,8 +981,10 @@ export default function FieldflixRecordingsScreen() {
                       <Text style={styles.findLabel}>ARENA</Text>
                     </View>
                     <TextInput
+                      ref={findArenaInputRef}
                       value={findArena}
                       onFocus={() => setShowArenaOptions(true)}
+                      onBlur={() => scheduleScrollFilledInputToStart(findArenaInputRef)}
                       onChangeText={(v) => {
                         setFindArena(v);
                         setShowArenaOptions(true);
@@ -875,6 +1004,7 @@ export default function FieldflixRecordingsScreen() {
                               setFindArena(opt);
                               setFindGround("");
                               setShowArenaOptions(false);
+                              scheduleScrollFilledInputToStart(findArenaInputRef);
                             }}
                           >
                             <Text style={styles.findDropdownItemText}>{opt}</Text>
@@ -908,8 +1038,16 @@ export default function FieldflixRecordingsScreen() {
                   <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
                 </View>
                 <TextInput
+                  ref={findGroundInputRef}
                   value={findGround}
                   onFocus={() => setShowGroundOptions(true)}
+                  onBlur={() => {
+                    scheduleScrollFilledInputToStart(findGroundInputRef);
+                    const g = findGround.trim();
+                    if (g && (isUuidCourtLabel(g) || UUID_RE.test(g))) {
+                      setFindGround("");
+                    }
+                  }}
                   onChangeText={(v) => {
                     setFindGround(v);
                     setShowGroundOptions(true);
@@ -928,6 +1066,7 @@ export default function FieldflixRecordingsScreen() {
                         onPress={() => {
                           setFindGround(opt);
                           setShowGroundOptions(false);
+                          scheduleScrollFilledInputToStart(findGroundInputRef);
                         }}
                       >
                         <Text style={styles.findDropdownItemText}>{opt}</Text>
@@ -1048,16 +1187,19 @@ export default function FieldflixRecordingsScreen() {
 function SegTab({
   active,
   onPress,
-  iconSource,
+  iconName,
   label,
   compact = false,
 }: {
   active: boolean;
   onPress: () => void;
-  iconSource: ImageSourcePropType;
+  iconName: ComponentProps<typeof MaterialCommunityIcons>["name"];
   label: string;
   compact?: boolean;
 }) {
+  const iconSize = compact ? 22 : 24;
+  const iconColor = active ? ACCENT : MUTED;
+
   return (
     <Pressable
       onPress={onPress}
@@ -1067,10 +1209,10 @@ function SegTab({
         active && styles.segTabActive,
       ]}
     >
-      <Image
-        source={iconSource}
-        style={{ width: compact ? 20 : 24, height: compact ? 20 : 24 }}
-        resizeMode="contain"
+      <MaterialCommunityIcons
+        name={iconName}
+        size={iconSize}
+        color={iconColor}
       />
       <Text
         style={[
@@ -1307,6 +1449,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  thumbLockState: {
+    position: "absolute",
+    top: 6,
+    left: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 11,
+  },
   myBody: { flex: 1, minWidth: 0, gap: 6 },
   myTitle: {
     fontFamily: FF.bold,
@@ -1495,8 +1651,8 @@ const styles = StyleSheet.create({
   },
   sharedTitle: {
     fontFamily: FF.bold,
-    fontSize: 18,
-    lineHeight: 23,
+    fontSize: 12,
+    lineHeight: 16,
     letterSpacing: -0.36,
     color: "#fff",
     textShadowColor: "rgba(0,0,0,0.75)",
@@ -1773,6 +1929,12 @@ const styles = StyleSheet.create({
     fontFamily: FF.semiBold,
     fontSize: 13,
     color: "#fff",
+    textAlign: "left",
+    ...Platform.select({
+      ios: { writingDirection: "ltr" as const },
+      android: { textAlignVertical: "center" },
+      default: {},
+    }),
   },
   findDropdown: {
     marginTop: 8,

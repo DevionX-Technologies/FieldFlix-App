@@ -30,6 +30,8 @@ export const TIME_LEFT_KEY = "recordingTimeLeft";
 export const TIME_TURF_NAME = "turfName";
 export const TIME_GROUNDLOCATION = "groundLocation";
 export const RECORDING_CAMERA_ID = "recordingCameraID";
+/** Camera UUID from the QR for the session in progress (vs `RECORDING_CAMERA_ID` = recording row id). */
+export const RECORDING_QR_CAMERA_ID = "fieldflix-recording-qr-camera-id";
 export const TIME_TOTAL = "totalTime";
 export const TURF_ID = "turfId";
 /** SecureStore key tracking the most recently stopped recording — drives the post-stop "ready" toast on Recordings. */

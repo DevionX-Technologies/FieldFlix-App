@@ -1,5 +1,11 @@
 /** Shared display helpers for `Recording` payloads from the Nest API. */
 
+import {
+  fieldflixHomeSportsFromSupported,
+  summarizeTurfSportsLine,
+  type HomeSportKey,
+} from '@/utils/turfSports';
+
 export function formatRecordingListWhen(iso: string | Date | undefined | null): string {
   if (iso == null) return '—';
   const d = typeof iso === 'string' || typeof iso === 'number' ? new Date(iso) : iso;
@@ -67,14 +73,110 @@ export function recordingIsReady(
   return Boolean(rec.mux_playback_id || rec.mux_media_url || rec.mux_public_url);
 }
 
+/** Normalizes API enum strings (`Pickleball`, `paddle`, `FOOT_BALL`, etc.). */
+function normalizeSportToken(raw: string): string {
+  return String(raw).toLowerCase().replace(/_/g, ' ').trim();
+}
+
+/**
+ * Labels a session/recording turf for FieldFlix UI.
+ *
+ * Turfs expose `sports_supported` as Postgres enum arrays; the first element is often
+ * a generic/default (e.g. Football) unrelated to FieldFlix. We therefore **prefer**
+ * pickleball → padel → cricket when **any** list entry matches, aligned with backend
+ * `deriveFlickSportFromTurf`, and avoid showing unrelated sports alone.
+ */
 export function sportLabelFromTurf(
   supported: string[] | undefined | null,
   fallback = 'Pickleball',
 ): string {
   if (!supported?.length) return fallback;
-  const raw = String(supported[0]);
-  if (raw === 'Paddle') return 'Padel';
+  const norm = supported.map((x) => normalizeSportToken(String(x)));
+  const hasPickle = norm.some((s) => s.includes('pickle'));
+  const hasPaddle = norm.some((s) => s.includes('paddle'));
+  const hasCricket = norm.some((s) => s.includes('cricket'));
+  if (hasPickle) return 'Pickleball';
+  if (hasPaddle) return 'Padel';
+  if (hasCricket) return 'Cricket';
+  return 'Multi-sport';
+}
+
+/** Stored on `POST /recording/start` metadata when the user picks a sport. */
+export const FIELD_FLIX_SESSION_SPORT_METADATA_KEY =
+  'fieldflix_session_sport' as const;
+
+function homeSportToLabel(key: HomeSportKey): string {
+  if (key === 'pickleball') return 'Pickleball';
+  if (key === 'padel') return 'Padel';
+  return 'Cricket';
+}
+
+/** Parse persisted session sport from recording metadata JSON. */
+export function parseFieldflixSessionSportFromMetadata(
+  metadata: unknown,
+): HomeSportKey | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const raw = (metadata as Record<string, unknown>)[
+    FIELD_FLIX_SESSION_SPORT_METADATA_KEY
+  ];
+  if (raw !== 'pickleball' && raw !== 'padel' && raw !== 'cricket')
+    return null;
   return raw;
+}
+
+/**
+ * Sport label + filter tabs for Sessions. Prefer saved metadata; if venue lists
+ * several FieldFlix sports and metadata is missing, show a multi-line label and
+ * do not tie the row to a single tab (filters as "All sports" only).
+ */
+export function recordingSportUi(rec: {
+  metadata?: unknown;
+  turf?: { sports_supported?: string[] | null } | null;
+}): { sportLabel: string; sportFilterKeys: HomeSportKey[] } {
+  const meta = parseFieldflixSessionSportFromMetadata(rec.metadata);
+  if (meta) {
+    return {
+      sportLabel: homeSportToLabel(meta),
+      sportFilterKeys: [meta],
+    };
+  }
+
+  const supported = rec.turf?.sports_supported ?? null;
+  const ffKeys = fieldflixHomeSportsFromSupported(supported);
+
+  if (ffKeys.length === 0) {
+    return {
+      sportLabel: sportLabelFromTurf(supported ?? undefined),
+      sportFilterKeys: [],
+    };
+  }
+  if (ffKeys.length === 1) {
+    const key = ffKeys[0]!;
+    return {
+      sportLabel: homeSportToLabel(key),
+      sportFilterKeys: [key],
+    };
+  }
+
+  const line = summarizeTurfSportsLine(supported);
+  return {
+    sportLabel: line || 'Multi-sport',
+    sportFilterKeys: [],
+  };
+}
+
+/**
+ * Highlights tab / IAP plan: pinned metadata wins, else single turf sport, else pickleball fallback.
+ */
+export function homeSportPlanFromRecording(rec: {
+  metadata?: unknown;
+  turf?: { sports_supported?: string[] | null } | null;
+}): HomeSportKey {
+  const meta = parseFieldflixSessionSportFromMetadata(rec.metadata);
+  if (meta) return meta;
+  const keys = fieldflixHomeSportsFromSupported(rec.turf?.sports_supported);
+  if (keys.length === 1) return keys[0]!;
+  return 'pickleball';
 }
 
 /**

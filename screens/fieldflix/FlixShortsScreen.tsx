@@ -13,14 +13,14 @@ import { FIELD_FLIX_HEADER_HEIGHT, FieldflixScreenHeader } from "@/screens/field
 import { FF } from "@/screens/fieldflix/fonts";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { WebShell } from "@/screens/fieldflix/WebShell";
-import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
+import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -33,25 +33,23 @@ import {
 } from "react-native";
 
 const SPORT_TILES_H = 54;
+const FLIX_SPORT_ICON_SIZE = 16;
 
 const SPORT_TILES = [
-  { id: "all" as const, label: "All", icon: null as number | null },
-  {
-    id: "pickleball" as const,
-    label: "Pickleball",
-    icon: require("@/assets/fieldflix-web/pickleball.png"),
-  },
-  {
-    id: "padel" as const,
-    label: "Padel",
-    icon: require("@/assets/fieldflix-web/padel.png"),
-  },
-  {
-    id: "cricket" as const,
-    label: "Cricket",
-    icon: require("@/assets/fieldflix-web/coming-soon.png"),
-  },
+  { id: "all" as const, label: "All" },
+  { id: "pickleball" as const, label: "Pickleball" },
+  { id: "padel" as const, label: "Padel" },
+  { id: "cricket" as const, label: "Cricket" },
 ] as const;
+
+function flixSportVectorIcon(
+  id: (typeof SPORT_TILES)[number]["id"],
+): ComponentProps<typeof MaterialCommunityIcons>["name"] | null {
+  if (id === "all") return null;
+  if (id === "cricket") return "cricket";
+  if (id === "padel") return "tennis-ball";
+  return "racquetball";
+}
 
 type SportId = (typeof SPORT_TILES)[number]["id"];
 const LIKED_SHORTS_KEY = "fieldflicks-liked-shorts-v1";
@@ -201,7 +199,7 @@ export default function FieldflixFlixShortsScreen() {
       <View style={styles.flex}>
         <FieldflixScreenHeader
           title="FlickShorts"
-          onBack={() => navigateBackOrHome(router)}
+          onBack={() => navigateMainTabBackToHome(router)}
           backAccessibilityLabel="Back to home"
         />
         <View style={styles.sportsStrip}>
@@ -210,25 +208,28 @@ export default function FieldflixFlixShortsScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.sportsStripContent}
           >
-            {SPORT_TILES.map((tile) => (
-              <Pressable
-                key={tile.id}
-                style={[
-                  styles.sportTile,
-                  sport === tile.id && styles.sportTileOn,
-                ]}
-                onPress={() => setSport(tile.id)}
-              >
-                {tile.icon != null ? (
-                  <Image
-                    source={tile.icon}
-                    style={styles.sportIcon}
-                    resizeMode="contain"
-                  />
-                ) : null}
-                <Text style={styles.sportTileLabel}>{tile.label}</Text>
-              </Pressable>
-            ))}
+            {SPORT_TILES.map((tile) => {
+              const iconName = flixSportVectorIcon(tile.id);
+              return (
+                <Pressable
+                  key={tile.id}
+                  style={[
+                    styles.sportTile,
+                    sport === tile.id && styles.sportTileOn,
+                  ]}
+                  onPress={() => setSport(tile.id)}
+                >
+                  {iconName ? (
+                    <MaterialCommunityIcons
+                      name={iconName}
+                      size={FLIX_SPORT_ICON_SIZE}
+                      color={WEB.greenBright}
+                    />
+                  ) : null}
+                  <Text style={styles.sportTileLabel}>{tile.label}</Text>
+                </Pressable>
+              );
+            })}
           </ScrollView>
         </View>
 

@@ -5,7 +5,10 @@
     "version": "1.1.9",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": ["fieldflicks", "fieldflicksmobilelatest"],
+    "scheme": [
+      "fieldflicks",
+      "fieldflicksmobilelatest"
+    ],
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -32,7 +35,7 @@
         "NSBluetoothAlwaysUsageDescription": "FieldFlicks may use Bluetooth to connect with nearby devices for sharing or syncing features.",
         "NSMotionUsageDescription": "FieldFlicks may use motion and fitness data to enhance activity tracking features."
       },
-      "buildNumber": "13"
+      "buildNumber": "14"
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -75,7 +78,10 @@
               "pathPrefix": "/shared/media"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },

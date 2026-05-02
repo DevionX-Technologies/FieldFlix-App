@@ -1,11 +1,41 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { P, RATE_STARS } from './profileSubScreensAssets'
 import './profileRateUsScreen.css'
 
+const RATE_KEY = 'fieldflicks-rate-us-submitted-web'
+
 export default function ProfileRateUsScreen() {
   const navigate = useNavigate()
   const [rating, setRating] = useState(0)
+  const [submitted, setSubmitted] = useState(false)
+
+  useEffect(() => {
+    try {
+      setSubmitted(window.localStorage.getItem(RATE_KEY) === '1')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const onSubmit = () => {
+    if (rating < 1) {
+      window.alert('Tap the stars to choose a rating first.')
+      return
+    }
+    try {
+      window.localStorage.setItem(RATE_KEY, '1')
+      setSubmitted(true)
+      window.open(
+        'https://play.google.com/store/apps/details?id=com.fieldflicks',
+        '_blank',
+        'noopener,noreferrer',
+      )
+    } catch {
+      window.alert(`Thanks — you rated ${rating} star${rating === 1 ? '' : 's'}.`)
+      setSubmitted(true)
+    }
+  }
 
   return (
     <div className="pru-page">
@@ -28,7 +58,8 @@ export default function ProfileRateUsScreen() {
                   key={src}
                   type="button"
                   className={`pru-star-btn ${on ? 'pru-star-btn--on' : ''}`}
-                  onClick={() => setRating(n)}
+                  onClick={() => !submitted && setRating(n)}
+                  disabled={submitted}
                   aria-label={`${n} star${n > 1 ? 's' : ''}`}
                 >
                   <img src={src} alt="" width={30} height={30} draggable={false} />
@@ -37,8 +68,18 @@ export default function ProfileRateUsScreen() {
             })}
           </div>
           <p className="pru-sub">Your feedback helps us improve</p>
-          <button type="button" className="pru-submit">
-            Submit Review
+          {submitted ? (
+            <p className="pru-status" role="status">
+              Status: submitted — thanks for rating FieldFlicks.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="pru-submit"
+            onClick={onSubmit}
+            disabled={submitted}
+          >
+            {submitted ? 'Submitted' : 'Submit Review'}
           </button>
           <button type="button" className="pru-later" onClick={() => navigate(-1)}>
             Maybe Later

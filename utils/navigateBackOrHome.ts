@@ -19,3 +19,19 @@ export function navigateBackOrHome(router: RouterBack): void {
   }
   router.replace(Paths.home as Href);
 }
+
+/**
+ * Navbar root screens (Sessions, Recordings, FlickShorts): back always jumps to Home
+ * instead of popping an arbitrary stack entry.
+ */
+export function navigateMainTabBackToHome(router: RouterBack): void {
+  try {
+    router.replace(Paths.home as Href);
+  } catch {
+    try {
+      router.back();
+    } catch {
+      router.replace(Paths.home as Href);
+    }
+  }
+}

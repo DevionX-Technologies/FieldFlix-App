@@ -147,10 +147,9 @@ export const VideoPlayerControls: React.FC<VideoPlayerControlsProps> = ({
         {!isVideoReady || stallHint ? (
           <View style={styles.bufferingOverlay} pointerEvents="none">
             {!stallHint ? <ActivityIndicator size="large" color="#fff" /> : null}
-            <Text style={stallHint ? styles.stallHintText : styles.bufferingText}>
-              {stallHint ??
-                "Loading your video. This can take a few seconds on first play."}
-            </Text>
+            {stallHint ? (
+              <Text style={styles.stallHintText}>{stallHint}</Text>
+            ) : null}
           </View>
         ) : null}
       </View>
@@ -188,12 +187,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
     gap: 12,
-  },
-  bufferingText: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
-    textAlign: 'center',
-    lineHeight: 16,
   },
   stallHintText: {
     color: 'rgba(254, 202, 202, 0.95)',

@@ -2,9 +2,15 @@ import { Paths } from '@/data/paths';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { WebShell } from '@/screens/fieldflix/WebShell';
+import axiosInstance from '@/utils/axiosInstance';
+import { logRecordingFlowDebug } from '@/utils/recordingFlowDebug';
+import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
+import { fieldflixHomeSportsFromSupported, type HomeSportKey } from '@/utils/turfSports';
+import axios from 'axios';
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,17 +28,30 @@ const PRESETS = [
   { id: '60', seconds: 60 * 60, top: '1', bottom: 'hr' },
   { id: '90', seconds: 90 * 60, top: '1:30', bottom: 'hrs' },
   { id: '120', seconds: 120 * 60, top: '2', bottom: 'hrs' },
+  { id: '150', seconds: 150 * 60, top: '2:30', bottom: 'hrs' },
+  { id: '180', seconds: 180 * 60, top: '3', bottom: 'hrs' },
+  { id: '210', seconds: 210 * 60, top: '3:30', bottom: 'hrs' },
+  { id: '240', seconds: 240 * 60, top: '4', bottom: 'hrs' },
+  { id: '270', seconds: 270 * 60, top: '4:30', bottom: 'hrs' },
+  { id: '300', seconds: 300 * 60, top: '5', bottom: 'hrs' },
 ] as const;
 
-const STEP_SEC = 5 * 60;
-const MIN_SEC = 60;
-const MAX_SEC = 4 * 60 * 60;
+/** ± buttons move duration in half-hour steps, from 30 min up to 5 hours. */
+const STEP_SEC = 30 * 60;
+const MIN_SEC = 30 * 60;
+const MAX_SEC = 5 * 60 * 60;
 
 function formatHMS(totalSeconds: number) {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
   return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
+function homeSportChipLabel(key: HomeSportKey): string {
+  if (key === 'pickleball') return 'Pickleball';
+  if (key === 'padel') return 'Padel';
+  return 'Cricket';
 }
 
 function normalizeGroundLabel(groundNumber?: string, groundDescription?: string): string {
@@ -68,11 +87,100 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
     params.GroundNumber,
     params.GroundDescription,
   );
+  /** Kept for `/recording-active` params only (not shown under the venue title). */
   const scanned =
     [params.GroundDescription, params.turfId, params.cameraId].filter(Boolean).join(' · ') || '';
 
+  useEffect(() => {
+    logRecordingFlowDebug('recording_time_screen_mount', {
+      params: {
+        Name: params.Name,
+        GroundLocation: params.GroundLocation,
+        turfId: params.turfId,
+        cameraId: params.cameraId,
+        GroundNumber: params.GroundNumber,
+        GroundDescription: params.GroundDescription,
+      },
+      cameraIdEmpty: !String(params.cameraId ?? '').trim(),
+      turfIdEmpty: !String(params.turfId ?? '').trim(),
+    });
+  }, [
+    params.Name,
+    params.GroundLocation,
+    params.turfId,
+    params.cameraId,
+    params.GroundNumber,
+    params.GroundDescription,
+  ]);
+
   const [durationSec, setDurationSec] = useState(60 * 60);
   const [activePreset, setActivePreset] = useState<string>('60');
+
+  const turfIdTrim = String(params.turfId ?? '').trim();
+  const [turfSportsRaw, setTurfSportsRaw] = useState<unknown>(null);
+  const [turfLoadState, setTurfLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>(
+    turfIdTrim ? 'loading' : 'idle',
+  );
+  const [selectedSessionSport, setSelectedSessionSport] = useState<HomeSportKey | null>(
+    null,
+  );
+
+  const ffSports = useMemo(
+    () => fieldflixHomeSportsFromSupported(turfSportsRaw),
+    [turfSportsRaw],
+  );
+
+  useEffect(() => {
+    if (!turfIdTrim) {
+      setTurfLoadState('idle');
+      setTurfSportsRaw(null);
+      return;
+    }
+    let cancelled = false;
+    setTurfLoadState('loading');
+    void (async () => {
+      try {
+        const resp = await axiosInstance.get(`/turfs/${turfIdTrim}`);
+        if (cancelled) return;
+        const body = resp.data as Record<string, unknown>;
+        const t = (body?.data ?? body) as Record<string, unknown> | undefined;
+        setTurfSportsRaw(t?.sports_supported ?? null);
+        setTurfLoadState('loaded');
+        logRecordingFlowDebug('turf_fetch_ok', {
+          request: { method: 'GET', path: `/turfs/${turfIdTrim}` },
+          httpStatus: resp.status,
+          turfId: turfIdTrim,
+          turfName: typeof t?.name === 'string' ? t.name : undefined,
+          sports_supported: t?.sports_supported ?? null,
+        });
+      } catch (e) {
+        if (!cancelled) {
+          setTurfSportsRaw(null);
+          setTurfLoadState('error');
+          logRecordingFlowDebug('turf_fetch_error', {
+            request: { method: 'GET', path: `/turfs/${turfIdTrim}` },
+            turfId: turfIdTrim,
+            error: axios.isAxiosError(e)
+              ? { status: e.response?.status, data: e.response?.data, message: e.message }
+              : String(e),
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [turfIdTrim]);
+
+  useEffect(() => {
+    if (ffSports.length <= 1) setSelectedSessionSport(ffSports[0] ?? null);
+    else setSelectedSessionSport(null);
+  }, [ffSports]);
+
+  const needsSportPick = Boolean(turfIdTrim) && ffSports.length > 1;
+  const turfBlocking = Boolean(turfIdTrim) && turfLoadState === 'loading';
+  const startBlocked =
+    turfBlocking || (needsSportPick && selectedSessionSport == null);
 
   const displayTime = useMemo(() => formatHMS(durationSec), [durationSec]);
 
@@ -85,7 +193,10 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
 
   const bump = useCallback((delta: number) => {
     setDurationSec((prev) => {
-      const next = Math.min(MAX_SEC, Math.max(MIN_SEC, prev + delta));
+      const raw = prev + delta;
+      const snapped =
+        STEP_SEC > 0 ? Math.round(raw / STEP_SEC) * STEP_SEC : raw;
+      const next = Math.min(MAX_SEC, Math.max(MIN_SEC, snapped));
       const match = PRESETS.find((p) => p.seconds === next);
       setActivePreset(match?.id ?? '');
       return next;
@@ -93,10 +204,25 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
   }, []);
 
   const onStart = () => {
-    const minutes = Math.round(durationSec / 60);
-    router.push({
-      pathname: Paths.recordingActive,
-      params: {
+    if (startBlocked) return;
+    void (async () => {
+      if (await hasPersistedRecordingSession()) {
+        Alert.alert(
+          'Recording in progress',
+          'You already have an active session. Open your recording screen to finish it, or check Sessions — you can’t start another venue until that one ends.',
+        );
+        return;
+      }
+      const minutes = Math.round(durationSec / 60);
+      const metaSport =
+        selectedSessionSport &&
+        (ffSports.includes(selectedSessionSport) || ffSports.length <= 1)
+          ? selectedSessionSport
+          : ffSports.length === 1
+            ? ffSports[0]
+            : null;
+
+      const nextParams = {
         Name: venueName,
         GroundLocation: venueAddress,
         ChoosenTimeInMinutes: String(minutes),
@@ -104,8 +230,14 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         turfId: params.turfId ?? '',
         cameraId: params.cameraId ?? '',
         scanned: scanned.slice(0, 200),
-      },
-    });
+        ...(metaSport ? { sessionSport: metaSport } : {}),
+      };
+      logRecordingFlowDebug('navigate_recording_active', { pathname: Paths.recordingActive, params: nextParams });
+      router.push({
+        pathname: Paths.recordingActive,
+        params: nextParams,
+      });
+    })();
   };
 
   const topPad = Math.max(52, insets.top + 44);
@@ -137,12 +269,6 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
               </View>
               <View style={styles.locText}>
                 <Text style={styles.locName}>{venueName}</Text>
-                <Text style={styles.locAddr}>{venueAddress}</Text>
-                {scanned ? (
-                  <Text style={styles.locQr} numberOfLines={4}>
-                    {scanned.length > 48 ? `${scanned.slice(0, 45)}…` : scanned}
-                  </Text>
-                ) : null}
               </View>
             </View>
 
@@ -175,7 +301,12 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
               </Pressable>
             </View>
 
-            <View style={styles.presets}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.presetsScroll}
+              style={styles.presetsScrollOuter}
+            >
               {PRESETS.map((p) => (
                 <Pressable
                   key={p.id}
@@ -192,9 +323,44 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
                   </Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
 
-            <Pressable style={styles.start} onPress={onStart}>
+            {needsSportPick ? (
+              <View style={styles.sportBlock}>
+                <Text style={styles.sportHeading}>Which sport is this session?</Text>
+                <View style={styles.sportChipRow}>
+                  {ffSports.map((k) => {
+                    const on = selectedSessionSport === k;
+                    return (
+                      <Pressable
+                        key={k}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        onPress={() => setSelectedSessionSport(k)}
+                        style={[styles.sportChip, on && styles.sportChipSelected]}
+                      >
+                        <Text style={[styles.sportChipTxt, on && styles.sportChipTxtSelected]}>
+                          {homeSportChipLabel(k)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                {!selectedSessionSport && turfLoadState === 'loaded' ? (
+                  <Text style={styles.sportHint}>Select a sport before starting.</Text>
+                ) : null}
+              </View>
+            ) : null}
+
+            {turfBlocking ? (
+              <Text style={styles.venueLoading}>Loading venue…</Text>
+            ) : null}
+
+            <Pressable
+              style={[styles.start, startBlocked && styles.startDisabled]}
+              onPress={onStart}
+              accessibilityState={{ disabled: startBlocked }}
+            >
               <PlayIcon />
               <Text style={styles.startText}>Start Recording</Text>
             </Pressable>
@@ -305,20 +471,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: '#fff',
   },
-  locAddr: {
-    marginTop: 4,
-    fontFamily: FF.medium,
-    fontSize: 13,
-    color: MUTED,
-    lineHeight: 18,
-  },
-  locQr: {
-    marginTop: 8,
-    fontFamily: FF.medium,
-    fontSize: 11,
-    color: 'rgba(156, 163, 175, 0.9)',
-    lineHeight: 15,
-  },
   court: {
     marginTop: 18,
     flexDirection: 'row',
@@ -374,13 +526,19 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: '#fff',
   },
-  presets: {
+  presetsScrollOuter: {
     marginTop: 24,
+    maxHeight: 64,
+    flexGrow: 0,
+  },
+  presetsScroll: {
     flexDirection: 'row',
+    alignItems: 'stretch',
     gap: 8,
+    paddingHorizontal: 2,
   },
   preset: {
-    flex: 1,
+    width: 58,
     minHeight: 56,
     paddingVertical: 8,
     paddingHorizontal: 4,
@@ -414,6 +572,55 @@ const styles = StyleSheet.create({
   presetBotActive: {
     color: 'rgba(255, 255, 255, 0.95)',
   },
+  sportBlock: {
+    marginTop: 18,
+    width: '100%',
+    gap: 10,
+  },
+  sportHeading: {
+    fontFamily: FF.semiBold,
+    fontSize: 14,
+    color: MUTED,
+  },
+  sportChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  sportChip: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: WEB.pillRadius,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+  sportChipSelected: {
+    backgroundColor: ACCENT,
+    borderColor: 'transparent',
+  },
+  sportChipTxt: {
+    fontFamily: FF.semiBold,
+    fontSize: 14,
+    color: '#e5e7eb',
+  },
+  sportChipTxtSelected: {
+    color: '#fff',
+  },
+  sportHint: {
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    color: '#fbbf24',
+    textAlign: 'center',
+  },
+  venueLoading: {
+    marginTop: 14,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: MUTED,
+    textAlign: 'center',
+  },
   start: {
     marginTop: 24,
     flexDirection: 'row',
@@ -424,6 +631,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: WEB.pillRadius,
     backgroundColor: ACCENT,
+  },
+  startDisabled: {
+    opacity: 0.42,
   },
   startText: {
     fontFamily: FF.bold,

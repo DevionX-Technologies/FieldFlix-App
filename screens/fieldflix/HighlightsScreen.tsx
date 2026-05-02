@@ -1,7 +1,7 @@
 import { BASE_URL, RAZORPAY_KEY_ID } from '@/data/constants';
 import { Paths } from '@/data/paths';
 import {
-  createPlanOrder,
+  createRecordingPaymentOrder,
   embedToHighlightDto,
   createShareLink,
   getFieldflixApiErrorMessage,
@@ -11,7 +11,7 @@ import {
   getRecordingHighlights,
   getRecordingPlayback,
   getSavedRecordingHighlights,
-  type PlanId,
+  type PlanOrderResponse,
   type RecordingHighlightDto,
   type RecordingPlayback,
   type SavedRecordingHighlightSummary,
@@ -22,11 +22,16 @@ import {
 import { buildHighlightsAppLink } from '@/utils/highlightsAppLink';
 import { navigateBackOrHome } from '@/utils/navigateBackOrHome';
 import {
+  persistUnlockedRecordingIds,
+  readUnlockedRecordingIds,
+} from '@/utils/unlockedRecordingsStorage';
+import {
   SPORT_PLAN_BASE_INR,
   sportPricingGstAmount,
   sportPricingTotalAfterGst,
 } from '@/utils/sportPlanPricing';
-import { refreshEntitlement, useEntitlement } from '@/lib/fieldflix-entitlement';
+import { useEntitlement } from '@/lib/fieldflix-entitlement';
+import { mergeServerUnlockedRecordingIds } from '@/lib/unlockedRecordingSync';
 import { appendLocalPaymentHistory } from '@/lib/paymentHistoryLocal';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
@@ -35,11 +40,12 @@ import { WEB } from '@/screens/fieldflix/webDesign';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import {
   formatRecordingListWhen,
+  homeSportPlanFromRecording,
   recordingDurationLabel,
   recordingIsReady,
   recordingPlaybackUrl,
+  recordingSportUi,
   recordingThumbUrl,
-  sportLabelFromTurf,
 } from '@/utils/recordingDisplay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -103,7 +109,7 @@ type Props = {
   forcePreview?: boolean;
 };
 
-const UNLOCKED_RECORDINGS_KEY = 'fieldflicks-unlocked-recordings-v1';
+const FLICK_LOCAL_SAVED_KEY = 'fieldflicks-flick-open-saved-v1';
 
 type UiHighlight = RecordingHighlightDto & {
   likes_count?: number;
@@ -127,9 +133,9 @@ function toUiHighlight(h: RecordingHighlightDto): UiHighlight {
   return v;
 }
 
-async function readUnlockedRecordings(): Promise<string[]> {
+async function readFlickLocalSavedIds(): Promise<string[]> {
   try {
-    const raw = await AsyncStorage.getItem(UNLOCKED_RECORDINGS_KEY);
+    const raw = await AsyncStorage.getItem(FLICK_LOCAL_SAVED_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as string[];
     return Array.isArray(parsed) ? parsed.map((x) => String(x)) : [];
@@ -138,25 +144,31 @@ async function readUnlockedRecordings(): Promise<string[]> {
   }
 }
 
+async function appendFlickLocalSavedId(highlightId: string): Promise<void> {
+  try {
+    const id = String(highlightId);
+    if (!id || !id.startsWith('flick-')) return;
+    const prev = await readFlickLocalSavedIds();
+    if (prev.includes(id)) return;
+    const next = [id, ...prev].slice(0, 200);
+    await AsyncStorage.setItem(FLICK_LOCAL_SAVED_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
 async function unlockRecording(recordingId: string): Promise<string[]> {
   try {
     const id = String(recordingId);
     if (!id) return [];
-    const list = await readUnlockedRecordings();
+    const list = await readUnlockedRecordingIds();
     if (list.includes(id)) return list;
     const next = [id, ...list].slice(0, 120);
-    await AsyncStorage.setItem(UNLOCKED_RECORDINGS_KEY, JSON.stringify(next));
+    await persistUnlockedRecordingIds(next);
     return next;
   } catch {
     return [];
   }
-}
-
-function formatClockFromSeconds(n: number): string {
-  const total = Math.max(0, Math.round(n));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
 }
 
 function looksLikeZeroTimestamp(input: string | null | undefined): boolean {
@@ -172,6 +184,7 @@ function looksLikeZeroTimestamp(input: string | null | undefined): boolean {
 }
 
 function highlightBadgeTimestamp(h: UiHighlight): string {
+  if (String(h.id ?? '').startsWith('flick-')) return '15s';
   const raw = String(h.relative_timestamp ?? '').trim();
   if (raw && !looksLikeZeroTimestamp(raw)) return raw;
   const createdAt = h.button_click_timestamp ? new Date(h.button_click_timestamp) : null;
@@ -191,8 +204,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; previewOnly?: string }>();
   const recordingId = forcedRecordingId ?? (params.id as string | undefined) ?? '';
-  const { isPaid: rawIsPaid, refresh } = useEntitlement();
-  const isPaid = forcePreview ? false : rawIsPaid;
+  const { refresh } = useEntitlement();
   const previewOnly = forcePreview || params.previewOnly === '1';
 
   const [recording, setRecording] = useState<any | null>(null);
@@ -204,10 +216,15 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   >([]);
   const [engageBusy, setEngageBusy] = useState<string | null>(null);
   const [unlockedRecordings, setUnlockedRecordings] = useState<string[]>([]);
+  /** FlickShort rows use local ids (`flick-…`); bookmark state is mirrored here after open. */
+  const [flickLocalSavedIds, setFlickLocalSavedIds] = useState<string[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
   const [apiDebug, setApiDebug] = useState<string | null>(null);
   const [showUnlockSheet, setShowUnlockSheet] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutQuote, setCheckoutQuote] = useState<PlanOrderResponse | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!recordingId) {
@@ -265,17 +282,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         const fromShorts = shorts
           .filter((s) => String(s.recordingId) === String(recordingId))
           .map((s): UiHighlight => {
-            const startSec = Number(s.startSec ?? 0);
-            const endSec = Number(s.endSec ?? startSec + 15);
-            const hasValidStart = Number.isFinite(startSec) && startSec > 0;
-            const clipLen = Number.isFinite(endSec) && endSec > startSec
-              ? formatClockFromSeconds(endSec - startSec)
-              : '15s';
             return {
               id: `flick-${s.id}`,
-              relative_timestamp: hasValidStart
-                ? formatClockFromSeconds(startSec)
-                : `${clipLen} clip`,
+              /** Feed cards always show flick length (15s), not position in full match. */
+              relative_timestamp: '15s',
             button_click_timestamp: s.createdAt,
             playback_id: s.muxPlaybackId ?? null,
             mux_public_playback_url: s.muxPlaybackId
@@ -344,14 +354,44 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   useFocusEffect(
     useCallback(() => {
       void refreshSavedHighlights();
+      void readFlickLocalSavedIds().then(setFlickLocalSavedIds);
     }, [refreshSavedHighlights]),
   );
 
   useEffect(() => {
     void load();
-    void readUnlockedRecordings().then(setUnlockedRecordings);
+    void mergeServerUnlockedRecordingIds().then(setUnlockedRecordings);
+    void readFlickLocalSavedIds().then(setFlickLocalSavedIds);
     void refresh();
   }, [load, refresh]);
+
+  useEffect(() => {
+    if (!showUnlockSheet || !recordingId) {
+      setCheckoutQuote(null);
+      setQuoteError(null);
+      setQuoteLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setQuoteLoading(true);
+    setQuoteError(null);
+    void createRecordingPaymentOrder(recordingId)
+      .then((q) => {
+        if (!cancelled) setCheckoutQuote(q);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setCheckoutQuote(null);
+          setQuoteError(getFieldflixApiErrorMessage(e, 'Could not load price'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setQuoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showUnlockSheet, recordingId]);
 
   const heroThumb = useMemo(() => {
     if (!recording) return null;
@@ -404,22 +444,31 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     };
   }, [recordingId, heroPlaybackUrl, load, recording?.status]);
 
-  const sportLabel = sportLabelFromTurf(
-    Array.isArray(recording?.turf?.sports_supported)
-      ? (recording.turf.sports_supported as string[])
-      : undefined,
-  );
+  const sportLabel = useMemo(() => {
+    if (!recording) return 'Pickleball';
+    return recordingSportUi(recording).sportLabel;
+  }, [recording]);
   const sportPlan = useMemo<'cricket' | 'pickleball' | 'padel'>(() => {
-    const raw = String(sportLabel ?? '').toLowerCase();
-    if (raw.includes('cricket')) return 'cricket';
-    if (raw.includes('padel') || raw.includes('paddle')) return 'padel';
-    return 'pickleball';
-  }, [sportLabel]);
+    if (!recording) return 'pickleball';
+    return homeSportPlanFromRecording(recording);
+  }, [recording]);
   const basePrice = SPORT_PLAN_BASE_INR[sportPlan];
   const totalAmount = sportPricingTotalAfterGst(sportPlan);
   const gstAmount = sportPricingGstAmount(sportPlan);
   const isFreeSportUnlock = totalAmount === 0;
-  const hasRecordingAccess = isPaid || unlockedRecordings.includes(recordingId);
+  /** Per-recording purchases only (`RECORDING_ACCESS`); sport-wide MEDIA plans do not unlock other videos. */
+  const hasRecordingAccess = unlockedRecordings.includes(recordingId);
+  const displayTotal =
+    checkoutQuote != null ? Number(checkoutQuote.amount) : totalAmount;
+  const displayBase =
+    checkoutQuote != null && checkoutQuote.base_amount != null
+      ? Number(checkoutQuote.base_amount)
+      : basePrice;
+  const displayGst = Math.max(0, displayTotal - displayBase);
+  const isQuoteFree =
+    checkoutQuote != null
+      ? Number(checkoutQuote.amount) <= 0 || checkoutQuote.status === 'completed'
+      : isFreeSportUnlock;
   const openUnlockSheet = useCallback(() => {
     setShowUnlockSheet(true);
   }, []);
@@ -436,15 +485,15 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     }
     setCheckoutBusy(true);
     try {
-      const order = await createPlanOrder(sportPlan as PlanId);
+      const order = await createRecordingPaymentOrder(recordingId);
       const orderAmount = Number(order.amount);
 
       if (orderAmount === 0 || order.status === 'completed') {
-        await refreshEntitlement().catch(() => null);
-        const next = await unlockRecording(recordingId);
-        setUnlockedRecordings(next);
+        const merged = await mergeServerUnlockedRecordingIds();
+        setUnlockedRecordings(merged);
+        await unlockRecording(recordingId);
         await appendLocalPaymentHistory({
-          id: `free-${recordingId}-${Date.now()}`,
+          id: `unlock-${recordingId}-${order.id}`,
           kind: 'recording_unlock',
           recordingId: String(recordingId),
           sport: sportPlan,
@@ -452,13 +501,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           currency: 'INR',
           status: 'completed',
           createdAtIso: new Date().toISOString(),
-          note: 'Cricket plan (free) — server activated',
+          note: `${sportLabel} recording unlock`,
+          razorpay_order_id: order.razorpay_order_id,
+          server_payment_id: order.id,
         });
         setShowUnlockSheet(false);
-        Alert.alert(
-          'Unlocked',
-          'Cricket access is active. This recording is now unlocked.',
-        );
+        Alert.alert('Unlocked', 'You can watch this recording in full.');
         void refresh();
         return;
       }
@@ -488,14 +536,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         amount: amountPaise,
         theme: { color: '#22C55E' },
       });
-      await verifyRazorpayPayment({
+      const verified = await verifyRazorpayPayment({
         razorpay_order_id: data.razorpay_order_id,
         razorpay_payment_id: data.razorpay_payment_id,
         status: 'completed',
       });
-      await refreshEntitlement().catch(() => null);
-      const next = await unlockRecording(recordingId);
-      setUnlockedRecordings(next);
+      const merged = await mergeServerUnlockedRecordingIds();
+      setUnlockedRecordings(merged);
+      await unlockRecording(recordingId);
       await appendLocalPaymentHistory({
         id: `paid-${recordingId}-${data.razorpay_order_id}-${Date.now()}`,
         kind: 'recording_unlock',
@@ -506,9 +554,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         status: 'completed',
         createdAtIso: new Date().toISOString(),
         note: `${sportLabel} recording unlock`,
+        razorpay_order_id: data.razorpay_order_id,
+        razorpay_payment_id: data.razorpay_payment_id,
+        server_payment_id: verified.payment_id,
       });
       setShowUnlockSheet(false);
-      Alert.alert('Payment successful', 'Your access is now unlocked.');
+      Alert.alert('Payment successful', 'This recording is now unlocked.');
       void refresh();
     } catch (e) {
       const msg = getFieldflixApiErrorMessage(e, 'Could not complete payment');
@@ -658,6 +709,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       if (!h.mux_public_playback_url || (st !== 'ready' && st !== 'clip_created')) {
         return;
       }
+      if (String(h.id ?? '').startsWith('flick-')) {
+        await appendFlickLocalSavedId(String(h.id));
+        setFlickLocalSavedIds((prev) =>
+          prev.includes(String(h.id)) ? prev : [String(h.id), ...prev],
+        );
+      }
       const titleBase = recording?.turf?.name ?? 'Recording';
       router.push({
         pathname: Paths.VideoRecording,
@@ -694,7 +751,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     <WebShell backgroundColor={BG_COLOR}>
       <View style={styles.flex}>
         <FieldflixScreenHeader
-          title="Highlights"
+          title="Recording"
           onBack={() => navigateBackOrHome(router)}
           backAccessibilityLabel="Go back"
         />
@@ -719,50 +776,57 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             />
 
             <View style={styles.heroBody}>
+              <View style={styles.heroUpper}>
+                <View style={styles.heroTopRow}>
+                  <View style={styles.statusPill}>
+                    <View style={styles.dotLive} />
+                    <Text style={styles.statusPillText}>
+                      {recordingIsReady({
+                        status: recording?.status,
+                        mux_playback_id:
+                          recording?.mux_playback_id ?? playback?.playback_id ?? null,
+                        mux_media_url: recording?.mux_media_url ?? null,
+                        mux_public_url: recording?.mux_public_url ?? null,
+                      })
+                        ? 'Ready'
+                        : 'Processing'}
+                    </Text>
+                  </View>
 
-              {/* ✅ KEEP THIS (top pills) */}
-              <View style={styles.heroTopRow}>
-                <View style={styles.statusPill}>
-                  <View style={styles.dotLive} />
-                  <Text style={styles.statusPillText}>
-                    {recordingIsReady({
-                      status: recording?.status,
-                      mux_playback_id:
-                        recording?.mux_playback_id ?? playback?.playback_id ?? null,
-                      mux_media_url: recording?.mux_media_url ?? null,
-                      mux_public_url: recording?.mux_public_url ?? null,
-                    })
-                      ? 'Ready'
-                      : 'Processing'}
-                  </Text>
+                  {!hasRecordingAccess ? (
+                    <View style={styles.previewPill}>
+                      <LockIcon size={12} />
+                      <Text style={styles.previewPillText}>Preview only</Text>
+                    </View>
+                  ) : null}
                 </View>
 
-                {!hasRecordingAccess ? (
-                  <View style={styles.previewPill}>
-                    <LockIcon size={12} />
-                    <Text style={styles.previewPillText}>Preview only</Text>
-                  </View>
-                ) : null}
+                <View style={styles.heroTextBlock}>
+                  <Text style={styles.heroHeadline} numberOfLines={1}>
+                    {recording?.turf?.name ?? 'Recording'}
+                  </Text>
+
+                  <View style={styles.heroDivider} />
+
+                  <Text style={styles.heroSubline} numberOfLines={1}>
+                    {sportLabel} · {recordingDurationLabel(recording)}
+                  </Text>
+
+                  <Text style={styles.heroWhen}>
+                    {formatRecordingListWhen(recording?.startTime)}
+                  </Text>
+                </View>
               </View>
+            </View>
 
-              {/* ✅ NEW LAYOUT TEXT BLOCK */}
-              <View style={styles.heroTextBlock}>
-                <Text style={styles.heroHeadline} numberOfLines={1}>
-                  {recording?.turf?.name ?? 'Recording'}
-                </Text>
+            <LinearGradient
+              pointerEvents="none"
+              colors={['rgba(2,6,23,0)', 'rgba(2,6,23,0.88)']}
+              locations={[0.2, 1]}
+              style={styles.heroBottomFade}
+            />
 
-                <View style={styles.heroDivider} />
-
-                <Text style={styles.heroSubline} numberOfLines={1}>
-                  {sportLabel} · {recordingDurationLabel(recording)}
-                </Text>
-
-                <Text style={styles.heroWhen}>
-                  {formatRecordingListWhen(recording?.startTime)}
-                </Text>
-              </View>
-
-              {/* ✅ KEEP BUTTONS EXACTLY */}
+            <View style={styles.heroActionsBar}>
               <View style={styles.heroActions}>
                 <Pressable style={styles.watchBtn} onPress={onWatchHero}>
                   <LinearGradient
@@ -813,6 +877,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 highlight={h}
                 index={idx}
                 hasAccess={hasRecordingAccess}
+                flickSavedLocally={flickLocalSavedIds.includes(String(h.id))}
                 engageBusy={engageBusy}
                 onPress={() => void onHighlightPress(h)}
                 onToggleLike={() => void onToggleHighlightLike(h.id)}
@@ -868,49 +933,67 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
               <View style={styles.sheetPlanRow}>
                 <Text style={styles.sheetPlanName}>{sportLabel} video unlock</Text>
                 <Text style={styles.sheetPrice}>
-                  {isFreeSportUnlock ? 'Free' : `₹${totalAmount}`}
+                  {quoteLoading
+                    ? '…'
+                    : quoteError
+                      ? '—'
+                      : isQuoteFree
+                        ? 'Free'
+                        : `₹${displayTotal}`}
                 </Text>
               </View>
               <Text style={styles.sheetSub}>
-                Full video + highlights
-                {isFreeSportUnlock
-                  ? ' — same sport plans as Premium (Cricket included)'
-                  : ''}
+                Full playback for this recording only • incl. highlights
               </Text>
+              {quoteError ? (
+                <Text style={[styles.sheetSub, { color: '#fca5a5', marginTop: 8 }]}>
+                  {quoteError}
+                </Text>
+              ) : null}
               <View style={styles.sheetBill}>
                 <View style={styles.sheetBillRow}>
                   <Text style={styles.sheetBillText}>Base amount</Text>
-                  <Text style={styles.sheetBillText}>₹{basePrice}</Text>
+                  <Text style={styles.sheetBillText}>
+                    {quoteLoading ? '…' : `₹${displayBase}`}
+                  </Text>
                 </View>
                 <View style={styles.sheetBillRow}>
                   <Text style={styles.sheetBillText}>GST (18%)</Text>
-                  <Text style={styles.sheetBillText}>₹{gstAmount}</Text>
+                  <Text style={styles.sheetBillText}>
+                    {quoteLoading ? '…' : `₹${displayGst}`}
+                  </Text>
                 </View>
                 <View style={[styles.sheetBillRow, styles.sheetBillTotal]}>
                   <Text style={styles.sheetTotalText}>Total</Text>
-                  <Text style={styles.sheetTotalText}>₹{totalAmount}</Text>
+                  <Text style={styles.sheetTotalText}>
+                    {quoteLoading ? '…' : `₹${displayTotal}`}
+                  </Text>
                 </View>
               </View>
               <Pressable
                 style={[
                   styles.sheetCta,
-                  checkoutBusy && { opacity: 0.65 },
+                  (checkoutBusy || quoteLoading || !!quoteError || !checkoutQuote) && {
+                    opacity: 0.65,
+                  },
                 ]}
                 onPress={() => void runCheckout()}
-                disabled={checkoutBusy}
+                disabled={checkoutBusy || quoteLoading || !!quoteError || !checkoutQuote}
               >
                 <Text style={styles.sheetCtaText}>
-                  {checkoutBusy
-                    ? 'Processing...'
-                    : isFreeSportUnlock
-                      ? 'Activate Free'
+                  {checkoutBusy || quoteLoading
+                    ? quoteLoading
+                      ? 'Updating price…'
+                      : 'Processing...'
+                    : isQuoteFree
+                      ? 'Unlock free'
                       : 'Unlock & Pay'}
                 </Text>
               </Pressable>
               <Text style={styles.sheetFoot}>
-                {isFreeSportUnlock
-                  ? 'No charge — activates Cricket on your account'
-                  : 'Secure payment • Matches Premium plan totals (incl. GST)'}
+                {isQuoteFree
+                  ? 'No charge — free tier for this venue'
+                  : 'Secure payment • Unlocks only this recording'}
               </Text>
             </View>
           </View>
@@ -925,6 +1008,7 @@ function HighlightRow({
   highlight,
   index,
   hasAccess,
+  flickSavedLocally,
   engageBusy,
   onPress,
   onToggleLike,
@@ -933,6 +1017,7 @@ function HighlightRow({
   highlight: UiHighlight;
   index: number;
   hasAccess: boolean;
+  flickSavedLocally: boolean;
   engageBusy: string | null;
   onPress: () => void;
   onToggleLike: () => void;
@@ -945,7 +1030,7 @@ function HighlightRow({
   const busyLike = engageBusy === `like-${highlight.id}`;
   const busySave = engageBusy === `save-${highlight.id}`;
   const liked = Boolean(highlight.viewerLiked);
-  const saved = Boolean(highlight.viewerSaved);
+  const saved = Boolean(highlight.viewerSaved) || flickSavedLocally;
 
   return (
     <View style={styles.row}>
@@ -1127,19 +1212,44 @@ const styles = StyleSheet.create({
   },
   heroBody: {
     position: 'absolute',
-    inset: 0 as any,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     paddingHorizontal: 18,
-    paddingVertical: 16,
-    justifyContent: 'space-between',
+    paddingTop: 16,
+    paddingBottom: 86,
+    justifyContent: 'flex-start',
+  },
+  heroUpper: {
+    flex: 1,
+    justifyContent: 'flex-start',
+  },
+  heroBottomFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 108,
+  },
+  heroActionsBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 18,
+    paddingBottom: 14,
+    paddingTop: 10,
   },
   heroTextBlock: {
     width: '100%',
     maxWidth: 460,
+    marginTop: 8,
   },
 
   heroHeadline: {
     fontFamily: FF.bold,
-    fontSize: 16,
+    fontSize: 14,
     color: '#F8FAFC',
   },
 
@@ -1230,7 +1340,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginTop: 10,
   },
   watchBtn: {
     flex: 1,

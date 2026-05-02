@@ -257,6 +257,7 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                 <Text 
                   style={[
                     styles.highlightTitle,
+                    isMainVideo && styles.mainVenueTitle,
                     isActive && styles.activeTitle
                   ]}
                   numberOfLines={1}
@@ -284,7 +285,9 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
             >
               {isMainVideo 
                 ? "Full recording video" 
-                : formatDate(highlight.button_click_timestamp)
+                : String(highlight.id ?? "").startsWith("flick-")
+                  ? "15s clip"
+                  : formatDate(highlight.button_click_timestamp)
               }
             </Text>
             {canPlay && !isMainVideo && (
@@ -440,6 +443,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FFFFFF",
     marginBottom: 4,
+  },
+  mainVenueTitle: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   activeTitle: {
     color: "#007AFF",

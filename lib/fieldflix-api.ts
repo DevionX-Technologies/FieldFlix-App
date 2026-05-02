@@ -387,6 +387,8 @@ export type PlanOrderResponse = {
   id: string;
   razorpay_order_id: string;
   amount: number;
+  /** Recording unlock orders include pre-GST base for receipts. */
+  base_amount?: number;
   currency: string;
   status: string;
   payment_type: string;
@@ -418,14 +420,55 @@ export async function createPlanOrder(plan: PlanId): Promise<PlanOrderResponse> 
   return data as PlanOrderResponse;
 }
 
+/**
+ * Razorpay order for unlocking one recording's full playback (`POST /payments/:recordingId/create-payment`).
+ */
+export async function createRecordingPaymentOrder(
+  recordingId: string,
+): Promise<PlanOrderResponse> {
+  const { data } = await axiosInstance.post<PlanOrderResponse>(
+    `/payments/${encodeURIComponent(recordingId)}/create-payment`,
+  );
+  return data as PlanOrderResponse;
+}
+
+export type VerifyPaymentResult = {
+  success: boolean;
+  payment_id: string;
+  razorpay_payment_id: string | null;
+  message: string;
+};
+
 /** Confirms payment after native Razorpay Checkout (`POST /payments/verify`). */
 export async function verifyRazorpayPayment(body: {
   razorpay_order_id: string;
   razorpay_payment_id: string;
   status: 'completed' | 'failed' | 'pending' | 'cancelled' | 'refunded';
-}) {
-  const { data } = await axiosInstance.post('/payments/verify', body);
-  return data;
+}): Promise<VerifyPaymentResult> {
+  const { data } = await axiosInstance.post<VerifyPaymentResult>('/payments/verify', body);
+  return data as VerifyPaymentResult;
+}
+
+export type PaymentReceiptDetail = PaymentHistoryRow & {
+  recording?: {
+    id?: string;
+    recording_name?: string | null;
+    turf?: { name?: string | null; address_line?: string | null } | null;
+  } | null;
+};
+
+export async function getPaymentById(paymentId: string): Promise<PaymentReceiptDetail> {
+  const { data } = await axiosInstance.get<PaymentReceiptDetail>(
+    `/payments/${encodeURIComponent(paymentId)}`,
+  );
+  return data as PaymentReceiptDetail;
+}
+
+export async function checkRecordingPaymentAccess(recordingId: string): Promise<boolean> {
+  const { data } = await axiosInstance.get<{ hasAccess: boolean }>(
+    `/payments/check-access/${encodeURIComponent(recordingId)}`,
+  );
+  return !!(data && typeof data === 'object' && data.hasAccess === true);
 }
 
 export async function getPaymentHistory(): Promise<PaymentHistoryRow[]> {

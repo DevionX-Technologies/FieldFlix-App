@@ -8,7 +8,9 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import {
   getUnreadApiNotificationCount,
   markAllApiNotificationsRead,
-  markNotificationReadLocally,
+  markNotificationRowRead,
+  notificationReadRowKey,
+  type NotificationRowRef,
 } from '@/utils/localNotificationReadStore';
 import { getLocalNotifications } from '@/utils/localNotificationStore';
 import { hrefFromNotificationData } from '@/utils/notificationRouting';
@@ -66,7 +68,10 @@ function startOfLocalDay(d: Date): number {
   return x.getTime();
 }
 
-type NotificationItemWithHref = NotificationItem & { href: Href | null };
+type NotificationItemWithHref = NotificationItem & {
+  href: Href | null;
+  readRef: NotificationRowRef;
+};
 
 type MergedRow = {
   id: string;
@@ -77,6 +82,7 @@ type MergedRow = {
   at: number;
   href: Href | null;
   dedupeKey: string;
+  readRef: NotificationRowRef;
 };
 
 function dedupeKeyForRow(row: { title: string; body: string; at: number }): string {
@@ -93,6 +99,7 @@ function groupNotifications(
     icon: NotificationIconId;
     at: number;
     href: Href | null;
+    readRef: NotificationRowRef;
   }[],
 ): { label: string; items: NotificationItemWithHref[] }[] {
   const now = new Date();
@@ -117,6 +124,7 @@ function groupNotifications(
       time: row.time,
       icon: row.icon,
       href: row.href,
+      readRef: row.readRef,
     };
     if (row.at >= today0) today.push(it);
     else if (row.at >= y0) yesterday.push(it);
@@ -137,7 +145,7 @@ export default function FieldflixNotificationsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [sections, setSections] = useState<{ label: string; items: NotificationItemWithHref[] }[]>([]);
-  const [apiRowsForRead, setApiRowsForRead] = useState<{ id?: string; created_at?: string }[]>([]);
+  const [apiRowsForRead, setApiRowsForRead] = useState<NotificationRowRef[]>([]);
   const [markingRead, setMarkingRead] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -152,8 +160,14 @@ export default function FieldflixNotificationsScreen() {
         const at = e?.created_at ? new Date(e.created_at).getTime() : 0;
         const title = String(e?.title ?? 'Notification');
         const body = String(e?.body ?? '');
+        const readRef: NotificationRowRef = {
+          id: e?.id,
+          created_at: typeof e?.created_at === 'string' ? e.created_at : undefined,
+          title,
+          body,
+        };
         const row: MergedRow = {
-          id: String(e?.id ?? ''),
+          id: notificationReadRowKey(readRef),
           title,
           body,
           time: formatNotifTime(e?.created_at),
@@ -161,31 +175,25 @@ export default function FieldflixNotificationsScreen() {
           at,
           href: notificationHref(e?.notification_type, e?.data),
           dedupeKey: '',
+          readRef,
         };
         row.dedupeKey = dedupeKeyForRow(row);
         return row;
       });
-      setApiRowsForRead(
-        (Array.isArray(raw) ? raw : []).map((e: any) => ({
-          id: e?.id != null ? String(e.id) : undefined,
-          created_at: typeof e?.created_at === "string" ? e.created_at : undefined,
-        })),
-      );
-      const unread = await getUnreadApiNotificationCount(
-        (Array.isArray(raw) ? raw : []).map((e: any) => ({
-          id: e?.id != null ? String(e.id) : undefined,
-          created_at: typeof e?.created_at === "string" ? e.created_at : undefined,
-        })),
-      );
-      setUnreadCount(unread);
 
       const local = await getLocalNotifications();
       const localRows: MergedRow[] = local.map((e) => {
         const at = new Date(e.created_at).getTime();
         const title = e.title;
         const body = e.body;
-        const row: MergedRow = {
+        const readRef: NotificationRowRef = {
           id: e.id,
+          created_at: e.created_at,
+          title,
+          body,
+        };
+        const row: MergedRow = {
+          id: notificationReadRowKey(readRef),
           title,
           body,
           time: formatNotifTime(e.created_at),
@@ -193,6 +201,7 @@ export default function FieldflixNotificationsScreen() {
           at,
           href: notificationHref(e.notification_type, e.data),
           dedupeKey: '',
+          readRef,
         };
         row.dedupeKey = dedupeKeyForRow(row);
         return row;
@@ -213,13 +222,16 @@ export default function FieldflixNotificationsScreen() {
         }
       }
       merged.sort((a, b) => b.at - a.at);
+      const mergedRefs = merged.map((m) => m.readRef);
+      setApiRowsForRead(mergedRefs);
+      const unread = await getUnreadApiNotificationCount(mergedRefs);
+      setUnreadCount(unread);
       setSections(
-        groupNotifications(
-          merged.map(({ dedupeKey: _, ...rest }) => rest),
-        ),
+        groupNotifications(merged.map(({ dedupeKey: _, ...rest }) => rest)),
       );
     } catch {
       setSections([]);
+      setApiRowsForRead([]);
       setUnreadCount(0);
     } finally {
       setLoading(false);
@@ -310,12 +322,20 @@ export default function FieldflixNotificationsScreen() {
                       onPress={
                         n.href
                           ? async () => {
-                            await markNotificationReadLocally(n.id);
-                            router.push(n.href as Href);
-                          }
+                              await markNotificationRowRead(n.readRef);
+                              const next = await getUnreadApiNotificationCount(
+                                apiRowsForRead,
+                              );
+                              setUnreadCount(next);
+                              router.push(n.href as Href);
+                            }
                           : async () => {
-                            await markNotificationReadLocally(n.id);
-                          }
+                              await markNotificationRowRead(n.readRef);
+                              const next = await getUnreadApiNotificationCount(
+                                apiRowsForRead,
+                              );
+                              setUnreadCount(next);
+                            }
                       }
                     />
                   ))}

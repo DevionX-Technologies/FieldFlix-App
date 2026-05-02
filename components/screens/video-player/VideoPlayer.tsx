@@ -195,7 +195,7 @@ export default function VideoPlayer({
         </View>
       ) : null}
       <FieldflixScreenHeader
-        title="Highlights"
+        title="Recording"
         onBack={() => navigateBackOrHome(router)}
         backAccessibilityLabel="Go back"
       />

@@ -14,23 +14,26 @@ import {
   type SessionRowLocal,
 } from "@/screens/fieldflix/sessionsData";
 import { WEB } from "@/screens/fieldflix/webDesign";
-import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
+import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
 import {
   formatRecordingListWhen,
   recordingDurationLabel,
   recordingIsReady,
+  recordingSportUi,
   recordingThumbUrl,
-  sportLabelFromTurf,
 } from "@/utils/recordingDisplay";
+import { readPreferredHomeSport, writePreferredHomeSport } from "@/utils/homeSportPreference";
+import type { HomeSportKey } from "@/utils/turfSports";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -38,13 +41,17 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-function pickTemplateForSport(sport: string): SessionRowLocal {
-  const s = sport.toLowerCase();
+function sessionTemplate(keys: HomeSportKey[], sportLabel: string): SessionRowLocal {
+  if (keys.length === 1) {
+    const k = keys[0];
+    if (k === "cricket") return SESSIONS_SPORT_TEMPLATES.cricket;
+    if (k === "padel") return SESSIONS_SPORT_TEMPLATES.padel;
+    return SESSIONS_ROW[0];
+  }
+  const s = sportLabel.toLowerCase();
   if (s.includes("cricket")) return SESSIONS_SPORT_TEMPLATES.cricket;
-  if (s.includes("padel") || s === "paddle")
-    return SESSIONS_SPORT_TEMPLATES.padel;
+  if (s.includes("padel") || s.includes("paddle")) return SESSIONS_SPORT_TEMPLATES.padel;
   if (s.includes("pickle")) return SESSIONS_ROW[0];
-  // Common fallback for all other sports
   return SESSIONS_ROW[0];
 }
 
@@ -57,16 +64,35 @@ function getSportIconName(
   if (s.includes("cricket")) return "cricket";
   if (s.includes("padel") || s.includes("paddle")) return "tennis-ball";
   if (s.includes("pickle")) return "racquetball";
-  // Common symbol for all other sports
   return "trophy";
 }
 
+type SessionsSportFilter = HomeSportKey | "all";
+
+function sessionRowMatchesFilter(
+  row: Pick<SessionRowExtended, "sportFilterKeys">,
+  filter: SessionsSportFilter,
+): boolean {
+  if (filter === "all") return true;
+  if (row.sportFilterKeys.length === 0) return false;
+  return row.sportFilterKeys.includes(filter);
+}
+
+const FILTER_CHIP_OPTIONS: ReadonlyArray<{
+  key: SessionsSportFilter;
+  label: string;
+}> = [
+  { key: "all", label: "All sports" },
+  { key: "pickleball", label: "Pickleball" },
+  { key: "padel", label: "Padel" },
+  { key: "cricket", label: "Cricket" },
+];
+
 function mapRecordingToSessionRow(r: any): SessionRowExtended {
-  const sup = r?.turf?.sports_supported;
-  const sport = sportLabelFromTurf(
-    Array.isArray(sup) ? sup.map((x: unknown) => String(x)) : undefined,
-  );
-  const t = pickTemplateForSport(sport);
+  const ui = recordingSportUi(r);
+  const sport = ui.sportLabel;
+  const sportFilterKeys = ui.sportFilterKeys;
+  const t = sessionTemplate(sportFilterKeys, sport);
   const when = formatRecordingListWhen(r?.startTime);
   const cityLine = [r?.turf?.city, r?.turf?.state].filter(Boolean).join(", ");
   const area = cityLine || r?.turf?.address_line || "—";
@@ -75,6 +101,7 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
     id: String(r.id),
     recordingId: String(r.id),
     sport,
+    sportFilterKeys,
     arena: r?.turf?.name ?? "Arena",
     area,
     when,
@@ -97,6 +124,27 @@ export default function FieldflixSessionsScreen() {
   const { rows, loading, error, load } = useSessionsMyRecordings(
     mapRecordingToSessionRow,
   );
+
+  const prefHydratedRef = useRef(false);
+  const [sportFilter, setSportFilter] = useState<SessionsSportFilter>("all");
+
+  useEffect(() => {
+    if (prefHydratedRef.current) return;
+    prefHydratedRef.current = true;
+    void readPreferredHomeSport().then((p) => {
+      if (p) setSportFilter(p);
+    });
+  }, []);
+
+  const filteredRows = useMemo(
+    () => rows.filter((r) => sessionRowMatchesFilter(r, sportFilter)),
+    [rows, sportFilter],
+  );
+
+  const commitSportFilter = useCallback((next: SessionsSportFilter) => {
+    setSportFilter(next);
+    if (next !== "all") void writePreferredHomeSport(next);
+  }, []);
 
   const renderSessionItem = useCallback(
     ({ item }: { item: SessionRowExtended }) => (
@@ -128,7 +176,7 @@ export default function FieldflixSessionsScreen() {
       <WebShell backgroundColor={WEB.sessionsBg}>
         <View style={{ flex: 1 }}>
           <FlatList
-            data={loading || error ? [] : rows}
+            data={loading || error ? [] : filteredRows}
             keyExtractor={(item) => item.id}
             renderItem={renderSessionItem}
             showsVerticalScrollIndicator={false}
@@ -141,7 +189,7 @@ export default function FieldflixSessionsScreen() {
               <>
                 {/* Header */}
                 <View style={styles.header}>
-                  <Pressable onPress={() => navigateBackOrHome(router)}>
+                  <Pressable onPress={() => navigateMainTabBackToHome(router)}>
                     <Image
                       source={SESSIONS_BACK_ARROW}
                       style={styles.backIcon}
@@ -153,6 +201,37 @@ export default function FieldflixSessionsScreen() {
                 {/* Section */}
                 <Text style={styles.sectionTitle}>Completed Sessions</Text>
 
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.sportFilterRow}
+                  style={styles.sportFilterScroll}
+                >
+                  {FILTER_CHIP_OPTIONS.map((opt) => {
+                    const sel = sportFilter === opt.key;
+                    return (
+                      <Pressable
+                        key={opt.key}
+                        onPress={() => commitSportFilter(opt.key)}
+                        style={[
+                          styles.sportFilterChip,
+                          sel ? styles.sportFilterChipSel : styles.sportFilterChipIdle,
+                        ]}
+                      >
+                        <Text
+                          style={
+                            sel
+                              ? styles.sportFilterChipTextSel
+                              : styles.sportFilterChipTextIdle
+                          }
+                        >
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
                 {loading ? (
                   <ActivityIndicator color={WEB.green} />
                 ) : error ? (
@@ -163,7 +242,11 @@ export default function FieldflixSessionsScreen() {
             ListEmptyComponent={
               !loading && !error ? (
                 <Text style={{ color: "white", textAlign: "center" }}>
-                  No completed sessions yet.
+                  {filteredRows.length === 0 &&
+                  rows.length > 0 &&
+                  sportFilter !== "all"
+                    ? "No sessions for this sport. Try “All sports” or pick another sport on Home."
+                    : "No completed sessions yet."}
                 </Text>
               ) : null
             }
@@ -309,11 +392,47 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
 
+  sportFilterScroll: {
+    marginBottom: 20,
+    maxHeight: 44,
+    flexGrow: 0,
+  },
+  sportFilterRow: {
+    gap: 8,
+    alignItems: "center",
+    paddingHorizontal: 2,
+  },
+  sportFilterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+  },
+  sportFilterChipIdle: {
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.45)",
+    backgroundColor: "rgba(15,23,42,0.6)",
+  },
+  sportFilterChipSel: {
+    borderWidth: 1.6,
+    borderColor: "rgba(74,222,128,0.9)",
+    backgroundColor: "rgba(22,163,74,0.38)",
+  },
+  sportFilterChipTextIdle: {
+    fontFamily: FF.medium,
+    fontSize: 13,
+    color: "#cbd5e1",
+  },
+  sportFilterChipTextSel: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "#f0fdf4",
+  },
+
   /* Card */
   card: {
     minHeight: 170,
     borderRadius: 13,
-    marginBottom: 16,
+    marginBottom: 0,
     overflow: "hidden",
     backgroundColor: "rgba(11,18,27,0.96)",
     shadowColor: "#000",
@@ -442,6 +561,6 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
   },
   listGap: {
-    height: 0,
+    height: 14,
   },
 });

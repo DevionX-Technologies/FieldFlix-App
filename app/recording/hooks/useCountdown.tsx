@@ -4,13 +4,17 @@ import {
   LAST_STOPPED_RECORDING_ID,
   RECORDING_CAMERA_ID,
   RECORDING_KEY,
+  RECORDING_QR_CAMERA_ID,
   TIME_GROUNDLOCATION,
   TIME_LEFT_KEY,
   TIME_TURF_NAME,
   TURF_ID,
 } from "@/data/constants";
 import { Paths } from "@/data/paths";
+import { FIELD_FLIX_SESSION_SPORT_METADATA_KEY } from "@/utils/recordingDisplay";
+import { logRecordingFlowDebug } from "@/utils/recordingFlowDebug";
 import { presentEventNotification } from "@/utils/presentEventNotification";
+import type { HomeSportKey } from "@/utils/turfSports";
 import axiosInstance from "@/utils/axiosInstance";
 import axios from "axios";
 import { useRouter } from "expo-router";
@@ -27,21 +31,37 @@ async function getToken(): Promise<string | null> {
 
 const STEP_ADJUST_SEC = 5 * 60;
 
-/** Nest may return `existingRecordingId` on 409 so the client can stop the stuck row and retry. */
-function extractConflictRecordingId(err: unknown): string | undefined {
-  if (!axios.isAxiosError(err)) return undefined;
-  const d = err.response?.data as Record<string, unknown> | undefined;
-  if (!d) return undefined;
-  if (typeof d.existingRecordingId === "string") return d.existingRecordingId;
-  const m = d.message;
-  if (m && typeof m === "object" && !Array.isArray(m) && "existingRecordingId" in m) {
-    const id = (m as Record<string, unknown>).existingRecordingId;
-    if (typeof id === "string") return id;
-  }
-  return undefined;
+/** Backend failed to reach the venue Pi after retries (`RecordingService.startRecording`). */
+function isVenueCameraUnreachableError(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  const status = err.response?.status;
+  if (status !== 500 && status !== 503) return false;
+  const data = err.response?.data as Record<string, unknown> | undefined;
+  const msg =
+    typeof data?.message === "string"
+      ? data.message
+      : typeof err.response?.data === "object" &&
+          err.response?.data !== null &&
+          "message" in err.response.data
+        ? String((err.response.data as { message?: string }).message ?? "")
+        : "";
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("failed to start recording after") ||
+    lower.includes("failed to obtain raspberry pi recording id")
+  );
 }
 
-export function useCountdown(initialSeconds: number, turfId: string, cameraId?: string | string[]) {
+function remainingSecondsFromEndMs(endMs: number): number {
+  return Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+}
+
+export function useCountdown(
+  initialSeconds: number,
+  turfId: string,
+  cameraId?: string | string[],
+  sessionSport?: HomeSportKey | null,
+) {
   const [timeLeft, setTimeLeft] = useState(initialSeconds);
   const [isRunning, setIsRunning] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -90,15 +110,72 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
     fetchToken();
   }, []);
 
+  /** Sync planned duration vs active session — do not wipe an in-progress timer on remount. */
   useEffect(() => {
-    setTimeLeft(initialSeconds);
-    timeLeftRef.current = initialSeconds;
-    setIsRunning(false);
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = undefined;
+    let cancelled = false;
+    async function sync() {
+      const tidRaw = Array.isArray(turfId) ? turfId[0] : turfId;
+      const tid = String(tidRaw ?? "").trim();
+      const endStr = await SecureStore.getItemAsync("end_time");
+      const rk = await SecureStore.getItemAsync(RECORDING_KEY);
+      const storedTurf = (await SecureStore.getItemAsync(TURF_ID))?.trim() ?? "";
+      const storedQrCam =
+        (await SecureStore.getItemAsync(RECORDING_QR_CAMERA_ID))?.trim() ?? "";
+      const camFromRoute = Array.isArray(cameraId) ? cameraId[0] : cameraId;
+      const routeCam =
+        camFromRoute != null && String(camFromRoute).trim() !== ""
+          ? String(camFromRoute).trim()
+          : "";
+
+      let activeLocal = false;
+      if (tid && rk && endStr && storedTurf === tid) {
+        const endMs = parseInt(endStr, 10);
+        const rem =
+          Number.isFinite(endMs) && endMs > Date.now()
+            ? remainingSecondsFromEndMs(endMs)
+            : 0;
+        if (rem > 0) {
+          // Require an explicit QR camera match when persisted — do not hydrate when
+          // `cameraId` is still missing from the route (avoids attaching stale timers).
+          if (storedQrCam) {
+            activeLocal = Boolean(routeCam) && storedQrCam === routeCam;
+          } else {
+            activeLocal = true;
+          }
+        }
+      }
+
+      if (cancelled) return;
+
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
+      }
+
+      if (activeLocal && endStr) {
+        const endMs = parseInt(endStr, 10);
+        const remaining = remainingSecondsFromEndMs(endMs);
+        const recRowId = await SecureStore.getItemAsync(RECORDING_CAMERA_ID);
+        if (remaining > 0 && recRowId) {
+          recordingIdRef.current = recRowId;
+          setTimeLeft(remaining);
+          timeLeftRef.current = remaining;
+          setIsPaused(false);
+          setIsRunning(true);
+          return;
+        }
+      }
+
+      setTimeLeft(initialSeconds);
+      timeLeftRef.current = initialSeconds;
+      setIsRunning(false);
     }
-  }, [initialSeconds]);
+
+    void sync();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSeconds, turfId, cameraId]);
 
   useEffect(() => {
     timeLeftRef.current = timeLeft;
@@ -110,6 +187,7 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       setToken(tokenNew);
 
       if (!tokenNew) {
+        logRecordingFlowDebug("recording_start_blocked", { reason: "no_bearer_token" });
         showModal("error", "Not signed in", "Please log in again.");
         return;
       }
@@ -118,11 +196,19 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       const uid = decoded.user_id ?? null;
       setUserId(uid);
       if (!uid) {
+        logRecordingFlowDebug("recording_start_blocked", {
+          reason: "jwt_missing_user_id",
+          jwtKeys: decoded && typeof decoded === "object" ? Object.keys(decoded) : [],
+        });
         showModal("error", "Not signed in", "Missing user id in token.");
         return;
       }
       const tid = Array.isArray(turfId) ? turfId[0] : turfId;
       if (tid == null || String(tid).trim() === "") {
+        logRecordingFlowDebug("recording_start_blocked", {
+          reason: "missing_turfId",
+          turfIdRaw: turfId,
+        });
         showModal(
           "error",
           "Invalid QR",
@@ -130,14 +216,36 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
         );
         return;
       }
-      const actualCameraId = Array.isArray(cameraId) ? cameraId[0] : cameraId || "27ce1af1-721a-421c-9223-3ddeda95f315";
+      const camFromRoute = Array.isArray(cameraId) ? cameraId[0] : cameraId;
+      const camTrim =
+        camFromRoute != null && String(camFromRoute).trim() !== ""
+          ? String(camFromRoute).trim()
+          : "";
+      const FALLBACK_CAMERA = "27ce1af1-721a-421c-9223-3ddeda95f315";
+      const actualCameraId = camTrim || FALLBACK_CAMERA;
+      const usedDefaultCameraFallback = !camTrim;
+
+      const meta =
+        sessionSport === "pickleball" || sessionSport === "padel" || sessionSport === "cricket"
+          ? { [FIELD_FLIX_SESSION_SPORT_METADATA_KEY]: sessionSport }
+          : {};
 
       const payload = {
         userId: uid,
         cameraId: actualCameraId,
-        metadata: {},
+        metadata: meta,
         turfId: String(tid).trim(),
       };
+
+      logRecordingFlowDebug("recording_start_request", {
+        endpoint: "POST /recording/start",
+        payload,
+        jwtUserId: uid,
+        cameraIdFromRoute: camFromRoute ?? null,
+        effectiveCameraId: actualCameraId,
+        usedDefaultCameraFallback,
+        sessionSport: sessionSport ?? null,
+      });
 
       console.log("📤 POST /recording/start API Called !!!!!", payload);
       console.log("🎥 Using cameraId from QR code:", actualCameraId);
@@ -150,8 +258,18 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
 
       const newId = resp.data?.id ?? resp.data?.data?.id;
       if (!newId) {
+        logRecordingFlowDebug("recording_start_bad_response", {
+          httpStatus: resp.status,
+          body: resp.data,
+        });
         throw new Error("No recording id in start response");
       }
+
+      logRecordingFlowDebug("recording_start_ok", {
+        httpStatus: resp.status,
+        recordingId: newId,
+        responseBody: resp.data,
+      });
 
       recordingIdRef.current = newId;
       setTimeLeft(initialSeconds);
@@ -160,12 +278,16 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       await SecureStore.setItemAsync("end_time", String(endMs));
       setIsRunning(true);
 
-      void presentEventNotification({
-        title: "Recording started",
-        body: "Your session is live. We will notify you when processing finishes.",
-        notificationType: "LOCAL_RECORDING_START",
-        data: { recordingId: String(newId) },
-      });
+      try {
+        await presentEventNotification({
+          title: "Recording started",
+          body: "Your session is live. We will notify you when processing finishes.",
+          notificationType: "LOCAL_RECORDING_START",
+          data: { recordingId: String(newId) },
+        });
+      } catch (e) {
+        console.warn("Recording start notification failed:", e);
+      }
 
       const nowIso = new Date().toISOString();
       await SecureStore.setItemAsync(
@@ -175,44 +297,34 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       await SecureStore.setItemAsync(TIME_LEFT_KEY, String(initialSeconds / 60));
       await SecureStore.setItemAsync(RECORDING_CAMERA_ID, newId.toString());
       await SecureStore.setItemAsync(TURF_ID, turfId.toString());
+      await SecureStore.setItemAsync(RECORDING_QR_CAMERA_ID, actualCameraId);
     };
 
+    setLoading(true);
     try {
       await postStart();
     } catch (err: unknown) {
       console.error("❌ start() error:", axios.isAxiosError(err) ? err.response?.data : err);
 
+      logRecordingFlowDebug("recording_start_error", {
+        status: axios.isAxiosError(err) ? err.response?.status : undefined,
+        responseData: axios.isAxiosError(err) ? err.response?.data : undefined,
+        message: err instanceof Error ? err.message : String(err),
+      });
+
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       if (status === 409) {
-        const existingId = extractConflictRecordingId(err);
-        if (existingId) {
-          try {
-            await axiosInstance.put(`/recording/stop/${existingId}`, {
-              recordingId: existingId,
-            });
-            await postStart();
-            return;
-          } catch (stopErr) {
-            console.error("❌ stop after 409 failed:", axios.isAxiosError(stopErr) ? stopErr.response?.data : stopErr);
-            showModal(
-              "error",
-              "Could not clear previous session",
-              axios.isAxiosError(stopErr)
-                ? String(stopErr.response?.data?.message ?? stopErr.message)
-                : "Try again in a moment or ask support to clear the camera session."
-            );
-            return;
-          }
-        }
-        const raw = axios.isAxiosError(err) ? err.response?.data : undefined;
-        const m = raw && typeof raw === "object" && "message" in raw ? (raw as { message: unknown }).message : undefined;
-        const text =
-          typeof m === "string"
-            ? m
-            : m && typeof m === "object" && m !== null && "message" in m
-              ? String((m as { message: string }).message)
-              : "Please stop the current recording before starting a new one.";
-        showModal("error", "Recording in Progress", text);
+        showModal(
+          "error",
+          "Session already active",
+          "This camera already has a recording in progress — often your own unfinished session elsewhere in the app. Finish that session first, or wait if someone else is using this court. We won't start another session automatically.",
+        );
+      } else if (isVenueCameraUnreachableError(err)) {
+        showModal(
+          "error",
+          "Camera unavailable",
+          "Currently our camera is unreachable. Please try again in some time.",
+        );
       } else {
         const msg = axios.isAxiosError(err)
           ? String(err.response?.data?.message ?? err.message)
@@ -221,17 +333,31 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
             : "Unknown error";
         showModal("error", "Start failed", msg);
       }
+    } finally {
+      setLoading(false);
     }
-  }, [initialSeconds, turfId, cameraId]);
+  }, [initialSeconds, turfId, cameraId, sessionSport]);
 
   const restoreTimer = async () => {
-    const rawStart = await SecureStore.getItemAsync(RECORDING_KEY);
-    const rawTimeLeft = await SecureStore.getItemAsync(TIME_LEFT_KEY);
     const cameraID = await SecureStore.getItemAsync(RECORDING_CAMERA_ID);
-    const turfID = await SecureStore.getItemAsync(TURF_ID);
 
     recordingIdRef.current = cameraID ?? undefined;
-    setTimeLeft(initialSeconds);
+    const endStr = await SecureStore.getItemAsync("end_time");
+    if (endStr) {
+      const endMs = parseInt(endStr, 10);
+      const remaining = remainingSecondsFromEndMs(endMs);
+      if (remaining > 0) {
+        setTimeLeft(remaining);
+        timeLeftRef.current = remaining;
+      } else {
+        setTimeLeft(initialSeconds);
+        timeLeftRef.current = initialSeconds;
+      }
+    } else {
+      setTimeLeft(initialSeconds);
+      timeLeftRef.current = initialSeconds;
+    }
+    setIsPaused(false);
     setIsRunning(true);
   };
   const isStoppingRef = useRef(false);
@@ -266,12 +392,16 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
 
       await axiosInstance.put(`/recording/stop/${id}`, { recordingId: id });
 
-      void presentEventNotification({
-        title: "Recording stopped",
-        body: "Your video is processing. We will alert you when it is ready to watch.",
-        notificationType: "LOCAL_RECORDING_STOP",
-        data: { recordingId: String(id) },
-      });
+      try {
+        await presentEventNotification({
+          title: "Recording stopped",
+          body: "Your video is processing. We will alert you when it is ready to watch.",
+          notificationType: "LOCAL_RECORDING_STOP",
+          data: { recordingId: String(id) },
+        });
+      } catch (e) {
+        console.warn("Recording stop notification failed:", e);
+      }
 
       showModal(
         "success",
@@ -290,18 +420,20 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
       }
 
       await Promise.all([
+        SecureStore.deleteItemAsync("end_time"),
         SecureStore.deleteItemAsync(RECORDING_KEY),
         SecureStore.deleteItemAsync(TIME_LEFT_KEY),
         SecureStore.deleteItemAsync(TIME_TURF_NAME),
         SecureStore.deleteItemAsync(TIME_GROUNDLOCATION),
         SecureStore.deleteItemAsync(RECORDING_CAMERA_ID),
         SecureStore.deleteItemAsync(TURF_ID),
+        SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID),
       ]);
       setLoading(false);
       
       // Delay navigation to allow user to see the success modal
       setTimeout(() => {
-        navigation.push(Paths.recordings);
+        navigation.replace(Paths.sessions as never);
       }, 2000);
     } catch (err: any) {
       console.error("❌ stop() error:", err.response?.data || err.message);
@@ -435,6 +567,7 @@ export function useCountdown(initialSeconds: number, turfId: string, cameraId?: 
     await SecureStore.deleteItemAsync(TIME_GROUNDLOCATION);
     await SecureStore.deleteItemAsync(RECORDING_CAMERA_ID);
     await SecureStore.deleteItemAsync(TURF_ID);
+    await SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID);
   };
 
   return {

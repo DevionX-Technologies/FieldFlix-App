@@ -10,12 +10,21 @@ import { FF } from "@/screens/fieldflix/fonts";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { getUnreadApiNotificationCount } from "@/utils/localNotificationReadStore";
+import { writePreferredHomeSport, readPreferredHomeSport } from "@/utils/homeSportPreference";
 import {
   formatRecordingTimeLabel,
   highlightCountFromRecording,
   recordingDurationLabel,
   recordingThumbUrl,
 } from "@/utils/recordingDisplay";
+import {
+  coerceSportsSupported,
+  homeSportToApiEnum,
+  summarizeTurfSportsLine,
+  turfSupportsHomeSport,
+  type HomeSportKey,
+} from "@/utils/turfSports";
+import { venueImageForTurfName } from "@/utils/venueArenaImages";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect } from "@react-navigation/native";
 import { Image as ExpoImage } from "expo-image";
@@ -49,11 +58,10 @@ import {
 import { useIsAdminRole } from "@/hooks/useIsAdminRole";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
-const AUTO_H = require("@/assets/fieldflix-web/autohiglhight.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
 /** Static promos (3) until the API supplies Coming Soon assets. */
 const COMING_SOON_CAROUSEL_IMAGES = [
-  AUTO_H,
+  require("@/assets/fieldflix-web/coming-soon/coming-soon-auto-highlight.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-2.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-3.png"),
 ] as const;
@@ -74,6 +82,7 @@ type TurfRow = {
   city?: string;
   address_line?: string;
   hourly_rate?: string | number;
+  sports_supported?: unknown;
   /** PostGIS / GeoJSON `Point` from API */
   geo_location?: unknown;
 };
@@ -83,10 +92,9 @@ type ArenaRow = {
   name: string;
   location: string;
   status: string;
-  rating: number;
-  distanceKm: number;
-  pricePerHr: number;
   imageSource: ImageSourcePropType;
+  /** FieldFlix sports from `turf.sports_supported` (Pickleball / Padel / Cricket). */
+  sportsLine: string | null;
 };
 
 type RecentRow = {
@@ -100,12 +108,6 @@ type RecentRow = {
   duration: string;
   score: number;
 };
-
-function homeSportToApiEnum(s: "pickleball" | "padel" | "cricket"): string {
-  if (s === "padel") return "Paddle";
-  if (s === "cricket") return "Cricket";
-  return "Pickleball";
-}
 
 function extractTurfLngLat(geo: unknown): { lat: number; lng: number } | null {
   if (!geo || typeof geo !== "object") return null;
@@ -122,43 +124,92 @@ function extractTurfLngLat(geo: unknown): { lat: number; lng: number } | null {
   return null;
 }
 
-function haversineKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const aa =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * (2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)));
+function compactOneLine(s: string): string {
+  return String(s).replace(/\s+/g, " ").trim();
 }
 
-function mapTurfToArena(
-  t: TurfRow,
-  i: number,
-  user: { latitude: number; longitude: number } | null,
-): ArenaRow {
-  const raw = t.hourly_rate;
-  let price = 200;
-  if (typeof raw === "number") price = raw;
-  else if (typeof raw === "string") {
-    const n = parseFloat(raw.replace(/[^\d.]/g, ""));
-    if (!Number.isNaN(n)) price = n;
+/** When `city` is null, derive area from turf name (`| Goregaon East`, double-spaced locality, etc.). */
+function inferLocationFromTurfName(arenaName: string): string {
+  const n = compactOneLine(arenaName);
+  if (!n) return "";
+  const pipeParts = n.split("|").map((p) => compactOneLine(p));
+  if (pipeParts.length >= 2) {
+    const tail = pipeParts[pipeParts.length - 1];
+    if (tail.length >= 2) return tail;
   }
-  const loc = (t.city ?? t.address_line ?? "").split(",")[0]?.trim() || "—";
-  const turfPt = extractTurfLngLat(t.geo_location);
-  let distanceKm = 1.2 + (i % 6) * 0.35;
-  if (user && turfPt) {
-    distanceKm =
-      Math.round(
-        haversineKm(user.latitude, user.longitude, turfPt.lat, turfPt.lng) * 10,
-      ) / 10;
+  const doubleGap = n.match(/\s{2,}([^|]+)$/);
+  if (doubleGap?.[1]) return compactOneLine(doubleGap[1]);
+  return "";
+}
+
+function turfRowLocationLabel(t: TurfRow): string {
+  const fromFields = compactOneLine((t.city ?? t.address_line ?? "").split(",")[0] ?? "");
+  if (fromFields) return fromFields;
+  return inferLocationFromTurfName(t.name ?? "") || "—";
+}
+
+/** Fold duplicate turf rows (one per camera/QR UUID) into a single homepage card per venue label. */
+function canonicalVenueKey(name?: string): string {
+  return compactOneLine(String(name ?? ""))
+    .toLowerCase()
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function turfRowQualityScore(t: TurfRow): number {
+  let s = 0;
+  if (compactOneLine(t.city ?? "")) s += 2;
+  if (compactOneLine(t.address_line ?? "")) s += 1;
+  if (extractTurfLngLat(t.geo_location)) s += 3;
+  return s;
+}
+
+function mergeTurfDuplicatesBucket(bucket: TurfRow[]): TurfRow {
+  if (bucket.length === 1) return bucket[0];
+  const sorted = [...bucket].sort((a, b) => turfRowQualityScore(b) - turfRowQualityScore(a));
+  const base = sorted[0];
+  const bestName =
+    [...bucket]
+      .map((b) => compactOneLine(b.name ?? ""))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length)[0] ?? base.name;
+  const uniq = new Set<string>();
+  for (const row of bucket) {
+    for (const x of coerceSportsSupported(row.sports_supported)) {
+      uniq.add(String(x));
+    }
   }
+  const mergedSports = [...uniq];
+  const withGeo =
+    bucket.find((x) => extractTurfLngLat(x.geo_location)) ?? base;
+  return {
+    ...base,
+    id: base.id,
+    name: bestName || base.name,
+    city:
+      compactOneLine(base.city ?? "") ? base.city :
+        bucket.map((x) => x.city).find((c) => compactOneLine(c ?? "")) ?? base.city,
+    address_line:
+      compactOneLine(base.address_line ?? "") ? base.address_line :
+        bucket.map((x) => x.address_line).find((a) => compactOneLine(a ?? "")) ?? base.address_line,
+    sports_supported: mergedSports.length ? mergedSports : base.sports_supported,
+    geo_location: withGeo.geo_location ?? base.geo_location,
+  };
+}
+
+function dedupeTurfsForHomeDisplay(rows: TurfRow[]): TurfRow[] {
+  const groups = new Map<string, TurfRow[]>();
+  for (const t of rows) {
+    const k = canonicalVenueKey(t.name);
+    const gk = k.length > 0 ? k : `id:${String(t.id)}`;
+    groups.set(gk, [...(groups.get(gk) ?? []), t]);
+  }
+  return [...groups.values()].map((bucket) => mergeTurfDuplicatesBucket(bucket));
+}
+
+function mapTurfToArena(t: TurfRow, i: number): ArenaRow {
+  const loc = turfRowLocationLabel(t);
   const arenaName = t.name ?? "Arena";
   const key = arenaName
     .toLowerCase()
@@ -167,19 +218,19 @@ function mapTurfToArena(
     .trim();
   const namedImage: ImageSourcePropType | undefined =
     EXPLICIT_VENUE_IMAGE_BY_NAME[key];
+  const venueAsset = venueImageForTurfName(arenaName);
   const fallbackPool: ImageSourcePropType[] = [BG.arena, BG.sessionCard, BG.homeHero];
   const hash = Array.from(key).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const imageSource = namedImage ?? fallbackPool[hash % fallbackPool.length];
+  const imageSource =
+    venueAsset ?? namedImage ?? fallbackPool[hash % fallbackPool.length];
 
   return {
     id: String(t.id ?? i),
     name: arenaName,
     location: loc,
     status: "Indoor • Available Now",
-    rating: 4.5,
-    distanceKm,
-    pricePerHr: price,
     imageSource,
+    sportsLine: summarizeTurfSportsLine(t.sports_supported),
   };
 }
 
@@ -225,9 +276,7 @@ export default function FieldflixHomeScreen() {
 
   const router = useRouter();
   const { isAdmin } = useIsAdminRole();
-  const [sport, setSport] = useState<"pickleball" | "padel" | "cricket">(
-    "pickleball",
-  );
+  const [sport, setSport] = useState<HomeSportKey>("pickleball");
   const [turfs, setTurfs] = useState<TurfRow[]>([]);
   const [sessions, setSessions] = useState<unknown[]>([]);
   const [shortsPerRecording, setShortsPerRecording] = useState<
@@ -294,6 +343,17 @@ export default function FieldflixHomeScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    void readPreferredHomeSport().then((p) => {
+      if (p) setSport(p);
+    });
+  }, []);
+
+  const setSportPersisted = useCallback((next: HomeSportKey) => {
+    setSport(next);
+    void writePreferredHomeSport(next);
+  }, []);
+
   const load = useCallback(async () => {
     setTurfsLoading(true);
     try {
@@ -318,7 +378,16 @@ export default function FieldflixHomeScreen() {
         : turfRes?.items && Array.isArray(turfRes.items)
           ? turfRes.items
           : [];
-      setTurfs(items as TurfRow[]);
+      const rawList = items as TurfRow[];
+      const filtered = rawList.filter((t) =>
+        turfSupportsHomeSport(t.sports_supported, sport),
+      );
+      const deduped = dedupeTurfsForHomeDisplay(filtered).sort((a, b) =>
+        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
+          sensitivity: "base",
+        }),
+      );
+      setTurfs(deduped);
       setSessions(Array.isArray(recRes) ? recRes.slice(0, 6) : []);
       const tally: Record<string, number> = {};
       for (const fs of Array.isArray(flickList) ? flickList : []) {
@@ -328,7 +397,13 @@ export default function FieldflixHomeScreen() {
       }
       setShortsPerRecording(tally);
       const unread = await getUnreadApiNotificationCount(
-        Array.isArray(n) ? n : [],
+        (Array.isArray(n) ? n : []).map((e: Record<string, unknown>) => ({
+          id: e?.id as string | number | null | undefined,
+          created_at:
+            typeof e?.created_at === "string" ? e.created_at : undefined,
+          title: typeof e?.title === "string" ? e.title : undefined,
+          body: typeof e?.body === "string" ? e.body : undefined,
+        })),
       );
       setNotifCount(unread);
     } catch {
@@ -360,9 +435,16 @@ export default function FieldflixHomeScreen() {
   }, [load]);
 
   const arenaRows: ArenaRow[] = useMemo(
-    () => turfs.map((t, i) => mapTurfToArena(t, i, userCoords)),
-    [turfs, userCoords],
+    () => turfs.map((t, i) => mapTurfToArena(t, i)),
+    [turfs],
   );
+
+  const homeSportLabel =
+    sport === "pickleball"
+      ? "Pickleball"
+      : sport === "padel"
+        ? "Padel"
+        : "Cricket";
 
   const recentRows: RecentRow[] = useMemo(
     () =>
@@ -589,7 +671,7 @@ export default function FieldflixHomeScreen() {
                 size={sportBoxSize}
                 label="Pickleball"
                 selected={sport === "pickleball"}
-                onPress={() => setSport("pickleball")}
+                onPress={() => setSportPersisted("pickleball")}
                 status="Active"
                 icon={
                   <MaterialCommunityIcons
@@ -603,7 +685,7 @@ export default function FieldflixHomeScreen() {
                 size={sportBoxSize}
                 label="Padel"
                 selected={sport === "padel"}
-                onPress={() => setSport("padel")}
+                onPress={() => setSportPersisted("padel")}
                 status="Active"
                 icon={
                   <MaterialCommunityIcons
@@ -617,7 +699,7 @@ export default function FieldflixHomeScreen() {
                 size={sportBoxSize}
                 label="Cricket"
                 selected={sport === "cricket"}
-                onPress={() => setSport("cricket")}
+                onPress={() => setSportPersisted("cricket")}
                 status="Active"
                 icon={
                   <MaterialCommunityIcons
@@ -634,7 +716,10 @@ export default function FieldflixHomeScreen() {
             <View style={styles.venuesHead}>
               <View style={styles.venuesHeadLeft}>
                 <View style={styles.sportsAccent} />
-                <Text style={styles.venuesTitle}>Nearby Venues</Text>
+                <View>
+                  <Text style={styles.venuesTitle}>Nearby Venues</Text>
+                  <Text style={styles.venuesSportHint}>{homeSportLabel}</Text>
+                </View>
               </View>
               {/* <Pressable onPress={() => router.push(Paths.scan)} hitSlop={8}>
                 <Text style={styles.venuesViewAll}>View all ›</Text>
@@ -680,13 +765,25 @@ export default function FieldflixHomeScreen() {
                         locations={[0, 0.55, 1]}
                         style={styles.arenaImgOverlay}
                       />
-                      <View style={styles.arenaTag}>
+                      <View style={[styles.arenaTagBase, styles.arenaTagOpen]}>
                         <MaterialCommunityIcons
                           name="check-circle"
                           size={12}
                           color="#22C55E"
                         />
                         <Text style={styles.arenaTagText}>Open now</Text>
+                      </View>
+                      <View
+                        style={[styles.arenaTagBase, styles.arenaTagSports]}
+                      >
+                        <MaterialCommunityIcons
+                          name="trophy-variant-outline"
+                          size={12}
+                          color="#22C55E"
+                        />
+                        <Text style={styles.arenaTagText} numberOfLines={1}>
+                          {arena.sportsLine ?? homeSportLabel}
+                        </Text>
                       </View>
                     </View>
                     <View style={styles.arenaBody}>
@@ -699,42 +796,16 @@ export default function FieldflixHomeScreen() {
                           size={14}
                           color="#94a3b8"
                         />
-                        <Text style={styles.arenaMetaText}>
+                        <Text
+                          style={[styles.arenaMetaText, styles.arenaMetaGrow]}
+                          numberOfLines={1}
+                        >
                           {arena.location}
                         </Text>
-                      </View>
-                      <Text style={styles.arenaStatus}>{arena.status}</Text>
-                      <View style={styles.arenaChipRow}>
-                        <View style={styles.arenaChip}>
-                          <MaterialCommunityIcons
-                            name="star"
-                            size={12}
-                            color="#fbbf24"
-                          />
-                          <Text style={styles.arenaChipText}>
-                            {arena.rating}
-                          </Text>
-                        </View>
-                        <View style={styles.arenaChip}>
-                          <MaterialCommunityIcons
-                            name="map-marker-distance"
-                            size={12}
-                            color="#22C55E"
-                          />
-                          <Text style={styles.arenaChipText}>
-                            {arena.distanceKm} km
-                          </Text>
-                        </View>
-                        <View style={styles.arenaChip}>
-                          <MaterialCommunityIcons
-                            name="currency-inr"
-                            size={12}
-                            color="#22C55E"
-                          />
-                          <Text style={styles.arenaChipText}>
-                            {arena.pricePerHr}/hr
-                          </Text>
-                        </View>
+                        <Text style={styles.arenaMetaSep}>•</Text>
+                        <Text style={styles.arenaStatusInline} numberOfLines={1}>
+                          {arena.status}
+                        </Text>
                       </View>
                     </View>
                   </Pressable>
@@ -877,7 +948,14 @@ export default function FieldflixHomeScreen() {
                             { height: comingSoonTileHeight },
                           ]}
                           contentFit="cover"
-                          contentPosition="top"
+                          contentPosition={
+                            index === 0
+                              ? "top"
+                              : index === 1
+                                ? /* Nearer top anchor → less top crop, more bottom crop vs center */
+                                  { top: "26%", left: "50%" }
+                                : "center"
+                          }
                           transition={220}
                           cachePolicy="memory-disk"
                         />
@@ -1312,6 +1390,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: WEB.white,
   },
+  venuesSportHint: {
+    marginTop: 4,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "#86EFAC",
+    letterSpacing: 0.2,
+  },
   venuesViewAll: {
     fontFamily: FF.semiBold,
     fontSize: 13,
@@ -1381,19 +1466,27 @@ const styles = StyleSheet.create({
   arenaImgOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
-  arenaTag: {
+  arenaTagBase: {
     position: "absolute",
-    top: 10,
-    right: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
+    maxWidth: "78%",
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(34,197,94,0.4)",
     backgroundColor: "rgba(2,6,23,0.74)",
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  arenaTagOpen: {
+    top: 10,
+    right: 10,
+    maxWidth: "55%",
+  },
+  arenaTagSports: {
+    bottom: 10,
+    left: 10,
   },
   arenaTagText: {
     fontFamily: FF.semiBold,
@@ -1427,38 +1520,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flexWrap: "nowrap",
+  },
+  arenaMetaGrow: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   arenaMetaText: {
     fontFamily: FF.regular,
     fontSize: 12,
     color: "#94a3b8",
   },
-  arenaStatus: {
+  arenaMetaSep: {
+    fontFamily: FF.regular,
+    fontSize: 12,
+    color: "#64748b",
+  },
+  arenaStatusInline: {
     fontFamily: FF.medium,
     fontSize: 12,
     color: "#94a3b8",
-  },
-  arenaChipRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  arenaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(148,163,184,0.3)",
-    backgroundColor: "rgba(15,23,42,0.75)",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-  arenaChipText: {
-    fontFamily: FF.medium,
-    fontSize: 11,
-    color: "#cbd5e1",
+    flexShrink: 0,
   },
 
   recentWrap: {

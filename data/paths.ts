@@ -31,6 +31,7 @@ export const Paths = {
   profilePrivacy: '/profile/privacy',
   profilePremium: '/profile/premium',
   profilePaymentHistory: '/profile/payment-history',
+  profilePaymentReceipt: '/profile/payment-history/receipt',
   profileRateUs: '/profile/rate-us',
   profileContactUs: '/profile/contact-us',
 

@@ -1,5 +1,10 @@
 node_modules/
 .expo/
+
+# Never upload local Node path overrides — breaks EAS with "No such file or directory"
+# https://github.com/expo/eas-cli/issues/1264
+ios/.xcode.env.local
+
 dist/
 npm-debug.*
 *.jks

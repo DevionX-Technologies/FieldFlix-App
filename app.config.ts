@@ -1,9 +1,22 @@
 import { ExpoConfig } from 'expo/config';
 
+/** Matches `extra.eas.projectId` — EAS Update (OTA) manifest host. */
+const EAS_PROJECT_ID = "841b5004-b805-4954-bb29-65fa21eace8e";
+
+/** Keep in sync across `version`, bare `ios`/Android native update config, and `eas update`. Bare workflow requires a string (no `policy`). */
+const APP_VERSION = "1.1.9";
+
 const config: ExpoConfig = {
   name: "FieldFlicks",
   slug: "fieldflicks-mobile-latest",
-  version: "1.1.9",
+  version: APP_VERSION,
+  runtimeVersion: APP_VERSION,
+  updates: {
+    enabled: true,
+    checkAutomatically: "ON_LOAD",
+    fallbackToCacheTimeout: 0,
+    url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
+  },
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "fieldflicks",
@@ -89,8 +102,8 @@ const config: ExpoConfig = {
       "expo-build-properties",
       {
         ios: {
-          // Remove static frameworks temporarily
-          // useFrameworks: "static"
+          /** Required for @react-native-firebase on iOS; keep in sync with `ios/Podfile.properties.json`. */
+          useFrameworks: "static",
         },
         android: {
           enableHermes: false, // Disable Hermes temporarily
@@ -134,7 +147,7 @@ const config: ExpoConfig = {
   extra: {
     router: {},
     eas: {
-      projectId: "841b5004-b805-4954-bb29-65fa21eace8e",
+      projectId: EAS_PROJECT_ID,
     },
   },
 };

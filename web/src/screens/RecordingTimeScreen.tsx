@@ -11,6 +11,12 @@ const PRESETS = [
   { id: '60', seconds: 60 * 60, top: '1', bottom: 'hr' },
   { id: '90', seconds: 90 * 60, top: '1:30', bottom: 'hrs' },
   { id: '120', seconds: 120 * 60, top: '2', bottom: 'hrs' },
+  { id: '150', seconds: 150 * 60, top: '2:30', bottom: 'hrs' },
+  { id: '180', seconds: 180 * 60, top: '3', bottom: 'hrs' },
+  { id: '210', seconds: 210 * 60, top: '3:30', bottom: 'hrs' },
+  { id: '240', seconds: 240 * 60, top: '4', bottom: 'hrs' },
+  { id: '270', seconds: 270 * 60, top: '4:30', bottom: 'hrs' },
+  { id: '300', seconds: 300 * 60, top: '5', bottom: 'hrs' },
 ] as const
 
 function formatHMS(totalSeconds: number) {
@@ -20,9 +26,9 @@ function formatHMS(totalSeconds: number) {
   return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
-const STEP_SEC = 5 * 60
-const MIN_SEC = 60
-const MAX_SEC = 4 * 60 * 60
+const STEP_SEC = 30 * 60
+const MIN_SEC = 30 * 60
+const MAX_SEC = 5 * 60 * 60
 
 /** Start recording — duration, presets, translucent card on black (no background images). */
 export default function RecordingTimeScreen() {
@@ -48,7 +54,9 @@ export default function RecordingTimeScreen() {
 
   const bump = useCallback((delta: number) => {
     setDurationSec((prev) => {
-      const next = Math.min(MAX_SEC, Math.max(MIN_SEC, prev + delta))
+      const raw = prev + delta
+      const snapped = STEP_SEC > 0 ? Math.round(raw / STEP_SEC) * STEP_SEC : raw
+      const next = Math.min(MAX_SEC, Math.max(MIN_SEC, snapped))
       const match = PRESETS.find((p) => p.seconds === next)
       setActivePreset(match?.id ?? '')
       return next

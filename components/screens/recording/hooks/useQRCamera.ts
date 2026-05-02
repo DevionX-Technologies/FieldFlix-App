@@ -19,7 +19,9 @@ import { useCameraPermission } from './useCameraPermission';
  *  - resetScan: () => void   → call if you want to allow scanning again
  */
 export function useQrCamera(
-  onValidQr: (valid: QrCodeDataSchema) => void
+  onValidQr: (
+    valid: QrCodeDataSchema,
+  ) => void | boolean | Promise<void | boolean>,
 ) {
   // (1) Get camera permission status using the separate hook
   const hasPermission = useCameraPermission();
@@ -49,7 +51,8 @@ export function useQrCamera(
       // 2️⃣ Validate with Zod schema
       try {
         const valid = qrCodeDataSchema.parse(parsed) as QrCodeDataSchema;
-        onValidQr(valid);
+        const proceed = await Promise.resolve(onValidQr(valid));
+        if (proceed === false) setScanned(false);
       } catch {
         Alert.alert(
           'Invalid QR Code',

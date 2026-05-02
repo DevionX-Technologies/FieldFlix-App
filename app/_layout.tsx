@@ -7,6 +7,7 @@ import { store } from "@/store";
 import { ThemeProvider } from "@/theme";
 import { canUseReactNativeFirebase } from "@/utils/canUseReactNativeFirebase";
 import { setupFcmTokenRefreshListener } from "@/utils/fcmTokenManager";
+import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import { routeFromNotificationData } from "@/utils/notificationRouting";
 import { isPublicRoutePath, setCurrentPathname } from "@/utils/authRouteState";
 import {
@@ -350,14 +351,28 @@ export default function RootLayout() {
         return false;
       }
 
-      // For all in-app screens, force users to Home first.
-      if (pathname !== Paths.home) {
-        router.replace(Paths.home);
+      // Mirror header back (`navigateBackOrHome`): pop the stack first.
+      try {
+        if (router.canGoBack()) {
+          router.back();
+          return true;
+        }
+      } catch {
+        /* canGoBack can throw on some navigators */
+      }
+
+      const onPrimaryHomeShell =
+        pathname === Paths.home ||
+        pathname === Paths.root ||
+        pathname === "/";
+
+      if (onPrimaryHomeShell) {
+        setExitConfirmVisible(true);
         return true;
       }
 
-      // Only on Home, ask for exit confirmation.
-      setExitConfirmVisible(true);
+      // Stack root but not the home shell (e.g. cold-opened deeplink): same as header fallback.
+      navigateBackOrHome(router);
       return true;
     };
 

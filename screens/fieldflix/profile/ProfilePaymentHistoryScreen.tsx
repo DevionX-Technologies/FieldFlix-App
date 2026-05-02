@@ -1,3 +1,4 @@
+import { Paths } from '@/data/paths';
 import { getPaymentHistory, type PaymentHistoryRow } from '@/lib/fieldflix-api';
 import {
   readLocalPaymentHistory,
@@ -7,15 +8,36 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { BackHeader } from '@/screens/fieldflix/profile/BackHeader';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BG = '#00050A';
 
-/** Mirrors `web/src/screens/ProfilePaymentHistoryScreen.tsx`. */
+type HistRowVM = {
+  key: string;
+  paymentId?: string;
+  locId?: string;
+  title: string;
+  subtitle: string;
+  amount: number;
+  currency: string;
+  status: string;
+  ts: number;
+};
+
+/** Mirrors `web/src/screens/ProfilePaymentHistoryScreen.tsx` (mobile: tappable receipts). */
 export default function FieldflixProfilePaymentHistoryScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [serverRows, setServerRows] = useState<PaymentHistoryRow[]>([]);
   const [localRows, setLocalRows] = useState<LocalPaymentHistoryItem[]>([]);
@@ -41,8 +63,22 @@ export default function FieldflixProfilePaymentHistoryScreen() {
   }, []);
 
   const rows = useMemo(() => {
-    const normalizedServer = serverRows.map((s) => ({
-      id: `srv-${s.id}`,
+    const serverOrderIds = new Set(
+      serverRows
+        .map((s) => String(s.razorpay_order_id ?? '').trim())
+        .filter(Boolean),
+    );
+    const normalizedLocalFiltered = localRows.filter((l) => {
+      const o = l.razorpay_order_id?.trim();
+      if (o && serverOrderIds.has(o)) return false;
+      const sid = l.server_payment_id?.trim();
+      if (sid && serverRows.some((s) => s.id === sid)) return false;
+      return true;
+    });
+
+    const normalizedServer: HistRowVM[] = serverRows.map((s) => ({
+      key: `srv-${s.id}`,
+      paymentId: s.id,
       title:
         s.description?.trim() ||
         (s.payment_type === 'recording_access'
@@ -56,8 +92,10 @@ export default function FieldflixProfilePaymentHistoryScreen() {
       status: String(s.status ?? 'pending'),
       ts: Date.parse(String(s.paid_at ?? s.created_at ?? new Date().toISOString())),
     }));
-    const normalizedLocal = localRows.map((l) => ({
-      id: `loc-${l.id}`,
+
+    const normalizedLocal: HistRowVM[] = normalizedLocalFiltered.map((l) => ({
+      key: `loc-${l.id}`,
+      locId: l.id,
       title:
         l.amountInr === 0
           ? `${l.sport} unlock (free)`
@@ -65,11 +103,28 @@ export default function FieldflixProfilePaymentHistoryScreen() {
       subtitle: l.note,
       amount: Number(l.amountInr ?? 0),
       currency: l.currency ?? 'INR',
-      status: l.status,
+      status: String(l.status ?? 'completed'),
       ts: Date.parse(l.createdAtIso),
     }));
+
     return [...normalizedLocal, ...normalizedServer].sort((a, b) => b.ts - a.ts);
   }, [localRows, serverRows]);
+
+  const openReceipt = (r: HistRowVM) => {
+    if (r.paymentId?.trim()) {
+      router.push({
+        pathname: Paths.profilePaymentReceipt,
+        params: { paymentId: r.paymentId.trim() },
+      });
+      return;
+    }
+    if (r.locId?.trim()) {
+      router.push({
+        pathname: Paths.profilePaymentReceipt,
+        params: { locId: r.locId.trim() },
+      });
+    }
+  };
 
   return (
     <WebShell backgroundColor={BG}>
@@ -84,16 +139,27 @@ export default function FieldflixProfilePaymentHistoryScreen() {
           ) : rows.length === 0 ? (
             <>
               <View style={styles.emptyIcon}>
-                <MaterialCommunityIcons name="wallet-outline" size={40} color="rgba(255,255,255,0.3)" />
+                <MaterialCommunityIcons
+                  name="wallet-outline"
+                  size={40}
+                  color="rgba(255,255,255,0.3)"
+                />
               </View>
               <Text style={styles.emptyCopy}>
-                No transactions yet. When you subscribe or make a purchase, your receipts will appear here.
+                No transactions yet. When you subscribe or make a purchase, your receipts will
+                appear here.
               </Text>
             </>
           ) : (
             <View style={styles.list}>
               {rows.map((r) => (
-                <View key={r.id} style={styles.row}>
+                <Pressable
+                  key={r.key}
+                  style={styles.row}
+                  onPress={() => openReceipt(r)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View receipt ${r.title}`}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{r.title}</Text>
                     <Text style={styles.rowSub}>{r.subtitle}</Text>
@@ -101,8 +167,14 @@ export default function FieldflixProfilePaymentHistoryScreen() {
                   <View style={styles.rowRight}>
                     <Text style={styles.rowAmt}>₹{Math.round(r.amount)}</Text>
                     <Text style={styles.rowStatus}>{r.status}</Text>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={18}
+                      color="rgba(255,255,255,0.35)"
+                      style={{ marginTop: 4 }}
+                    />
                   </View>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}
@@ -140,6 +212,7 @@ const styles = StyleSheet.create({
   list: {
     width: '100%',
     gap: 10,
+    alignSelf: 'stretch',
   },
   row: {
     flexDirection: 'row',
@@ -151,6 +224,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
     paddingHorizontal: 12,
     paddingVertical: 10,
+    alignSelf: 'stretch',
   },
   rowTitle: {
     fontFamily: FF.semiBold,

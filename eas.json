@@ -6,40 +6,60 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development",
+      "ios": {
+        "cocoapods": "1.16.2"
+      }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "cocoapods": "1.16.2"
       }
     },
     "preview2": {
+      "channel": "preview",
       "android": {
         "gradleCommand": ":app:assembleRelease"
+      },
+      "ios": {
+        "cocoapods": "1.16.2"
       }
     },
     "preview4": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "cocoapods": "1.16.2"
+      }
     },
     "production": {
       "distribution": "store",
       "autoIncrement": true,
+      "channel": "production",
       "android": {
         "buildType": "app-bundle"
       },
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "cocoapods": "1.16.2"
       }
     },
     "production-apk": {
       "distribution": "store",
       "autoIncrement": true,
+      "channel": "production",
       "android": {
         "buildType": "apk"
       },
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "cocoapods": "1.16.2"
       }
     }
   }

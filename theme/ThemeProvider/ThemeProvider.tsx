@@ -14,6 +14,7 @@ import React, {
 
 import {
   RECORDING_KEY,
+  RECORDING_QR_CAMERA_ID,
   TIME_GROUNDLOCATION,
   TIME_TOTAL,
   TIME_TURF_NAME,
@@ -62,27 +63,43 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
         TIME_GROUNDLOCATION
       );
       const turfId = await SecureStore.getItemAsync(TURF_ID);
+      const qrCameraId = await SecureStore.getItemAsync(RECORDING_QR_CAMERA_ID);
+      const endTimeStr = await SecureStore.getItemAsync("end_time");
 
       if (!rawStart || !totalTime) return;
 
-      const totalTimeInSeconds = parseInt(totalTime) * 60;
-      const { dateTime } = JSON.parse(rawStart);
-      const whenStarted = new Date(dateTime);
-      const now = new Date();
+      let remainingSeconds = 0;
+      if (endTimeStr) {
+        const endMs = parseInt(endTimeStr, 10);
+        if (Number.isFinite(endMs)) {
+          remainingSeconds = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+        }
+      } else {
+        const totalTimeInSeconds = parseInt(totalTime, 10) * 60;
+        const { dateTime } = JSON.parse(rawStart) as { dateTime: string };
+        const whenStarted = new Date(dateTime);
+        const now = new Date();
+        const secondsPassed = (now.getTime() - whenStarted.getTime()) / 1000;
+        remainingSeconds = Math.max(totalTimeInSeconds - secondsPassed, 0);
+      }
 
-      const secondsPassed = (now.getTime() - whenStarted.getTime()) / 1000;
-      const remainingSeconds = Math.max(totalTimeInSeconds - secondsPassed, 0); // clamp to 0
+      const totalTimeInMinutes = parseInt(totalTime, 10);
+      const plannedSec = Number.isFinite(totalTimeInMinutes)
+        ? totalTimeInMinutes * 60
+        : 3600;
 
       if (remainingSeconds > 0) {
         router.push({
           pathname: Paths.MainRecordingScreen,
           params: {
-            Name,
-            GroundLocation,
-            ChoosenTimeInMinutes: totalTimeInSeconds,
-            remainingSeconds: parseInt(remainingSeconds),
-            Resume: true,
-            turfId,
+            Name: Name ?? "",
+            GroundLocation: GroundLocation ?? "",
+            ChoosenTimeInMinutes: String(totalTimeInMinutes || 60),
+            plannedDurationSec: String(plannedSec),
+            remainingSeconds: String(Math.floor(remainingSeconds)),
+            Resume: "true",
+            turfId: turfId ?? "",
+            ...(qrCameraId ? { cameraId: qrCameraId } : {}),
           },
         });
       }

@@ -1,6 +1,7 @@
 import { BASE_URL } from '@/data/constants';
 import { coerceToRecordingList, getFieldflixApiErrorDebug, getMyRecordings } from '@/lib/fieldflix-api';
 import { pushClientDebugLog } from '@/utils/clientDebugLog';
+import type { HomeSportKey } from '@/utils/turfSports';
 import type { ImageSourcePropType } from 'react-native';
 import { useCallback, useRef, useState } from 'react';
 
@@ -8,6 +9,8 @@ export type SessionRowForUi = {
   id: string;
   recordingId: string;
   sport: string;
+  /** Empty = multi-sport venue without saved metadata → only matches "All sports". */
+  sportFilterKeys: HomeSportKey[];
   arena: string;
   area: string;
   when: string;

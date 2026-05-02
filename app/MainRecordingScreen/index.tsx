@@ -7,11 +7,13 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import axiosInstance from '@/utils/axiosInstance';
+import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   BackHandler,
   Pressable,
   ScrollView,
@@ -22,12 +24,26 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import type { HomeSportKey } from '@/utils/turfSports';
+
 import StopDialog from '../recording/components/RecordingComponents/StopDialogue';
 import { useCountdown } from '../recording/hooks/useCountdown';
 
+/** Expo Router may pass params as string or string[]. */
+function routeParamFirst(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (Array.isArray(v)) return v.length ? String(v[0]) : undefined;
+  return String(v);
+}
+
+function sessionSportFromParams(raw: unknown): HomeSportKey | null {
+  const s = routeParamFirst(raw);
+  if (s === 'pickleball' || s === 'padel' || s === 'cricket') return s;
+  return null;
+}
+
 const ACCENT = '#4ade80';
 const PAUSE_BG = '#374151';
-const MUTED = '#a1a1aa';
 
 function formatHMS(totalSeconds: number) {
   const h = Math.floor(totalSeconds / 3600);
@@ -59,36 +75,32 @@ export default function MainRecordingScreen() {
     turfId,
     cameraId,
     plannedDurationSec,
-    scanned,
-  } = useLocalSearchParams<{
-    ChoosenTimeInMinutes?: string;
-    Name?: string;
-    GroundLocation?: string;
-    Resume?: string;
-    remainingSeconds?: string;
-    turfId?: string;
-    cameraId?: string;
-    plannedDurationSec?: string;
-    scanned?: string;
-  }>();
+    sessionSport,
+  } = useLocalSearchParams();
 
   const [turfDetails, setTurfDetails] = useState<Record<string, unknown>>({});
 
   const totalSeconds = useMemo(() => {
-    if (Resume && remainingSeconds != null) {
-      const r = parseInt(String(remainingSeconds), 10);
-      if (!isNaN(r) && r > 0) return r;
+    const resume = routeParamFirst(Resume);
+    const remainingStr = routeParamFirst(remainingSeconds);
+    const plannedStr = routeParamFirst(plannedDurationSec);
+    const chosenStr = routeParamFirst(ChoosenTimeInMinutes);
+
+    if (resume && remainingStr != null && remainingStr !== '') {
+      const r = parseInt(remainingStr, 10);
+      if (!Number.isNaN(r) && r > 0) return r;
     }
-    const p = plannedDurationSec ? parseInt(String(plannedDurationSec), 10) : NaN;
-    if (!isNaN(p) && p > 0) return p;
-    const m = parseInt(String(ChoosenTimeInMinutes ?? '60'), 10);
-    return (isNaN(m) ? 60 : m) * 60;
+    const p =
+      plannedStr != null && plannedStr !== '' ? parseInt(plannedStr, 10) : NaN;
+    if (!Number.isNaN(p) && p > 0) return p;
+    const m = parseInt(chosenStr ?? '60', 10);
+    return (Number.isNaN(m) ? 60 : m) * 60;
   }, [Resume, remainingSeconds, plannedDurationSec, ChoosenTimeInMinutes]);
 
   const td = turfDetails as { data?: { name?: string }; name?: string };
   const venueName = td?.data?.name ?? td?.name ?? Name?.toString() ?? 'TGS Sports Arena';
-  const venueAddress = GroundLocation?.toString() || 'Andheri West, Mumbai';
-  const scannedText = scanned?.toString().trim() || '';
+  const venueAddress =
+    GroundLocation?.toString() || 'Andheri West, Mumbai';
 
   const {
     timeLeft,
@@ -104,13 +116,19 @@ export default function MainRecordingScreen() {
     setShowStop,
     showStop,
     ModalComponent,
-  } = useCountdown(totalSeconds, turfId?.toString() ?? '', cameraId);
+  } = useCountdown(
+    totalSeconds,
+    routeParamFirst(turfId) ?? '',
+    routeParamFirst(cameraId),
+    sessionSportFromParams(sessionSport),
+  );
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!turfId) return;
+      const tid = routeParamFirst(turfId);
+      if (!tid) return;
       try {
-        const resp = await axiosInstance.get(`/turfs/${turfId}`);
+        const resp = await axiosInstance.get(`/turfs/${tid}`);
         setTurfDetails(resp.data as Record<string, unknown>);
       } catch {
         /* 401 handled globally */
@@ -132,6 +150,13 @@ export default function MainRecordingScreen() {
   }, [Resume, restoreTimer]);
 
   const handleStart = async () => {
+    if (!isRunning && (await hasPersistedRecordingSession())) {
+      Alert.alert(
+        'Recording in progress',
+        'This device already has an active FieldFlicks session. Finish it first before starting here.',
+      );
+      return;
+    }
     await SecureStore.setItemAsync(TIME_GROUNDLOCATION, venueAddress);
     await SecureStore.setItemAsync(TIME_TURF_NAME, venueName);
     await SecureStore.setItemAsync(
@@ -180,12 +205,6 @@ export default function MainRecordingScreen() {
               </View>
               <View style={styles.locText}>
                 <Text style={styles.locName}>{venueName}</Text>
-                <Text style={styles.locAddr}>{venueAddress}</Text>
-                {scannedText ? (
-                  <Text style={styles.locQr} numberOfLines={3}>
-                    {scannedText.length > 40 ? `${scannedText.slice(0, 37)}…` : scannedText}
-                  </Text>
-                ) : null}
               </View>
             </View>
 
@@ -395,20 +414,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: -0.34,
     color: '#fff',
-  },
-  locAddr: {
-    marginTop: 4,
-    fontFamily: FF.medium,
-    fontSize: 13,
-    color: MUTED,
-    lineHeight: 18,
-  },
-  locQr: {
-    marginTop: 8,
-    fontFamily: FF.medium,
-    fontSize: 11,
-    color: 'rgba(161, 161, 170, 0.95)',
-    lineHeight: 15,
   },
   court: {
     marginTop: 18,

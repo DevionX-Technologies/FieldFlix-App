@@ -9,9 +9,12 @@ export type LocalPaymentHistoryItem = {
   sport: 'pickleball' | 'padel' | 'cricket';
   amountInr: number;
   currency: 'INR';
-  status: 'completed';
+  status: 'completed' | 'failed';
   createdAtIso: string;
   note: string;
+  razorpay_order_id?: string;
+  razorpay_payment_id?: string | null;
+  server_payment_id?: string;
 };
 
 export async function readLocalPaymentHistory(): Promise<LocalPaymentHistoryItem[]> {

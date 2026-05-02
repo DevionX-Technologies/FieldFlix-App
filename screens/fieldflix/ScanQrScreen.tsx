@@ -3,7 +3,9 @@ import ScanOverlay from '@/components/screens/recording/components/ScanOverlay';
 import type { QrCodeDataSchema } from '@/components/screens/recording/data/recordingSchema';
 import { useQrCamera } from '@/components/screens/recording/hooks/useQRCamera';
 import { Paths } from '@/data/paths';
+import { clearRecordingFlowDebug, logRecordingFlowDebug } from '@/utils/recordingFlowDebug';
 import { navigateBackOrHome } from '@/utils/navigateBackOrHome';
+import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
 import {
   FIELD_FLIX_HEADER_HEIGHT,
   FieldflixScreenHeader,
@@ -11,26 +13,37 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 
 export default function FieldflixScanQrScreen() {
   const router = useRouter();
   const [permissionInfo, requestPermission] = useCameraPermissions();
 
   const onValidQr = React.useCallback(
-    (valid: QrCodeDataSchema) => {
+    async (valid: QrCodeDataSchema) => {
+      if (await hasPersistedRecordingSession()) {
+        Alert.alert(
+          'Recording in progress',
+          'You already have an active FieldFlicks session on this phone. Finish it from your recording timer or Sessions before scanning a new court.',
+        );
+        return false;
+      }
+      clearRecordingFlowDebug();
+      const navParams = {
+        GroundNumber: valid.GroundNumber ?? '',
+        GroundDescription: valid.GroundDescription ?? '',
+        Name: valid.Name ?? '',
+        GroundLocation: valid.GroundLocation ?? '',
+        Size: valid.Size ?? '',
+        turfId: valid.turfId ?? '',
+        cameraId: valid.cameraId ?? '',
+      };
+      logRecordingFlowDebug('qr_scan_valid', { parsedQr: valid, navParams });
       router.push({
         pathname: Paths.recordingTime,
-        params: {
-          GroundNumber: valid.GroundNumber ?? '',
-          GroundDescription: valid.GroundDescription ?? '',
-          Name: valid.Name ?? '',
-          GroundLocation: valid.GroundLocation ?? '',
-          Size: valid.Size ?? '',
-          turfId: valid.turfId ?? '',
-          cameraId: valid.cameraId ?? '',
-        },
+        params: navParams,
       });
+      return undefined;
     },
     [router],
   );
