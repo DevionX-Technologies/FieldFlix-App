@@ -907,19 +907,6 @@ export default function FieldflixHomeScreen() {
                         >
                           {arena.location}
                         </Text>
-                        {arena.distanceKm != null ? (
-                          <>
-                            <Text style={styles.arenaMetaSep}>•</Text>
-                            <MaterialCommunityIcons
-                              name="navigation-variant"
-                              size={14}
-                              color="#22C55E"
-                            />
-                            <Text style={styles.arenaDistText} numberOfLines={1}>
-                              {formatDistanceKmLabel(arena.distanceKm)}
-                            </Text>
-                          </>
-                        ) : null}
                         <Text style={styles.arenaMetaSep}>•</Text>
                         <Text style={styles.arenaStatusInline} numberOfLines={1}>
                           {arena.status}
