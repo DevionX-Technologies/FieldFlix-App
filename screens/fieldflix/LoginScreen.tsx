@@ -121,7 +121,7 @@ export default function FieldflixLoginScreen() {
                   adjustsFontSizeToFit
                   maxFontSizeMultiplier={1.28}
                 >
-                  Level Up Your Game
+                  Level Up Your Field
                 </Text>
                 <Text style={styles.heroSubtitle} maxFontSizeMultiplier={1.25}>
                   Track, analyze, and improve every move

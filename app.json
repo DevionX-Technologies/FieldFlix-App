@@ -2,7 +2,7 @@
   "expo": {
     "name": "FieldFlicks",
     "slug": "fieldflicks-mobile-latest",
-    "version": "1.1.9",
+    "version": "2.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": [
@@ -33,7 +33,10 @@
         "NSCalendarsUsageDescription": "FieldFlicks can access your calendar to help schedule and manage important events.",
         "NSRemindersUsageDescription": "FieldFlicks can access your reminders so you can track and manage tasks directly from the app.",
         "NSBluetoothAlwaysUsageDescription": "FieldFlicks may use Bluetooth to connect with nearby devices for sharing or syncing features.",
-        "NSMotionUsageDescription": "FieldFlicks may use motion and fitness data to enhance activity tracking features."
+        "NSMotionUsageDescription": "FieldFlicks may use motion and fitness data to enhance activity tracking features.",
+        "LSApplicationQueriesSchemes": [
+          "rzp-rqbgja98eufitd"
+        ]
       },
       "buildNumber": "14"
     },
@@ -43,6 +46,12 @@
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
+      "release": {
+        "keystore": "./@h16sahu__fieldflicks-mobile-latest-keystore.bak.jks",
+        "keystorePassword": "96506f53fb80e5d0d154a53539ceb304",
+        "keyAlias": "4576b3f577b3e0486bebc73571b9a979",
+        "keyPassword": "1f55bca6181040b8830c3f862fc25994"
+      },
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
@@ -51,7 +60,7 @@
       ],
       "package": "com.fieldflicks",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 41,
+      "versionCode": 42,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCr-EoENqIoMq9ftiQKsuNUpWNUEHtM0d4"

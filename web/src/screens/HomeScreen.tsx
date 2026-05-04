@@ -9,7 +9,7 @@ import padelImg from '../assets/padel.png'
 import fieldflixLogo from '../assets/fieldflix_logo.png'
 import activityImg from '../assets/Activity.png'
 import recentSessionIcon from '../assets/recentsession.png'
-import comingSoonImg from '../assets/coming-soon.png'
+import comingSoonImg from '../../../Coming.png'
 import autoHighlightBannerImg from '../assets/autohiglhight.png'
 import notificationIcon from '../assets/notification.png'
 import profileHeaderIcon from '../assets/Profile icon.png'
@@ -324,7 +324,7 @@ export default function HomeScreen() {
                       <span className="text-slate-600">•</span>
                       <span>{arena.distanceKm} km</span>
                       <span className="text-slate-600">•</span>
-                      <span>₹{arena.pricePerHr}/hr</span>
+                      <span>{sport === 'cricket' ? 'Free' : `₹${arena.pricePerHr}/hr`}</span>
                     </div>
                   </div>
                 </article>
