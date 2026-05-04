@@ -7,9 +7,11 @@ const VENUE_ASSETS = {
   padelArena: require("@/assets/venues/tsg-padel-arena.png"),
   eskay: require("@/assets/venues/tsg-eskay-resort.png"),
   balkanji: require("@/assets/venues/tsg-balkanji-bari.png"),
-  /** Botanical Gardens hero — file lives in `assets/images/` rather than
-   *  `assets/venues/` because that's where the source image was placed. */
-  botanical: require("@/assets/images/TSG Pickleball and Sports Arena _ Botanical Gardens.jpeg"),
+  /** Botanical Gardens hero — uses a hyphenated, lowercase filename in
+   *  `assets/venues/` so Metro reliably bundles it (paths with spaces and
+   *  underscores in the original name silently fail static asset resolution
+   *  on some Metro versions and the image renders blank). */
+  botanical: require("@/assets/venues/tsg-botanical-gardens.jpeg"),
 } as const;
 
 export type VenueImageKey = keyof typeof VENUE_ASSETS;

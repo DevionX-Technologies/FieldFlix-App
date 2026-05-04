@@ -60,11 +60,12 @@ import { useIsAdminRole } from "@/hooks/useIsAdminRole";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
-/** Static promos until the API supplies Coming Soon assets. New `Coming.png`
- *  hero is intentionally first so it lands as the default visible slide. */
+/** Static promos until the API supplies Coming Soon assets. The new `coming-hero.png`
+ *  REPLACES the original auto-highlight slide (was index 0); the other two follow.
+ *  Asset filename is intentionally hyphenated/no-spaces so Metro's static
+ *  asset-resolver bundles it reliably across Android/iOS. */
 const COMING_SOON_CAROUSEL_IMAGES = [
-  require("@/assets/images/Coming.png"),
-  require("@/assets/fieldflix-web/coming-soon/coming-soon-auto-highlight.png"),
+  require("@/assets/images/coming-hero.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-2.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-3.png"),
 ] as const;
@@ -1057,14 +1058,12 @@ export default function FieldflixHomeScreen() {
                           contentFit="cover"
                           contentPosition={
                             index === 0
-                              ? /* Coming.png hero — keep centered so subject doesn't crop. */
+                              ? /* coming-hero.png replaces the previous auto-highlight slide. */
                                 "center"
                               : index === 1
-                                ? "top"
-                                : index === 2
-                                  ? /* Nearer top anchor → less top crop, more bottom crop vs center */
-                                    { top: "26%", left: "50%" }
-                                  : "center"
+                                ? /* Nearer top anchor → less top crop, more bottom crop vs center */
+                                  { top: "26%", left: "50%" }
+                                : "center"
                           }
                           transition={220}
                           cachePolicy="memory-disk"
