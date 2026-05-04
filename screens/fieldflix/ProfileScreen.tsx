@@ -146,6 +146,9 @@ export default function FieldflixProfileScreen() {
         SecureStore.deleteItemAsync("token"),
         SecureStore.deleteItemAsync("fcmToken"),
       ]);
+      // Wipe the back stack so swipe-back from /login can't return to /home,
+      // /profile, etc. that the user just logged out of.
+      router.dismissAll?.();
       router.replace(Paths.login);
     } catch {
       Alert.alert("Logout failed", "Please try again.");

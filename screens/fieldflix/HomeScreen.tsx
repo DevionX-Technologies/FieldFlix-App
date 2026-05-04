@@ -60,8 +60,10 @@ import { useIsAdminRole } from "@/hooks/useIsAdminRole";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
-/** Static promos (3) until the API supplies Coming Soon assets. */
+/** Static promos until the API supplies Coming Soon assets. New `Coming.png`
+ *  hero is intentionally first so it lands as the default visible slide. */
 const COMING_SOON_CAROUSEL_IMAGES = [
+  require("@/assets/images/Coming.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-auto-highlight.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-2.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-3.png"),
@@ -1055,11 +1057,14 @@ export default function FieldflixHomeScreen() {
                           contentFit="cover"
                           contentPosition={
                             index === 0
-                              ? "top"
+                              ? /* Coming.png hero — keep centered so subject doesn't crop. */
+                                "center"
                               : index === 1
-                                ? /* Nearer top anchor → less top crop, more bottom crop vs center */
-                                  { top: "26%", left: "50%" }
-                                : "center"
+                                ? "top"
+                                : index === 2
+                                  ? /* Nearer top anchor → less top crop, more bottom crop vs center */
+                                    { top: "26%", left: "50%" }
+                                  : "center"
                           }
                           transition={220}
                           cachePolicy="memory-disk"
@@ -1866,7 +1871,9 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   bannerDotsRowOuter: {
-    alignItems: "center",
+    /** Right-align so the pill doesn't overlap any centered text/CTA on the
+     *  active slide image. Padding gives visual gutter from the card edge. */
+    alignItems: "flex-end",
     marginTop: 14,
     paddingHorizontal: 4,
   },

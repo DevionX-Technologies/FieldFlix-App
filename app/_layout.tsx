@@ -404,6 +404,9 @@ export default function RootLayout() {
       await new Promise((resolve) => setTimeout(resolve, 250));
       const tokenRetry = await SecureStore.getItemAsync("token");
       if (!tokenRetry) {
+        // Force-logout from any authenticated screen — wipe the back stack so
+        // swipe-back from /login doesn't return to a defunct auth'd screen.
+        router.dismissAll?.();
         router.replace(Paths.login);
       }
     };

@@ -201,6 +201,9 @@ export default function FieldflixOtpScreen() {
     try {
       const res = await verifyOtp(mobile, code);
       await SecureStore.setItemAsync("token", res.token);
+      // Clear /login (and any /signup, /otp) from the back stack so swipe-back
+      // from any post-auth screen doesn't walk users back into the login flow.
+      router.dismissAll?.();
       // Public/Private account-type screen is intentionally skipped on signup —
       // user can change visibility later from Profile → App Settings.
       router.replace(Paths.home);

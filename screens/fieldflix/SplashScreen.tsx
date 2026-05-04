@@ -57,9 +57,12 @@ export default function FieldflixSplashScreen() {
       void (async () => {
         try {
           const token = await SecureStore.getItemAsync("token");
+          // Defensive: clear any stack from a previous app run / deep link.
+          router.dismissAll?.();
           router.replace(token ? Paths.home : Paths.login);
         } catch {
           // Never let startup routing crash the app; fail-safe to login.
+          router.dismissAll?.();
           router.replace(Paths.login);
         }
       })();

@@ -7,18 +7,23 @@ const VENUE_ASSETS = {
   padelArena: require("@/assets/venues/tsg-padel-arena.png"),
   eskay: require("@/assets/venues/tsg-eskay-resort.png"),
   balkanji: require("@/assets/venues/tsg-balkanji-bari.png"),
+  /** Botanical Gardens hero — file lives in `assets/images/` rather than
+   *  `assets/venues/` because that's where the source image was placed. */
+  botanical: require("@/assets/images/TSG Pickleball and Sports Arena _ Botanical Gardens.jpeg"),
 } as const;
 
 export type VenueImageKey = keyof typeof VENUE_ASSETS;
 
 /**
  * Infer which bundled image matches API turf.name (handles duplicate wording, pipes, etc.).
- * Botanical Gardens has no asset yet → null (caller uses fallback).
  */
 export function venueImageKeyForTurfName(name: string): VenueImageKey | null {
   const n = String(name).toLowerCase();
   if (n.includes("pickleflow")) return "pickleflow";
   if (n.includes("pickpad")) return "pickpad";
+  // Match Botanical first — its name also contains "pickleball" so we'd lose
+  // it to other branches that include the word otherwise.
+  if (n.includes("botanical")) return "botanical";
   if (n.includes("padel arena") || (n.includes("tsg") && n.includes("padel"))) {
     return "padelArena";
   }

@@ -135,6 +135,9 @@ axiosInstance.interceptors.response.use(
         console.log("🔐 Session expired (401) – redirecting to login");
         await SecureStore.deleteItemAsync("token");
         await SecureStore.deleteItemAsync("fcmToken");
+        // Wipe the back stack so the now-defunct authenticated screens aren't
+        // reachable via swipe-back from the new /login.
+        router.dismissAll?.();
         router.replace(Paths.login);
         setTimeout(() => {
           authRedirectInProgress = false;

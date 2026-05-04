@@ -12,6 +12,9 @@ export default function Wrapper() {
 
   useEffect(() => {
     if (!loading) {
+      // Clear any prior route from the stack so swipe-back can't return to a
+      // pre-auth screen.
+      router.dismissAll?.();
       if (user) {
         router.replace(Paths.Home); // Go to home
       } else {
