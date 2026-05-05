@@ -4,7 +4,7 @@ import { ExpoConfig } from 'expo/config';
 const EAS_PROJECT_ID = "841b5004-b805-4954-bb29-65fa21eace8e";
 
 /** Keep in sync across `version`, bare `ios`/Android native update config, and `eas update`. Bare workflow requires a string (no `policy`). */
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.0.2";
 
 const config: ExpoConfig = {
   name: "FieldFlicks",

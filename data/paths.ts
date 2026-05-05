@@ -23,6 +23,8 @@ export const Paths = {
    * include the dynamic segment, e.g. `router.push({ pathname: Paths.highlights, params: { id } })`.
    */
   highlights: '/highlights/[id]',
+  /** "View All" landing for saved highlights — `app/saved-highlights/index.tsx`. */
+  savedHighlights: '/saved-highlights',
   /** Matches `app/shared/media/[token]/index.tsx` — use `params: { token }`. */
   sharedMedia: '/shared/media/[token]',
   profile: '/profile',

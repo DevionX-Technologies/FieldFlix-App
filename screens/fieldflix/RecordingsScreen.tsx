@@ -318,6 +318,12 @@ export default function FieldflixRecordingsScreen() {
   const [findMatches, setFindMatches] = useState<any[] | null>(null);
   const [showVenueOptions, setShowVenueOptions] = useState(false);
   const [showGroundOptions, setShowGroundOptions] = useState(false);
+  /** When non-null, displays the bottom-sheet listing the people a recording
+   *  was shared with / by, including their phone numbers. */
+  const [peopleModal, setPeopleModal] = useState<
+    | { label: string; people: { name: string; phone: string | null }[] }
+    | null
+  >(null);
   /** Native time-picker visibility — independent for start vs end so the
    *  user can re-open one without dismissing the other on iOS modal sheet. */
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -592,6 +598,20 @@ export default function FieldflixRecordingsScreen() {
         group.map((x: any) => x?.recording?.userId).filter(Boolean),
       );
       const peopleCount = Math.max(1, sharerIds.size || group.length);
+      // The recording owner is the person who shared it with you. The API
+      // exposes their name (and sometimes phone) on the recording detail.
+      const people = [
+        {
+          name:
+            String(rec?.owner_name ?? "").trim() ||
+            String(rec?.user?.name ?? "").trim() ||
+            "Unknown",
+          phone:
+            String(rec?.owner_phone ?? "").trim() ||
+            String(rec?.user?.mobile ?? "").trim() ||
+            null,
+        },
+      ];
       return {
         id: String(rec?.id ?? i),
         recordingId: rec?.id ? String(rec.id) : null,
@@ -602,6 +622,8 @@ export default function FieldflixRecordingsScreen() {
         thumbUrl: recordingThumbUrl(rec),
         duration: recordingDurationLabel(rec),
         peopleCount,
+        people,
+        peopleLabel: "Shared by",
       };
     });
   }, [shared]);
@@ -626,6 +648,19 @@ export default function FieldflixRecordingsScreen() {
         group.map((x: any) => String(x?.shared_to_user_id ?? "")).filter(Boolean),
       );
       const peopleCount = Math.max(1, recipientIds.size);
+      // De-duplicate by user id so we don't list the same recipient twice if
+      // they were granted access through more than one share record.
+      const seenIds = new Set<string>();
+      const people: { name: string; phone: string | null }[] = [];
+      for (const x of group) {
+        const id = String(x?.shared_to_user_id ?? "");
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
+        people.push({
+          name: String(x?.shared_to_user_name ?? "").trim() || "Unknown",
+          phone: String(x?.shared_to_user_phone ?? "").trim() || null,
+        });
+      }
       return {
         id: String(rec?.id ?? i),
         recordingId: rec?.id ? String(rec.id) : null,
@@ -635,6 +670,8 @@ export default function FieldflixRecordingsScreen() {
         thumbUrl: recordingThumbUrl(rec),
         duration: recordingDurationLabel(rec),
         peopleCount,
+        people,
+        peopleLabel: "Shared with",
       };
     });
   }, [sharedByMe]);
@@ -968,12 +1005,29 @@ export default function FieldflixRecordingsScreen() {
                             {card.highlights} Highlights
                           </Text>
                         </View>
-                        <View style={styles.sharedPill}>
+                        <Pressable
+                          style={styles.sharedPillTappable}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            setPeopleModal({
+                              label: card.peopleLabel ?? "People",
+                              people: card.people ?? [],
+                            });
+                          }}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel="Show people"
+                        >
                           <Text style={styles.sharedPillText} numberOfLines={1}>
                             {card.peopleCount}{" "}
                             {card.peopleCount === 1 ? "person" : "people"}
                           </Text>
-                        </View>
+                          <MaterialCommunityIcons
+                            name="information-outline"
+                            size={14}
+                            color={ACCENT}
+                          />
+                        </Pressable>
                       </View>
                       <Pressable
                         style={styles.sharedFab}
@@ -1462,6 +1516,71 @@ export default function FieldflixRecordingsScreen() {
         </ScrollView>
 
         </KeyboardAvoidingView>
+
+        {/* People list bottom-sheet — shown when an info pill is tapped on a
+         *  Shared / Shared-By card. Lists names and phone numbers. */}
+        <Modal
+          visible={peopleModal !== null}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setPeopleModal(null)}
+        >
+          <Pressable
+            style={styles.peopleModalRoot}
+            onPress={() => setPeopleModal(null)}
+          >
+            <Pressable
+              style={styles.peopleModalSheet}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.peopleModalHeader}>
+                <Text style={styles.peopleModalTitle}>
+                  {peopleModal?.label ?? "People"}
+                </Text>
+                <Pressable
+                  onPress={() => setPeopleModal(null)}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Text style={styles.peopleModalDone}>Done</Text>
+                </Pressable>
+              </View>
+              {peopleModal?.people.length === 0 ? (
+                <Text style={styles.peopleModalEmpty}>
+                  No additional details available.
+                </Text>
+              ) : (
+                <View style={{ gap: 10 }}>
+                  {peopleModal?.people.map((p, i) => (
+                    <View key={`${p.name}-${i}`} style={styles.peopleRow}>
+                      <View style={styles.peopleAvatar}>
+                        <Text style={styles.peopleAvatarText}>
+                          {(p.name || "?").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.peopleName} numberOfLines={1}>
+                          {p.name || "Unknown"}
+                        </Text>
+                        {p.phone ? (
+                          <Text style={styles.peoplePhone} numberOfLines={1}>
+                            {p.phone}
+                          </Text>
+                        ) : (
+                          <Text style={styles.peoplePhoneMuted}>
+                            Phone unavailable
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         <FieldflixBottomNav active="recordings" />
       </View>
     </WebShell>
@@ -1986,6 +2105,96 @@ const styles = StyleSheet.create({
     fontFamily: FF.semiBold,
     fontSize: 12,
     color: ACCENT,
+  },
+  sharedPillTappable: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 32,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.32)",
+    backgroundColor: "rgba(30, 53, 33, 0.92)",
+  },
+  /* People bottom-sheet */
+  peopleModalRoot: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "flex-end",
+  },
+  peopleModalSheet: {
+    backgroundColor: "#0b1f17",
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 20,
+    paddingBottom: 32,
+    borderTopWidth: 1.5,
+    borderColor: "rgba(34,197,94,0.32)",
+  },
+  peopleModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  peopleModalTitle: {
+    fontFamily: FF.bold,
+    fontSize: 18,
+    color: "#fff",
+  },
+  peopleModalDone: {
+    fontFamily: FF.semiBold,
+    fontSize: 14,
+    color: ACCENT,
+  },
+  peopleModalEmpty: {
+    fontFamily: FF.regular,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.55)",
+    textAlign: "center",
+    paddingVertical: 20,
+  },
+  peopleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(34,197,94,0.06)",
+  },
+  peopleAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(34,197,94,0.22)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  peopleAvatarText: {
+    fontFamily: FF.bold,
+    fontSize: 16,
+    color: ACCENT,
+  },
+  peopleName: {
+    fontFamily: FF.semiBold,
+    fontSize: 15,
+    color: "#fff",
+  },
+  peoplePhone: {
+    fontFamily: FF.regular,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.7)",
+    marginTop: 2,
+  },
+  peoplePhoneMuted: {
+    fontFamily: FF.regular,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.4)",
+    marginTop: 2,
+    fontStyle: "italic",
   },
   sharedFab: {
     width: 44,
