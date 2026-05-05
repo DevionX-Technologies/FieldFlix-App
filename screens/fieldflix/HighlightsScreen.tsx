@@ -509,7 +509,23 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           server_payment_id: order.id,
         });
         setShowUnlockSheet(false);
-        Alert.alert('Unlocked', 'You can watch this recording in full.');
+        // Same branded modal + system notification as the paid path so both
+        // free (₹0 cricket) and paid unlocks feel identical to the user.
+        setPaymentSuccessVisible(true);
+        try {
+          await presentEventNotification({
+            title: 'Recording unlocked',
+            body: `Your ${sportLabel} recording is now unlocked. Tap to watch.`,
+            notificationType: 'LOCAL_PAYMENT_SUCCESS',
+            data: {
+              recordingId: String(recordingId),
+              sport: String(sportPlan),
+              amount: '0',
+            },
+          });
+        } catch (e) {
+          console.warn('Free-unlock notification failed:', e);
+        }
         void refresh();
         return;
       }
@@ -1037,10 +1053,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
               <View style={styles.paySuccessIconWrap}>
                 <Ionicons name="checkmark" size={36} color="#022c22" />
               </View>
-              <Text style={styles.paySuccessTitle}>Payment successful</Text>
+              <Text style={styles.paySuccessTitle}>Recording unlocked</Text>
               <Text style={styles.paySuccessBody}>
-                Your recording is now unlocked. Tap below to watch the full
-                match.
+                You can watch this recording in full. Tap below to start.
               </Text>
               <Pressable
                 style={styles.paySuccessCta}
