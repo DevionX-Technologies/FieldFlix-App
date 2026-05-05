@@ -185,17 +185,26 @@ function looksLikeZeroTimestamp(input: string | null | undefined): boolean {
   );
 }
 
+/**
+ * Badge shown on each highlight row's thumbnail: the **clip duration**, not
+ * the wall-clock time at which the clip was created. The Highlights API
+ * doesn't currently return a per-clip duration field; until it does we use
+ * the well-known per-product defaults (FlickShort = 15s, RecordingHighlight = 30s).
+ *
+ * If a per-clip `duration_seconds` ever lands on the DTO, swap the constants
+ * below for `formatClipDuration(h.duration_seconds)`.
+ */
 function highlightBadgeTimestamp(h: UiHighlight): string {
   if (String(h.id ?? '').startsWith('flick-')) return '15s';
-  const raw = String(h.relative_timestamp ?? '').trim();
-  if (raw && !looksLikeZeroTimestamp(raw)) return raw;
-  const createdAt = h.button_click_timestamp ? new Date(h.button_click_timestamp) : null;
-  if (createdAt && !Number.isNaN(createdAt.getTime())) {
-    const hh = createdAt.getHours();
-    const mm = String(createdAt.getMinutes()).padStart(2, '0');
-    return `${hh}:${mm}`;
+  // Optional: if backend ever populates `duration_seconds` use it.
+  const dur = (h as { duration_seconds?: number | null }).duration_seconds;
+  if (typeof dur === 'number' && Number.isFinite(dur) && dur > 0) {
+    if (dur < 60) return `${Math.round(dur)}s`;
+    const m = Math.floor(dur / 60);
+    const s = String(Math.round(dur % 60)).padStart(2, '0');
+    return `${m}:${s}`;
   }
-  return '15s';
+  return '30s';
 }
 
 /**
@@ -834,7 +843,21 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                       <LockIcon size={12} />
                       <Text style={styles.previewPillText}>Preview only</Text>
                     </View>
-                  ) : null}
+                  ) : (
+                    /* Share button — only shown when the user has unlocked the
+                     * recording. Aligned with the "Ready" capsule on the same
+                     * row. Reuses `onShareHero` which uses createShareLink +
+                     * deep-link fallback (never the raw Mux URL). */
+                    <Pressable
+                      onPress={() => void onShareHero()}
+                      style={styles.heroShareBtn}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="Share this recording"
+                    >
+                      <Ionicons name="share-outline" size={16} color="#022c22" />
+                    </Pressable>
+                  )}
                 </View>
 
                 <View style={styles.heroTextBlock}>
@@ -924,7 +947,23 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
 
           {savedHighlights.length > 0 ? (
             <View style={styles.likedSection}>
-              <Text style={styles.sectionTitle}>Saved highlights</Text>
+              <View style={styles.sectionRow}>
+                <Text style={styles.sectionTitle}>Saved highlights</Text>
+                <Pressable
+                  hitSlop={8}
+                  onPress={() =>
+                    router.push({
+                      pathname: Paths.savedHighlights as never,
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel="View all saved highlights"
+                >
+                  <View style={styles.viewAllPill}>
+                    <Text style={styles.viewAllText}>View All</Text>
+                  </View>
+                </Pressable>
+              </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1364,6 +1403,22 @@ const styles = StyleSheet.create({
     color: ACCENT,
     letterSpacing: 0.4,
   },
+  /** Compact green share button matching the Ready/Preview pill height —
+   *  shown in the top-right of the hero card only when the user has unlocked
+   *  the recording, so they can re-share the unlocked link from this view. */
+  heroShareBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   previewPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1575,8 +1630,8 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.45)',
   },
-  likedSection: { marginTop: 28, gap: 12 },
-  likedRowContent: { gap: 12, paddingRight: 8 },
+  likedSection: { marginTop: 18, gap: 6 },
+  likedRowContent: { gap: 10, paddingRight: 8, paddingTop: 4 },
   likedCard: {
     width: 130,
     gap: 8,
