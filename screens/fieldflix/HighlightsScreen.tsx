@@ -33,6 +33,7 @@ import {
 import { useEntitlement } from '@/lib/fieldflix-entitlement';
 import { mergeServerUnlockedRecordingIds } from '@/lib/unlockedRecordingSync';
 import { appendLocalPaymentHistory } from '@/lib/paymentHistoryLocal';
+import { presentEventNotification } from '@/utils/presentEventNotification';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
@@ -58,6 +59,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   Share,
@@ -221,6 +223,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
   const [apiDebug, setApiDebug] = useState<string | null>(null);
   const [showUnlockSheet, setShowUnlockSheet] = useState(false);
+  const [paymentSuccessVisible, setPaymentSuccessVisible] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutQuote, setCheckoutQuote] = useState<PlanOrderResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
@@ -559,7 +562,24 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         server_payment_id: verified.payment_id,
       });
       setShowUnlockSheet(false);
-      Alert.alert('Payment successful', 'This recording is now unlocked.');
+      // Branded success modal + system notification (mirrors recording-start /
+      // recording-stop flow so the user gets visible confirmation regardless
+      // of OS notification permissions).
+      setPaymentSuccessVisible(true);
+      try {
+        await presentEventNotification({
+          title: 'Payment successful',
+          body: `Your ${sportLabel} recording is now unlocked. Tap to watch.`,
+          notificationType: 'LOCAL_PAYMENT_SUCCESS',
+          data: {
+            recordingId: String(recordingId),
+            sport: String(sportPlan),
+            amount: String(orderAmount),
+          },
+        });
+      } catch (e) {
+        console.warn('Payment success notification failed:', e);
+      }
       void refresh();
     } catch (e) {
       const msg = getFieldflixApiErrorMessage(e, 'Could not complete payment');
@@ -998,6 +1018,40 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             </View>
           </View>
         ) : null}
+
+        {/* Branded payment-success modal — replaces the grey native Alert. */}
+        <Modal
+          visible={paymentSuccessVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPaymentSuccessVisible(false)}
+        >
+          <Pressable
+            style={styles.paySuccessBackdrop}
+            onPress={() => setPaymentSuccessVisible(false)}
+          >
+            <Pressable
+              style={styles.paySuccessCard}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.paySuccessIconWrap}>
+                <Ionicons name="checkmark" size={36} color="#022c22" />
+              </View>
+              <Text style={styles.paySuccessTitle}>Payment successful</Text>
+              <Text style={styles.paySuccessBody}>
+                Your recording is now unlocked. Tap below to watch the full
+                match.
+              </Text>
+              <Pressable
+                style={styles.paySuccessCta}
+                onPress={() => setPaymentSuccessVisible(false)}
+              >
+                <Text style={styles.paySuccessCtaText}>Watch now</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         <FieldflixBottomNav active="recordings" />
       </View>
     </WebShell>
@@ -1075,9 +1129,12 @@ function HighlightRow({
           >
             <Ionicons
               name={liked ? 'heart' : 'heart-outline'}
-              size={22}
+              size={18}
               color={liked ? '#f43f5e' : '#e2e8f0'}
             />
+            <Text style={styles.rowEngageCount} numberOfLines={1}>
+              {Number(highlight.likes_count ?? 0)}
+            </Text>
           </Pressable>
           <Pressable
             hitSlop={10}
@@ -1085,13 +1142,18 @@ function HighlightRow({
             onPress={onToggleSave}
             disabled={busyLike || busySave}
             accessibilityRole="button"
-            accessibilityLabel={saved ? 'Remove saved highlight' : 'Save highlight'}
+            accessibilityLabel={
+              saved ? 'Remove saved highlight' : 'Save highlight'
+            }
           >
             <Ionicons
               name={saved ? 'bookmark' : 'bookmark-outline'}
-              size={22}
+              size={18}
               color={saved ? ACCENT : '#e2e8f0'}
             />
+            <Text style={styles.rowEngageCount} numberOfLines={1}>
+              {saved ? 'Saved' : 'Save'}
+            </Text>
           </Pressable>
         </View>
       ) : null}
@@ -1421,12 +1483,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   rowEngageBtn: {
-    width: 40,
-    height: 40,
+    minWidth: 44,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.06)',
+    gap: 2,
+  },
+  rowEngageCount: {
+    fontFamily: FF.semiBold,
+    fontSize: 10,
+    lineHeight: 12,
+    color: 'rgba(226,232,240,0.85)',
+    marginTop: 1,
   },
   rowThumb: {
     width: 110,
@@ -1613,5 +1684,62 @@ const styles = StyleSheet.create({
     color: 'rgba(148,163,184,0.9)',
     fontFamily: FF.semiBold,
     fontSize: 12,
+  },
+  /* ----- Branded payment-success modal ----- */
+  paySuccessBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  paySuccessCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#0b1f17',
+    borderRadius: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(34,197,94,0.35)',
+    gap: 12,
+  },
+  paySuccessIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  paySuccessTitle: {
+    fontFamily: FF.bold,
+    fontSize: 20,
+    color: '#fff',
+    textAlign: 'center',
+  },
+  paySuccessBody: {
+    fontFamily: FF.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: 'rgba(255,255,255,0.78)',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  paySuccessCta: {
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 999,
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paySuccessCtaText: {
+    fontFamily: FF.bold,
+    fontSize: 15,
+    color: '#022c22',
+    letterSpacing: 0.2,
   },
 });

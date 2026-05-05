@@ -712,19 +712,30 @@ export default function FieldflixRecordingsScreen() {
                     </View>
                     {row.recordingId ? (
                       <View
-                        style={styles.thumbLockState}
+                        style={[
+                          styles.thumbLockState,
+                          recordingUnlockedPlayback(row.recordingId)
+                            ? styles.thumbLockStateUnlocked
+                            : styles.thumbLockStateLocked,
+                        ]}
                         pointerEvents="none"
                         accessibilityElementsHidden
                         importantForAccessibility="no-hide-descendants"
                       >
                         <MaterialCommunityIcons
+                          // Distinct icons + colors so locked vs unlocked
+                          // are recognisable at a glance, not just outlines.
                           name={
                             recordingUnlockedPlayback(row.recordingId)
-                              ? "lock-open-outline"
-                              : "lock-outline"
+                              ? "lock-open-variant"
+                              : "lock"
                           }
-                          size={14}
-                          color="#ffffff"
+                          size={16}
+                          color={
+                            recordingUnlockedPlayback(row.recordingId)
+                              ? "#22C55E"
+                              : "#F87171"
+                          }
                         />
                       </View>
                     ) : null}
@@ -1541,12 +1552,18 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "rgba(0,0,0,0.52)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 11,
+  },
+  thumbLockStateLocked: {
+    backgroundColor: "rgba(127,29,29,0.78)", // dark red wash so the red lock pops
+    borderColor: "rgba(248,113,113,0.65)",
+  },
+  thumbLockStateUnlocked: {
+    backgroundColor: "rgba(20,83,45,0.78)", // dark green wash so the green open lock pops
+    borderColor: "rgba(34,197,94,0.65)",
   },
   myBody: { flex: 1, minWidth: 0, gap: 6 },
   myTitle: {

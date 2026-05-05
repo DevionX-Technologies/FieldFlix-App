@@ -3,6 +3,8 @@ import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
 import axiosInstance from "@/utils/axiosInstance";
+import { createShareLink } from "@/lib/fieldflix-api";
+import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -290,34 +292,59 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                   : formatDate(highlight.button_click_timestamp)
               }
             </Text>
-            {canPlay && !isMainVideo && (
+            {canPlay && (
               <Pressable
                 style={styles.shareButton}
                 onPress={async () => {
                   try {
-                    // Share directly with available playback URL to avoid processing failures.
-                    const playbackUrl =
-                      highlight.mux_public_playback_url ||
-                      (highlight.playback_id
-                        ? `https://stream.mux.com/${highlight.playback_id}.m3u8`
-                        : null);
-                    if (!playbackUrl) {
-                      showCustomAlert("error", "Share unavailable", "No playable URL found for this highlight.");
+                    // Always share an in-app deep link, never the raw Mux URL.
+                    // The deep link routes via the universal-link domain and
+                    // falls back to the app's `fieldflicks://` scheme when
+                    // the app is installed — so the share NEVER opens Mux
+                    // in Chrome and never shows an "invalid link" page.
+                    let shareUrl: string | null = null;
+                    const recordingId =
+                      (highlight as { recording_id?: string }).recording_id ??
+                      (highlight as { recordingId?: string }).recordingId ??
+                      null;
+                    if (recordingId) {
+                      try {
+                        const { shareableLink } =
+                          await createShareLink(String(recordingId));
+                        shareUrl = shareableLink;
+                      } catch {
+                        // Backend share-link creation failed — fall back to
+                        // the in-app universal/deep link for this recording.
+                        shareUrl = buildHighlightsAppLink(String(recordingId));
+                      }
+                    }
+                    if (!shareUrl) {
+                      showCustomAlert(
+                        'error',
+                        'Share unavailable',
+                        'Could not generate a shareable link. Please try again.',
+                      );
                       return;
                     }
                     await Share.share({
-                      message: `Watch this highlight on FieldFlicks: ${playbackUrl}`,
-                      url: playbackUrl,
-                      title: "FieldFlicks Highlight",
+                      message: `Watch this on FieldFlicks: ${shareUrl}`,
+                      url: shareUrl,
+                      title: 'FieldFlicks',
                     });
                   } catch (error) {
                     console.error('Error sharing highlight:', error);
-                    showCustomAlert("error", "Share Failed", "Failed to share highlight. Please try again.");
+                    showCustomAlert(
+                      'error',
+                      'Share Failed',
+                      'Failed to share. Please try again.',
+                    );
                   }
                 }}
               >
                 <Ionicons name="share" size={16} color="#FFFFFF" />
-                <Text style={styles.shareButtonText}>Share Video</Text>
+                <Text style={styles.shareButtonText}>
+                  {isMainVideo ? 'Share Recording' : 'Share Video'}
+                </Text>
               </Pressable>
             )}
 
@@ -344,9 +371,9 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
 const styles = StyleSheet.create({
   activeCard: {
     borderWidth: 2,
-    borderColor: "#007AFF",
-    backgroundColor: "rgba(0, 122, 255, 0.1)",
-    shadowColor: "#007AFF",
+    borderColor: "#22C55E",
+    backgroundColor: "rgba(34, 197, 94, 0.12)",
+    shadowColor: "#22C55E",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -383,18 +410,18 @@ const styles = StyleSheet.create({
   },
   activeThumbnail: {
     borderWidth: 2,
-    borderColor: "#007AFF",
+    borderColor: "#22C55E",
   },
   activeIndicator: {
     position: "absolute",
     bottom: 2,
     left: 2,
     right: 2,
-    backgroundColor: "#007AFF",
+    backgroundColor: "#22C55E",
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 6,
-    shadowColor: "#007AFF",
+    shadowColor: "#22C55E",
     shadowOffset: {
       width: 0,
       height: 1,
@@ -449,7 +476,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   activeTitle: {
-    color: "#007AFF",
+    color: "#22C55E",
     fontWeight: "700",
   },
   highlightTime: {
@@ -458,7 +485,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   activeTime: {
-    color: "#66B3FF",
+    color: "#86EFAC",
     fontWeight: "500",
   },
   statusBadge: {
@@ -486,12 +513,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#007AFF",
+    backgroundColor: "#22C55E",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 18,
     marginTop: 8,
-    shadowColor: "#007AFF",
+    shadowColor: "#22C55E",
     shadowOffset: {
       width: 0,
       height: 2,
@@ -548,7 +575,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   loadingIcon: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#22C55E",
   },
   successIcon: {
     backgroundColor: "#34C759",
@@ -574,12 +601,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalButton: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#22C55E",
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 25,
     minWidth: 120,
-    shadowColor: "#007AFF",
+    shadowColor: "#22C55E",
     shadowOffset: {
       width: 0,
       height: 4,

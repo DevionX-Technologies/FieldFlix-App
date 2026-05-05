@@ -676,7 +676,7 @@ export default function FieldflixHomeScreen() {
         </View>
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={{ paddingBottom: navReserve + 24 }}
+          contentContainerStyle={{ paddingBottom: navReserve }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -1870,10 +1870,11 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   bannerDotsRowOuter: {
-    /** Right-align so the pill doesn't overlap any centered text/CTA on the
-     *  active slide image. Padding gives visual gutter from the card edge. */
-    alignItems: "flex-end",
-    marginTop: 14,
+    /** Centered horizontally; tight bottom margin so the carousel ends right
+     *  below the dots without extra dead scroll space. */
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 0,
     paddingHorizontal: 4,
   },
   bannerDotsPill: {

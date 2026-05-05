@@ -322,14 +322,18 @@ function SessionCard({
 
           <View style={styles.topRightCluster}>
             <View
-              style={styles.lockBadge}
+              style={[
+                styles.lockBadge,
+                unlocked ? styles.lockBadgeUnlocked : styles.lockBadgeLocked,
+              ]}
               accessibilityElementsHidden
               importantForAccessibility="no-hide-descendants"
             >
               <MaterialCommunityIcons
-                name={unlocked ? "lock-open-outline" : "lock-outline"}
-                size={14}
-                color="#ffffff"
+                // Distinct shape + colour for locked vs unlocked.
+                name={unlocked ? 'lock-open-variant' : 'lock'}
+                size={16}
+                color={unlocked ? '#22C55E' : '#F87171'}
               />
             </View>
             <Pressable
@@ -551,11 +555,17 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: "rgba(0,0,0,0.52)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
+  },
+  lockBadgeLocked: {
+    backgroundColor: "rgba(127,29,29,0.78)",
+    borderColor: "rgba(248,113,113,0.65)",
+  },
+  lockBadgeUnlocked: {
+    backgroundColor: "rgba(20,83,45,0.78)",
+    borderColor: "rgba(34,197,94,0.65)",
   },
   metaCol: {
     flex: 1,
