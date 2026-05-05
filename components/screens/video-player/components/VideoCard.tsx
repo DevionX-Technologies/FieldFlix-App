@@ -120,14 +120,17 @@ const useVideoCardActions = () => {
 
   const handleShare = useCallback(async (playbackUrl: string, recordingId?: string) => {
     try {
-      // Generate shareable deep link URL instead of using direct Mux URL
-      const shareableUrl = recordingId 
-        ? generateShareableRecordingURL(recordingId, playbackUrl)
-        : playbackUrl; // Fallback to original URL if no recordingId
-      
-      const shareMessage = recordingId 
-        ? getShareMessage(recordingId)
-        : "Here's a video I recorded for the game: ";
+      // Never share the raw Mux URL — even if recordingId is missing for some
+      // reason, refuse rather than leak a Chrome-playable stream link.
+      if (!recordingId) {
+        console.warn("VideoCard.handleShare invoked without a recordingId — refusing to share Mux URL");
+        return;
+      }
+      const shareableUrl = generateShareableRecordingURL(
+        recordingId,
+        playbackUrl,
+      );
+      const shareMessage = getShareMessage(recordingId);
 
       const result = await Share.share({
         title: "Check this out!",

@@ -118,18 +118,24 @@ This email was automatically generated from the FieldFlicks mobile app.`;
 
   const handleShare = async (playbackUrl: string, recordingId?: string) => {
     try {
-      // Generate shareable deep link URL instead of using direct Mux URL
-      const shareableUrl = recordingId 
-        ? generateShareableRecordingURL(recordingId, playbackUrl)
-        : playbackUrl; // Fallback to original URL if no recordingId
-      
-      const shareMessage = recordingId 
-        ? getShareMessage(recordingId)
-        : "Here's a video I recorded: ";
-        
+      // Never share the raw Mux URL — bail if we can't build an in-app link.
+      if (!recordingId) {
+        console.warn("recordingCard share invoked without recordingId — refusing to share Mux URL");
+        Alert.alert(
+          "Share unavailable",
+          "Could not generate a shareable link for this recording.",
+        );
+        return;
+      }
+      const shareableUrl = generateShareableRecordingURL(
+        recordingId,
+        playbackUrl,
+      );
+      const shareMessage = getShareMessage(recordingId);
+
       // First copy to clipboard
       await Clipboard.setString(shareableUrl);
-      
+
       // Then open share dialog
       const result = await Share.share({
         title: "Check out this game recording!",
