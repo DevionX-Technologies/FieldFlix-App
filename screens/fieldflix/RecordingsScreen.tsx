@@ -318,6 +318,44 @@ export default function FieldflixRecordingsScreen() {
   const [findMatches, setFindMatches] = useState<any[] | null>(null);
   const [showVenueOptions, setShowVenueOptions] = useState(false);
   const [showGroundOptions, setShowGroundOptions] = useState(false);
+  /** Native time-picker visibility — independent for start vs end so the
+   *  user can re-open one without dismissing the other on iOS modal sheet. */
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
+  /** Format the JS Date returned by the picker into the HH:mm string the
+   *  backend `find-and-claim` DTO expects. */
+  const formatHHmm = useCallback((d: Date) => {
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${h}:${m}`;
+  }, []);
+
+  /** HH:mm → today's Date (only hours/minutes used) so the picker has a
+   *  defaulted-to-current-value when the user re-opens it. */
+  const hmStringToDate = useCallback((hhmm: string): Date => {
+    const base = new Date();
+    const m = hhmm.match(/^(\d{1,2}):(\d{2})$/);
+    if (m) {
+      base.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    }
+    return base;
+  }, []);
+
+  const onStartTimeChange = useCallback(
+    (_e: DateTimePickerEvent, selected?: Date) => {
+      if (Platform.OS === "android") setShowStartTimePicker(false);
+      if (selected) setFindStart(formatHHmm(selected));
+    },
+    [formatHHmm],
+  );
+  const onEndTimeChange = useCallback(
+    (_e: DateTimePickerEvent, selected?: Date) => {
+      if (Platform.OS === "android") setShowEndTimePicker(false);
+      if (selected) setFindEnd(formatHHmm(selected));
+    },
+    [formatHHmm],
+  );
 
   const findDateLabel = useMemo(
     () => findPickDate.toDateString(),
@@ -345,17 +383,59 @@ export default function FieldflixRecordingsScreen() {
     }
   }, [findVenueId]);
 
+  /**
+   * Build the court / ground dropdown from this turf's cameras.
+   *
+   * Strategy:
+   *   1. For every camera, derive a court_number — preferred source is digits
+   *      embedded in `camera.name` (e.g. "Camera 12" → 12, "Court 4" → 4).
+   *   2. Camera rows whose name is a UUID or has no digits are assigned a
+   *      synthetic court number based on their stable order in the list
+   *      (id-sorted) so each one still gets a usable label.
+   *   3. Render every option as `Court N` so the dropdown reads cleanly even
+   *      when admin-side `cameras.name` data is messy.
+   */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
-    return systemCameras
-      .filter((x) => x && x.id && (x.name ?? "").toString().trim().length > 0)
-      .filter((x) => !q || String(x.name).toLowerCase().includes(q))
-      .sort((a, b) =>
-        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
-          sensitivity: "base",
-          numeric: true,
-        }),
-      )
+    const valid = systemCameras.filter((x) => x && x.id);
+    if (valid.length === 0) return [];
+
+    // Stable order so synthetic court numbers don't shuffle between renders.
+    const idSorted = [...valid].sort((a, b) =>
+      String(a.id).localeCompare(String(b.id)),
+    );
+
+    const seenNumbers = new Set<number>();
+    const decorated = idSorted.map((cam, idx) => {
+      const rawName = String(cam.name ?? "").trim();
+      const looksLikeUuid = UUID_RE.test(rawName);
+      const digitsInName = !looksLikeUuid
+        ? rawName.match(/(\d+)/)?.[1]
+        : null;
+      let courtNumber: number;
+      if (digitsInName) {
+        courtNumber = Number(digitsInName);
+      } else {
+        // Synthetic: smallest unused positive integer based on this camera's
+        // order in the id-sorted list.
+        let candidate = idx + 1;
+        while (seenNumbers.has(candidate)) candidate++;
+        courtNumber = candidate;
+      }
+      seenNumbers.add(courtNumber);
+      const label = `Court ${courtNumber}`;
+      return {
+        ...cam,
+        // Override `name` so the dropdown rendering picks the clean label.
+        name: label,
+        courtNumber,
+        rawName,
+      };
+    });
+
+    return decorated
+      .filter((x) => !q || x.name.toLowerCase().includes(q))
+      .sort((a, b) => a.courtNumber - b.courtNumber)
       .slice(0, 20);
   }, [findGround, systemCameras]);
 
@@ -1181,27 +1261,135 @@ export default function FieldflixRecordingsScreen() {
                       <ClockIcon color={MUTED} size={14} />
                       <Text style={styles.findLabel}>START TIME</Text>
                     </View>
-                    <TextInput
-                      value={findStart}
-                      onChangeText={setFindStart}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
-                    />
+                    <Pressable
+                      onPress={() => setShowStartTimePicker(true)}
+                      style={styles.findInputPressable}
+                      accessibilityRole="button"
+                      accessibilityLabel="Choose start time"
+                    >
+                      <Text
+                        style={[
+                          styles.findInputPressableText,
+                          !findStart && {
+                            color: "rgba(255,255,255,0.35)",
+                          },
+                        ]}
+                      >
+                        {findStart || "Select start time"}
+                      </Text>
+                    </Pressable>
                   </View>
                   <View style={styles.findGridCol}>
                     <View style={styles.findLabelRow}>
                       <ClockIcon color={MUTED} size={14} />
                       <Text style={styles.findLabel}>END TIME</Text>
                     </View>
-                    <TextInput
-                      value={findEnd}
-                      onChangeText={setFindEnd}
-                      style={styles.findInput}
-                      placeholderTextColor="rgba(255,255,255,0.35)"
+                    <Pressable
+                      onPress={() => setShowEndTimePicker(true)}
+                      style={styles.findInputPressable}
+                      accessibilityRole="button"
+                      accessibilityLabel="Choose end time"
+                    >
+                      <Text
+                        style={[
+                          styles.findInputPressableText,
+                          !findEnd && {
+                            color: "rgba(255,255,255,0.35)",
+                          },
+                        ]}
+                      >
+                        {findEnd || "Select end time"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                {/* Android: inline DateTimePicker — auto-dismisses on selection. */}
+                {showStartTimePicker && Platform.OS === "android" ? (
+                  <DateTimePicker
+                    value={hmStringToDate(findStart)}
+                    mode="time"
+                    is24Hour={false}
+                    display="default"
+                    themeVariant="dark"
+                    onChange={onStartTimeChange}
+                  />
+                ) : null}
+                {showEndTimePicker && Platform.OS === "android" ? (
+                  <DateTimePicker
+                    value={hmStringToDate(findEnd)}
+                    mode="time"
+                    is24Hour={false}
+                    display="default"
+                    themeVariant="dark"
+                    onChange={onEndTimeChange}
+                  />
+                ) : null}
+              </View>
+
+              {/* iOS: spinner-style picker inside a bottom-sheet modal. */}
+              <Modal
+                visible={showStartTimePicker && Platform.OS === "ios"}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowStartTimePicker(false)}
+              >
+                <View style={styles.findDateModalRoot}>
+                  <Pressable
+                    style={styles.findDateModalTouchOut}
+                    onPress={() => setShowStartTimePicker(false)}
+                  />
+                  <View style={styles.findDateModalSheet}>
+                    <View style={styles.findDateModalHeader}>
+                      <Pressable
+                        onPress={() => setShowStartTimePicker(false)}
+                        hitSlop={12}
+                      >
+                        <Text style={styles.findDateModalDone}>Done</Text>
+                      </Pressable>
+                    </View>
+                    <DateTimePicker
+                      value={hmStringToDate(findStart)}
+                      mode="time"
+                      is24Hour={false}
+                      display="spinner"
+                      themeVariant="dark"
+                      onChange={onStartTimeChange}
                     />
                   </View>
                 </View>
-              </View>
+              </Modal>
+              <Modal
+                visible={showEndTimePicker && Platform.OS === "ios"}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowEndTimePicker(false)}
+              >
+                <View style={styles.findDateModalRoot}>
+                  <Pressable
+                    style={styles.findDateModalTouchOut}
+                    onPress={() => setShowEndTimePicker(false)}
+                  />
+                  <View style={styles.findDateModalSheet}>
+                    <View style={styles.findDateModalHeader}>
+                      <Pressable
+                        onPress={() => setShowEndTimePicker(false)}
+                        hitSlop={12}
+                      >
+                        <Text style={styles.findDateModalDone}>Done</Text>
+                      </Pressable>
+                    </View>
+                    <DateTimePicker
+                      value={hmStringToDate(findEnd)}
+                      mode="time"
+                      is24Hour={false}
+                      display="spinner"
+                      themeVariant="dark"
+                      onChange={onEndTimeChange}
+                    />
+                  </View>
+                </View>
+              </Modal>
 
               <View style={[styles.findPanel, styles.findPanelVerify]}>
                 <View style={styles.findVerifyTitle}>
