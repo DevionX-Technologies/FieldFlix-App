@@ -11,12 +11,19 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+/** Cricket field hero — used as a low-opacity backdrop on the recording-setup
+ *  screen so the page feels grounded in the venue rather than flat black.
+ *  Filename is intentionally short + hyphenated (no spaces, no underscores)
+ *  so Metro's static asset resolver bundles it reliably. */
+const FIELD_BG_IMAGE = require('@/assets/images/recording-field-bg.jpg');
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -245,7 +252,14 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
-      <View style={styles.page}>
+      <ImageBackground
+        source={FIELD_BG_IMAGE}
+        style={styles.page}
+        imageStyle={styles.pageBgImage}
+        resizeMode="cover"
+      >
+        {/* Dark gradient-ish overlay to keep text legible on top of the field. */}
+        <View pointerEvents="none" style={styles.pageOverlay} />
         <Pressable
           accessibilityLabel="Go back"
           onPress={() => router.back()}
@@ -366,7 +380,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
             </Pressable>
           </View>
         </ScrollView>
-      </View>
+      </ImageBackground>
     </WebShell>
   );
 }
@@ -419,6 +433,16 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: '#020617',
+  },
+  /** The cricket-field photo behind the page chrome. Tinted darker via opacity
+   *  so the green court reads as a backdrop, not a foreground. */
+  pageBgImage: {
+    opacity: 0.45,
+  },
+  /** Dark wash so headlines + buttons keep contrast over the field. */
+  pageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.62)',
   },
   back: {
     position: 'absolute',

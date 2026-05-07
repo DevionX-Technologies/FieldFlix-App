@@ -1,4 +1,6 @@
 import { Paths } from "@/data/paths";
+import { createShareLink } from "@/lib/fieldflix-api";
+import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
 import {
   getSavedRecordingHighlights,
   type SavedRecordingHighlightSummary,
@@ -8,8 +10,9 @@ import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader
 import { FF } from "@/screens/fieldflix/fonts";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
-import { useFocusEffect } from "@react-navigation/native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
@@ -17,6 +20,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -27,9 +31,10 @@ const ACCENT = "#22C55E";
 const BG_COLOR = "#020617";
 
 /**
- * "View All" landing for saved highlights — opens from the HighlightsScreen
- * `Saved highlights` carousel header. Re-fetches on focus so newly bookmarked
- * clips appear without forcing a manual refresh.
+ * "View All" landing for saved highlights — single-column, rich-card layout
+ * matching the figma reference (thumbnail with duration badge, title, like
+ * count, Share & Save row). Re-fetches on focus so newly bookmarked clips
+ * appear without forcing a manual refresh.
  */
 export default function SavedHighlightsScreen() {
   const router = useRouter();
@@ -54,10 +59,26 @@ export default function SavedHighlightsScreen() {
     }, [load]),
   );
 
+  const onShare = useCallback(async (recordingId: string) => {
+    if (!recordingId) return;
+    try {
+      const { shareableLink } = await createShareLink(recordingId);
+      await Share.share({
+        message: `Watch my game on FieldFlicks: ${shareableLink}`,
+        url: shareableLink,
+      });
+    } catch {
+      const appLink = buildHighlightsAppLink(recordingId);
+      await Share.share({
+        message: `Watch my game on FieldFlicks: ${appLink}`,
+      }).catch(() => null);
+    }
+  }, []);
+
   return (
     <WebShell backgroundColor={BG_COLOR}>
       <View style={styles.flex}>
-        <FieldflixScreenHeader title="Saved Highlights" />
+        <FieldflixScreenHeader title="Saved" />
 
         {loading ? (
           <View style={styles.center}>
@@ -79,9 +100,8 @@ export default function SavedHighlightsScreen() {
           <FlatList
             data={items}
             keyExtractor={(it) => `${it.recordingId}-${it.highlightId}`}
-            numColumns={2}
-            columnWrapperStyle={styles.row}
             contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={styles.gap} />}
             renderItem={({ item }) => (
               <Pressable
                 style={styles.card}
@@ -91,6 +111,7 @@ export default function SavedHighlightsScreen() {
                     params: { id: item.recordingId },
                   })
                 }
+                accessibilityRole="button"
               >
                 <View style={styles.thumbWrap}>
                   <Image
@@ -102,16 +123,66 @@ export default function SavedHighlightsScreen() {
                     style={styles.thumb}
                     resizeMode="cover"
                   />
+                  {/* Like count pill, bottom-left of the thumbnail (mirrors
+                   *  the figma "230K" badge). Hidden when there are no likes. */}
+                  {Number(item.likesCount ?? 0) > 0 ? (
+                    <View style={styles.thumbLikes}>
+                      <Ionicons name="heart" size={11} color="#f43f5e" />
+                      <Text style={styles.thumbLikesText}>
+                        {formatCompact(Number(item.likesCount))}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {/* Duration pill, bottom-right. */}
                   <View style={styles.thumbDur}>
-                    <Text style={styles.thumbDurText}>30s</Text>
+                    <Text style={styles.thumbDurText}>
+                      {item.relativeTimestamp || "Clip"}
+                    </Text>
+                  </View>
+                  {/* Subtle play overlay so the user knows it's playable. */}
+                  <View style={styles.thumbPlay} pointerEvents="none">
+                    <Ionicons name="play" size={20} color="#fff" />
                   </View>
                 </View>
-                <Text style={styles.cardTitle} numberOfLines={1}>
-                  Highlight
-                </Text>
-                <Text style={styles.cardSub} numberOfLines={1}>
-                  {item.relativeTimestamp ?? "Saved"}
-                </Text>
+
+                <View style={styles.body}>
+                  <Text style={styles.title} numberOfLines={2}>
+                    Saved Highlight
+                  </Text>
+                  <Text style={styles.meta} numberOfLines={1}>
+                    {item.relativeTimestamp
+                      ? `at ${item.relativeTimestamp}`
+                      : "Tap to watch"}
+                  </Text>
+
+                  <View style={styles.actionsRow}>
+                    <View style={styles.action}>
+                      <Ionicons name="heart" size={14} color="#f43f5e" />
+                      <Text style={styles.actionText}>
+                        {formatCompact(Number(item.likesCount ?? 0))}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        void onShare(item.recordingId);
+                      }}
+                      hitSlop={6}
+                      style={styles.action}
+                      accessibilityRole="button"
+                      accessibilityLabel="Share saved highlight"
+                    >
+                      <Ionicons name="share-outline" size={14} color="#cbd5e1" />
+                      <Text style={styles.actionText}>Share</Text>
+                    </Pressable>
+                    <View style={styles.action}>
+                      <Ionicons name="bookmark" size={14} color={ACCENT} />
+                      <Text style={[styles.actionText, { color: ACCENT }]}>
+                        Saved
+                      </Text>
+                    </View>
+                  </View>
+                </View>
               </Pressable>
             )}
           />
@@ -121,6 +192,14 @@ export default function SavedHighlightsScreen() {
       </View>
     </WebShell>
   );
+}
+
+/** "230" → "230", "12300" → "12.3K", "1530000" → "1.5M". */
+function formatCompact(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, "")}K`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
 }
 
 const styles = StyleSheet.create({
@@ -144,24 +223,48 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.6)",
     textAlign: "center",
   },
-  list: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 120, gap: 14 },
-  row: { gap: 14 },
-  card: { flex: 1, gap: 6 },
-  thumbWrap: {
-    aspectRatio: 16 / 10,
+  list: {
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 120,
+  },
+  gap: { height: 14 },
+  card: {
+    flexDirection: "row",
+    gap: 12,
+    backgroundColor: "rgba(255,255,255,0.03)",
     borderRadius: 14,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  thumbWrap: {
+    width: 130,
+    aspectRatio: 16 / 11,
+    borderRadius: 10,
     overflow: "hidden",
     backgroundColor: "rgba(255,255,255,0.05)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    position: "relative",
   },
   thumb: { width: "100%", height: "100%" },
+  thumbPlay: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    transform: [{ translateX: -14 }, { translateY: -14 }],
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   thumbDur: {
     position: "absolute",
     bottom: 6,
     right: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 6,
     backgroundColor: "rgba(0,0,0,0.7)",
   },
@@ -170,10 +273,54 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#fff",
   },
-  cardTitle: { fontFamily: FF.semiBold, fontSize: 13, color: "#fff" },
-  cardSub: {
+  thumbLikes: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: "rgba(0,0,0,0.7)",
+  },
+  thumbLikesText: {
+    fontFamily: FF.semiBold,
+    fontSize: 10,
+    color: "#fff",
+  },
+  body: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 4,
+    justifyContent: "center",
+    gap: 6,
+  },
+  title: {
+    fontFamily: FF.bold,
+    fontSize: 15,
+    color: "#fff",
+  },
+  meta: {
     fontFamily: FF.regular,
-    fontSize: 11,
-    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.6)",
+  },
+  actionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginTop: 4,
+  },
+  action: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  actionText: {
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    color: "rgba(203,213,225,0.9)",
   },
 });

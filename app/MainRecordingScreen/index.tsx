@@ -15,12 +15,18 @@ import {
   ActivityIndicator,
   Alert,
   BackHandler,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+
+/** Cricket field hero — same backdrop as the Setup screen so the recording
+ *  flow keeps a consistent visual identity once the user has scanned a QR.
+ *  Short, hyphenated filename → safe for Metro asset bundling. */
+const FIELD_BG_IMAGE = require('@/assets/images/recording-field-bg.jpg');
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 
@@ -174,7 +180,13 @@ export default function MainRecordingScreen() {
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
-      <View style={styles.page}>
+      <ImageBackground
+        source={FIELD_BG_IMAGE}
+        style={styles.page}
+        imageStyle={styles.pageBgImage}
+        resizeMode="cover"
+      >
+        <View pointerEvents="none" style={styles.pageOverlay} />
         <Pressable
           accessibilityLabel="Go back"
           onPress={() => {
@@ -300,7 +312,7 @@ export default function MainRecordingScreen() {
           </View>
         ) : null}
         {ModalComponent}
-      </View>
+      </ImageBackground>
     </WebShell>
   );
 }
@@ -366,6 +378,14 @@ const styles = StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: BG,
+  },
+  /** Keep the field photo subtle; main UI is the timer + actions card. */
+  pageBgImage: {
+    opacity: 0.42,
+  },
+  pageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2,6,23,0.65)',
   },
   container: {
     flex: 1,

@@ -613,6 +613,9 @@ export type SavedRecordingHighlightSummary = {
   muxPublicPlaybackUrl: string | null;
   thumbnailUrl: string | null;
   status: string;
+  /** Optional — backend returns when available. Rendered next to the heart
+   *  icon on the saved-highlights screen. */
+  likesCount?: number;
 };
 
 export async function getSavedRecordingHighlights(): Promise<

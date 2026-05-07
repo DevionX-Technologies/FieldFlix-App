@@ -186,17 +186,20 @@ function looksLikeZeroTimestamp(input: string | null | undefined): boolean {
 }
 
 /**
- * Badge shown on each highlight row's thumbnail: the **clip duration**, not
- * the wall-clock time at which the clip was created. The Highlights API
- * doesn't currently return a per-clip duration field; until it does we use
- * the well-known per-product defaults (FlickShort = 15s, RecordingHighlight = 30s).
+ * Badge shown on each highlight row's thumbnail: the **clip duration**.
  *
- * If a per-clip `duration_seconds` ever lands on the DTO, swap the constants
- * below for `formatClipDuration(h.duration_seconds)`.
+ * Sources, in priority order:
+ *   1. `h.duration_seconds` if backend supplies it.
+ *   2. FlickShorts (id prefixed `flick-`) — fixed 15s.
+ *   3. Recording highlights named with a hint (e.g. relative_timestamp ends
+ *      with a `(15s)` suffix on some legacy rows).
+ *   4. Generic "Clip" — never falsely claim "30s".
+ *
+ * The previous "30s" fallback was wrong: not every highlight is 30s, and
+ * 15s flick clips were being shown as 30s when their id wasn't prefixed
+ * `flick-` (some shorts come in via the highlight feed without that prefix).
  */
 function highlightBadgeTimestamp(h: UiHighlight): string {
-  if (String(h.id ?? '').startsWith('flick-')) return '15s';
-  // Optional: if backend ever populates `duration_seconds` use it.
   const dur = (h as { duration_seconds?: number | null }).duration_seconds;
   if (typeof dur === 'number' && Number.isFinite(dur) && dur > 0) {
     if (dur < 60) return `${Math.round(dur)}s`;
@@ -204,7 +207,11 @@ function highlightBadgeTimestamp(h: UiHighlight): string {
     const s = String(Math.round(dur % 60)).padStart(2, '0');
     return `${m}:${s}`;
   }
-  return '30s';
+  if (String(h.id ?? '').startsWith('flick-')) return '15s';
+  // Heuristic: some legacy rows tagged the duration in the relative_timestamp.
+  const ts = String(h.relative_timestamp ?? '').match(/(\d+)\s*s/i);
+  if (ts) return `${ts[1]}s`;
+  return 'Clip';
 }
 
 /**
@@ -930,19 +937,35 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 will appear here once your video has finished processing.
               </Text>
             ) : null}
-            {highlights.map((h, idx) => (
-              <HighlightRow
-                key={h.id}
-                highlight={h}
-                index={idx}
-                hasAccess={hasRecordingAccess}
-                flickSavedLocally={flickLocalSavedIds.includes(String(h.id))}
-                engageBusy={engageBusy}
-                onPress={() => void onHighlightPress(h)}
-                onToggleLike={() => void onToggleHighlightLike(h.id)}
-                onToggleSave={() => void onToggleHighlightSave(h.id)}
-              />
-            ))}
+            {highlights.map((h, idx) => {
+              const isSavedLocally = flickLocalSavedIds.includes(String(h.id));
+              const isSaved = Boolean(h.viewerSaved) || isSavedLocally;
+              return (
+                <HighlightRow
+                  key={h.id}
+                  highlight={h}
+                  index={idx}
+                  hasAccess={hasRecordingAccess}
+                  flickSavedLocally={isSavedLocally}
+                  engageBusy={engageBusy}
+                  onPress={() => {
+                    // Saved highlights take a detour through the Saved Highlights
+                    // index so the user lands on their bookmarked collection
+                    // before drilling back into the clip. Non-saved highlights
+                    // open the player directly as before.
+                    if (isSaved) {
+                      router.push({
+                        pathname: Paths.savedHighlights as never,
+                      });
+                      return;
+                    }
+                    void onHighlightPress(h);
+                  }}
+                  onToggleLike={() => void onToggleHighlightLike(h.id)}
+                  onToggleSave={() => void onToggleHighlightSave(h.id)}
+                />
+              );
+            })}
           </View>
 
           {savedHighlights.length > 0 ? (

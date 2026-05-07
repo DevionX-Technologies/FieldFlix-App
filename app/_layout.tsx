@@ -440,9 +440,13 @@ export default function RootLayout() {
                   }),
                   animationTypeForReplace: "push",
                   gestureEnabled: true,
+                  // Enable edge-AND-full-screen swipe-back on iOS. The previous
+                  // `customAnimationOnGesture` + `animationMatchesGesture` flags
+                  // were causing the gesture recognizer to silently drop the
+                  // touch — users had to use the header back button instead.
+                  // Removing those flags lets iOS use its native (reliable)
+                  // interactive-pop behavior.
                   fullScreenGestureEnabled: true,
-                  animationMatchesGesture: true,
-                  customAnimationOnGesture: true,
                   presentation: "card",
                   contentStyle: { backgroundColor: "#000000" },
                 }}
