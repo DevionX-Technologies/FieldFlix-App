@@ -11,6 +11,7 @@ import {
   FieldflixScreenHeader,
 } from '@/screens/fieldflix/FieldflixScreenHeader';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
@@ -18,6 +19,47 @@ import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 export default function FieldflixScanQrScreen() {
   const router = useRouter();
   const [permissionInfo, requestPermission] = useCameraPermissions();
+  /** Bumping this remounts <CameraView> after a permission grant so Android
+   *  doesn't try to attach the camera to a surface that was created when the
+   *  OS still considered the permission denied. */
+  const [cameraMountKey, setCameraMountKey] = React.useState(0);
+  /** Re-entrancy guard so two focus events don't double-fire requestPermission. */
+  const requestingRef = React.useRef(false);
+
+  /**
+   * On every screen focus:
+   *   - If the OS hasn't been asked yet (`undetermined`) → fire the native
+   *     prompt immediately so the user never sees a blank "Allow camera?"
+   *     intermediate screen.
+   *   - If we already have permission, re-check it via `requestPermission`
+   *     (which is a no-op when granted but refreshes the hook's cached state)
+   *     and bump the mount key so <CameraView> remounts cleanly. This fixes
+   *     the "tap back + come back" workaround needed because expo-camera's
+   *     hook can hold a stale `granted: false` from a previous session.
+   */
+  useFocusEffect(
+    React.useCallback(() => {
+      let cancelled = false;
+      void (async () => {
+        if (requestingRef.current) return;
+        requestingRef.current = true;
+        try {
+          const next = await requestPermission();
+          if (cancelled) return;
+          if (next?.granted) {
+            // Force a fresh CameraView mount in case a previous unmount left
+            // the surface in a bad state (Android Camera2 quirk).
+            setCameraMountKey((k) => k + 1);
+          }
+        } finally {
+          requestingRef.current = false;
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [requestPermission]),
+  );
 
   const onValidQr = React.useCallback(
     async (valid: QrCodeDataSchema) => {
@@ -73,7 +115,12 @@ export default function FieldflixScanQrScreen() {
         <PermissionRequestView
           status={permissionInfo.status}
           onRetry={async () => {
-            await requestPermission();
+            const next = await requestPermission();
+            if (next?.granted) {
+              // Same fix as the useFocusEffect path: remount <CameraView>
+              // so it picks up the freshly-granted permission first try.
+              setCameraMountKey((k) => k + 1);
+            }
             resetScan();
           }}
         />
@@ -90,6 +137,7 @@ export default function FieldflixScanQrScreen() {
       />
       {!scanned ? (
         <CameraView
+          key={`cam-${cameraMountKey}`}
           style={styles.camera}
           onBarcodeScanned={handleBarCodeScanned}
           barcodeScannerSettings={{
