@@ -723,7 +723,7 @@ export default function FieldflixHomeScreen() {
                 <View style={styles.heroBadge}>
                   <Text style={styles.heroBadgeText}>Smart Capture</Text>
                 </View>
-                <Text style={styles.heroKicker}>Elevate the</Text>
+                <Text style={styles.heroKicker}>Elevate Your</Text>
                 <Text style={styles.heroTitle}>
                   Game <Text style={styles.heroTitleAccent}>Today</Text>
                 </Text>

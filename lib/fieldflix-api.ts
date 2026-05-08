@@ -624,7 +624,49 @@ export async function getSavedRecordingHighlights(): Promise<
   const { data } = await axiosInstance.get<SavedRecordingHighlightSummary[]>(
     '/recording/highlights/saved',
   );
-  return Array.isArray(data) ? data : [];
+  const rows = Array.isArray(data) ? data : [];
+
+  // Older backend deploys don't include `likesCount` on saved-summary rows.
+  // Detect that case and enrich locally by pulling each recording's full
+  // highlight list (which DOES carry counts) and mapping highlightId →
+  // likesCount. We bail out of the enrichment quietly if any recording fetch
+  // fails so the page still renders saved cards with a 0 fallback rather than
+  // not rendering at all.
+  const needsEnrichment = rows.some(
+    (r) => typeof r.likesCount !== 'number',
+  );
+  if (!needsEnrichment) return rows;
+
+  const uniqueRecordingIds = Array.from(
+    new Set(rows.map((r) => String(r.recordingId)).filter(Boolean)),
+  );
+  if (uniqueRecordingIds.length === 0) return rows;
+
+  const likesByHighlightId = new Map<string, number>();
+  await Promise.all(
+    uniqueRecordingIds.map(async (rid) => {
+      try {
+        const hs = await getRecordingHighlights(rid);
+        for (const h of hs) {
+          if (!h?.id) continue;
+          likesByHighlightId.set(
+            String(h.id),
+            Number((h as { likesCount?: number }).likesCount ?? 0),
+          );
+        }
+      } catch {
+        /* swallow — leave that recording's saved rows at 0 */
+      }
+    }),
+  );
+
+  return rows.map((r) => ({
+    ...r,
+    likesCount:
+      typeof r.likesCount === 'number'
+        ? r.likesCount
+        : (likesByHighlightId.get(String(r.highlightId)) ?? 0),
+  }));
 }
 
 export type RecordingPlayback = {
