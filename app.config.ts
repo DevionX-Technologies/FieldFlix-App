@@ -60,7 +60,7 @@ const config: ExpoConfig = {
     ],
     package: "com.fieldflicks",
     googleServicesFile: "./google-services.json",
-    versionCode: 41,
+    versionCode: 42,
     usesCleartextTraffic: true,
     config: {
       googleMaps: {
