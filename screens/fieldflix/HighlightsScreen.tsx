@@ -208,10 +208,13 @@ function highlightBadgeTimestamp(h: UiHighlight): string {
     return `${m}:${s}`;
   }
   if (String(h.id ?? '').startsWith('flick-')) return '15s';
-  // Heuristic: some legacy rows tagged the duration in the relative_timestamp.
+  // Heuristic: some legacy rows tagged the duration in `(Ns)` form.
   const ts = String(h.relative_timestamp ?? '').match(/(\d+)\s*s/i);
   if (ts) return `${ts[1]}s`;
-  return 'Clip';
+  // Default fallback when the real duration isn't computable. We bias toward
+  // under-promising (15s) rather than over-promising (30s) so a short clip
+  // never gets an inflated badge.
+  return '15s';
 }
 
 /**
@@ -220,8 +223,20 @@ function highlightBadgeTimestamp(h: UiHighlight): string {
  */
 export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Props = {}) {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; previewOnly?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    previewOnly?: string;
+    /** When set, the screen auto-opens the player for this highlight as soon
+     *  as the highlights list has finished loading. Sourced from the Saved
+     *  Highlights index so that "tap a saved clip" actually plays it instead
+     *  of bouncing back to the saved page via the in-row detour. */
+    autoPlayHighlight?: string;
+  }>();
   const recordingId = forcedRecordingId ?? (params.id as string | undefined) ?? '';
+  const autoPlayHighlightId =
+    typeof params.autoPlayHighlight === 'string' && params.autoPlayHighlight.trim().length
+      ? String(params.autoPlayHighlight)
+      : null;
   const { refresh } = useEntitlement();
   const previewOnly = forcePreview || params.previewOnly === '1';
 
@@ -789,6 +804,29 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     ],
   );
 
+  /**
+   * Auto-play handler for the `autoPlayHighlight` query param. Coming from
+   * Saved Highlights → /highlights/[id]?autoPlayHighlight=<hid>, the user
+   * expects the clip to open immediately. We wait for the highlights list
+   * to finish loading so we can locate the row and reuse `onHighlightPress`
+   * (which has the full guard chain — access gating, status checks, flick
+   * bookmark mirroring). The `autoPlayedRef` set ensures we don't re-trigger
+   * on subsequent re-renders or focus events.
+   */
+  const autoPlayedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!autoPlayHighlightId) return;
+    if (loading) return;
+    if (highlights.length === 0) return;
+    if (autoPlayedRef.current.has(autoPlayHighlightId)) return;
+    const match = highlights.find(
+      (h) => String(h.id) === String(autoPlayHighlightId),
+    );
+    if (!match) return;
+    autoPlayedRef.current.add(autoPlayHighlightId);
+    void onHighlightPress(match);
+  }, [autoPlayHighlightId, highlights, loading, onHighlightPress]);
+
   if (loading) {
     return (
       <WebShell backgroundColor={BG_COLOR}>
@@ -999,7 +1037,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                     onPress={() => {
                       router.push({
                         pathname: Paths.highlights,
-                        params: { id: l.recordingId },
+                        params: {
+                          id: l.recordingId,
+                          // Tell the destination screen which clip to open;
+                          // without this the user would land on the recording
+                          // overview, tap the saved row, and bounce back here
+                          // via the saved-highlight detour.
+                          autoPlayHighlight: l.highlightId,
+                        },
                       });
                     }}
                   >

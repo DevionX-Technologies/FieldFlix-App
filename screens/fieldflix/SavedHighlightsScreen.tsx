@@ -106,9 +106,18 @@ export default function SavedHighlightsScreen() {
               <Pressable
                 style={styles.card}
                 onPress={() =>
+                  // `autoPlayHighlight` tells the destination Highlights screen
+                  // to immediately open the player for THIS clip. Without it
+                  // the user would land on the recording's overview page,
+                  // tap the saved row in Top Highlights, and get bounced
+                  // back here by the saved-highlight detour — an infinite
+                  // loop that prevented playback.
                   router.push({
                     pathname: Paths.highlights,
-                    params: { id: item.recordingId },
+                    params: {
+                      id: item.recordingId,
+                      autoPlayHighlight: item.highlightId,
+                    },
                   })
                 }
                 accessibilityRole="button"
@@ -133,11 +142,13 @@ export default function SavedHighlightsScreen() {
                       </Text>
                     </View>
                   ) : null}
-                  {/* Duration pill, bottom-right. */}
+                  {/* Duration pill, bottom-right. FlickShorts (id prefixed
+                   *  `flick-`) are 15s; everything else also defaults to 15s
+                   *  here because the saved-summaries endpoint doesn't carry a
+                   *  per-clip duration. We bias toward under-promising rather
+                   *  than over-promising "30s" on a clip that may be shorter. */}
                   <View style={styles.thumbDur}>
-                    <Text style={styles.thumbDurText}>
-                      {item.relativeTimestamp || "Clip"}
-                    </Text>
+                    <Text style={styles.thumbDurText}>15s</Text>
                   </View>
                   {/* Subtle play overlay so the user knows it's playable. */}
                   <View style={styles.thumbPlay} pointerEvents="none">
