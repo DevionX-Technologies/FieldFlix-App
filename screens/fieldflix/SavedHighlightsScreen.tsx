@@ -106,17 +106,12 @@ export default function SavedHighlightsScreen() {
               <Pressable
                 style={styles.card}
                 onPress={() =>
-                  // `autoPlayHighlight` tells the destination Highlights screen
-                  // to immediately open the player for THIS clip. Without it
-                  // the user would land on the recording's overview page,
-                  // tap the saved row in Top Highlights, and get bounced
-                  // back here by the saved-highlight detour — an infinite
-                  // loop that prevented playback.
                   router.push({
                     pathname: Paths.highlights,
                     params: {
                       id: item.recordingId,
                       autoPlayHighlight: item.highlightId,
+                      soloHighlight: '1',
                     },
                   })
                 }

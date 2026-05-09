@@ -14,12 +14,20 @@ interface VideoPlayerScreenParams {
   previewMode?: string;
   /** Originating recording id (highlights / preview flow). */
   recordingId?: string;
+  /** When `'1'`, hide the highlight carousel below the player (Saved-clips playback). */
+  soloHighlight?: string;
 }
 
 export default function VideoPlayerScreen() {
   const params = useLocalSearchParams() as VideoPlayerScreenParams;
-  const { source, filename, recordingHighlights: recordingHighlightsParam, previewMode, recordingId: rid } =
-    params;
+  const {
+    source,
+    filename,
+    recordingHighlights: recordingHighlightsParam,
+    previewMode,
+    recordingId: rid,
+    soloHighlight: soloParam,
+  } = params;
   const recordingId =
     typeof rid === "string" ? rid : Array.isArray(rid) ? rid[0] : undefined;
   const { isPaid: rawIsPaid } = useEntitlement();
@@ -27,6 +35,8 @@ export default function VideoPlayerScreen() {
 
   const forcedPreview = previewMode === '1';
   const isPaid = forcedPreview ? false : rawIsPaid;
+  const soloHighlight =
+    soloParam === "1" || (Array.isArray(soloParam) && soloParam[0] === "1");
 
   const onPaywall = useCallback(() => {
     setPaywallVisible(true);
@@ -54,6 +64,7 @@ export default function VideoPlayerScreen() {
         recordingHighlights={recordingHighlights}
         recordingId={recordingId}
         previewCap={{ isPaid, onPaywall }}
+        soloHighlight={soloHighlight}
       />
       <PaywallSheet
         visible={paywallVisible}

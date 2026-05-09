@@ -64,6 +64,8 @@ interface VideoPlayerProps {
   };
   /** Recording id when opened from highlights / preview (for debug logs). */
   recordingId?: string;
+  /** When true, only the requested clip plays — no related-highlight list below the player. */
+  soloHighlight?: boolean;
 }
 
 export default function VideoPlayer({
@@ -76,6 +78,7 @@ export default function VideoPlayer({
   debugMode = false,
   previewCap,
   recordingId,
+  soloHighlight = false,
 }: VideoPlayerProps) {
   const insets = useSafeAreaInsets();
   const [logOpen, setLogOpen] = useState(false);
@@ -215,14 +218,16 @@ export default function VideoPlayer({
           onProgress={onProgress}
         />
 
-        <HighlightList
-          recordingHighlights={recordingHighlights}
-          activeHighlightIndex={activeHighlightIndex}
-          onHighlightPress={handleHighlightPress}
-          originalVideoSource={source}
-          filename={filename}
-          onMainVideoPress={handleMainVideoPress}
-        />
+        {!soloHighlight ? (
+          <HighlightList
+            recordingHighlights={recordingHighlights}
+            activeHighlightIndex={activeHighlightIndex}
+            onHighlightPress={handleHighlightPress}
+            originalVideoSource={source}
+            filename={filename}
+            onMainVideoPress={handleMainVideoPress}
+          />
+        ) : null}
       </ScrollView>
 
       {SHOW_RECORDINGS_LOGS_BUTTON ? (

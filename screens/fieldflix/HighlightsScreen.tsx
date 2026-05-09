@@ -231,12 +231,16 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
      *  Highlights index so that "tap a saved clip" actually plays it instead
      *  of bouncing back to the saved page via the in-row detour. */
     autoPlayHighlight?: string;
+    /** When `'1'` (with `autoPlayHighlight`), playback opens without the
+     *  carousel of related clips below the player. */
+    soloHighlight?: string;
   }>();
   const recordingId = forcedRecordingId ?? (params.id as string | undefined) ?? '';
   const autoPlayHighlightId =
     typeof params.autoPlayHighlight === 'string' && params.autoPlayHighlight.trim().length
       ? String(params.autoPlayHighlight)
       : null;
+  const soloHighlightPlayback = params.soloHighlight === '1';
   const { refresh } = useEntitlement();
   const previewOnly = forcePreview || params.previewOnly === '1';
 
@@ -788,9 +792,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         params: {
           source: h.mux_public_playback_url,
           filename: `${titleBase} — Highlight`,
-          recordingHighlights: JSON.stringify(highlights),
+          recordingHighlights: JSON.stringify(soloHighlightPlayback ? [] : highlights),
           recordingId,
           previewMode: '0',
+          ...(soloHighlightPlayback ? { soloHighlight: '1' } : {}),
         },
       });
     },
@@ -801,17 +806,17 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       highlights,
       router,
       openUnlockSheet,
+      soloHighlightPlayback,
     ],
   );
 
   /**
    * Auto-play handler for the `autoPlayHighlight` query param. Coming from
-   * Saved Highlights → /highlights/[id]?autoPlayHighlight=<hid>, the user
-   * expects the clip to open immediately. We wait for the highlights list
-   * to finish loading so we can locate the row and reuse `onHighlightPress`
-   * (which has the full guard chain — access gating, status checks, flick
-   * bookmark mirroring). The `autoPlayedRef` set ensures we don't re-trigger
-   * on subsequent re-renders or focus events.
+   * Saved Highlights → /highlights/[id]?autoPlayHighlight=<hid>&soloHighlight=1,
+   * the user expects the clip to open immediately (without the related-clips
+   * list under the player). We wait for the highlights list to finish loading
+   * so we can locate the row and reuse `onHighlightPress`. The `autoPlayedRef`
+   * set ensures we don't re-trigger on subsequent re-renders or focus events.
    */
   const autoPlayedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1036,15 +1041,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                     style={styles.likedCard}
                     onPress={() => {
                       router.push({
-                        pathname: Paths.highlights,
-                        params: {
-                          id: l.recordingId,
-                          // Tell the destination screen which clip to open;
-                          // without this the user would land on the recording
-                          // overview, tap the saved row, and bounce back here
-                          // via the saved-highlight detour.
-                          autoPlayHighlight: l.highlightId,
-                        },
+                        pathname: Paths.savedHighlights as never,
                       });
                     }}
                   >
