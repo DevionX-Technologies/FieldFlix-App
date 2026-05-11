@@ -247,8 +247,8 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
     })();
   };
 
-  const topPad = Math.max(52, insets.top + 44);
-  const bottomPad = Math.max(28, insets.bottom);
+  /** Equal top/bottom inset in the scroll area so the card is vertically balanced. */
+  const scrollPadY = Math.max(52, insets.top + 44, Math.max(28, insets.bottom));
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
@@ -271,12 +271,14 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            { paddingTop: topPad, paddingBottom: bottomPad },
+            { paddingTop: scrollPadY, paddingBottom: scrollPadY },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.card}>
+          <View style={styles.cardShell}>
+            <View pointerEvents="none" style={styles.cardBackdrop} />
+            <View style={styles.card}>
             <View style={styles.location}>
               <View style={styles.pinWrap}>
                 <PinIcon />
@@ -378,6 +380,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
               <PlayIcon />
               <Text style={styles.startText}>Start Recording</Text>
             </Pressable>
+            </View>
           </View>
         </ScrollView>
       </ImageBackground>
@@ -438,10 +441,10 @@ const styles = StyleSheet.create({
   pageBgImage: {
     opacity: 0.85,
   },
-  /** Dark-green wash (not slate) — slight dimming only; card carries most contrast. */
+  /** Light wash everywhere; strong dim sits only under `cardShell`. */
   pageOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6, 48, 32, 0.38)',
+    backgroundColor: 'rgba(6, 48, 32, 0.18)',
   },
   back: {
     position: 'absolute',
@@ -459,21 +462,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  card: {
+  cardShell: {
     width: '100%',
     maxWidth: 380,
     borderRadius: 28,
-    paddingTop: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 22,
-    backgroundColor: 'rgba(25, 25, 25, 0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+    position: 'relative',
+    alignSelf: 'center',
+    minHeight: 650,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 24 },
     shadowOpacity: 0.45,
     shadowRadius: 48,
     elevation: 20,
+  },
+  cardBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2, 10, 8, 0.88)',
+  },
+  card: {
+    paddingTop: 32,
+    paddingHorizontal: 22,
+    paddingBottom: 34,
+    backgroundColor: 'rgba(22, 26, 30, 0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   location: {
     flexDirection: 'row',

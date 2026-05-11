@@ -201,8 +201,8 @@ export default function MainRecordingScreen() {
   const progress = plannedProgress(totalSeconds, timeLeft);
 
   const topBack = Math.max(8, insets.top);
-  const padTop = Math.max(52, insets.top + 44);
-  const padBottom = Math.max(28, insets.bottom);
+  /** Same value top + bottom so the card sits equidistant in the scroll area. */
+  const scrollPadY = Math.max(52, insets.top + 44, Math.max(28, insets.bottom));
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
@@ -233,10 +233,15 @@ export default function MainRecordingScreen() {
         </Pressable>
 
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingTop: padTop, paddingBottom: padBottom }]}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingTop: scrollPadY, paddingBottom: scrollPadY },
+          ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.card}>
+          <View style={styles.cardShell}>
+            <View pointerEvents="none" style={styles.cardBackdrop} />
+            <View style={styles.card}>
             <View style={styles.location}>
               <View style={styles.pinWrap}>
                 <PinIcon />
@@ -331,6 +336,7 @@ export default function MainRecordingScreen() {
                 </Pressable>
               </View>
             )}
+            </View>
           </View>
         </ScrollView>
 
@@ -417,9 +423,23 @@ const styles = StyleSheet.create({
   pageBgImage: {
     opacity: 0.85,
   },
+  /** Light wash everywhere so the field stays visible; strong dim is only under `cardShell`. */
   pageOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6, 48, 32, 0.38)',
+    backgroundColor: 'rgba(6, 48, 32, 0.18)',
+  },
+  cardShell: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 28,
+    overflow: 'hidden',
+    position: 'relative',
+    alignSelf: 'center',
+    minHeight: 570,
+  },
+  cardBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2, 10, 8, 0.88)',
   },
   container: {
     flex: 1,
@@ -446,15 +466,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    width: '100%',
-    maxWidth: 380,
-    borderRadius: 28,
-    paddingTop: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 22,
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
+    paddingTop: 36,
+    paddingHorizontal: 22,
+    paddingBottom: 36,
+    backgroundColor: 'rgba(22, 26, 30, 0.42)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   location: {
     flexDirection: 'row',
