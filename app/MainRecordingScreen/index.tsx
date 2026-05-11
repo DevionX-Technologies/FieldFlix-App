@@ -21,6 +21,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -73,6 +74,7 @@ const CIRC = 2 * Math.PI * R;
 export default function MainRecordingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const {
     ChoosenTimeInMinutes,
     Name,
@@ -201,8 +203,13 @@ export default function MainRecordingScreen() {
   const progress = plannedProgress(totalSeconds, timeLeft);
 
   const topBack = Math.max(8, insets.top);
-  /** Same value top + bottom so the card sits equidistant in the scroll area. */
-  const scrollPadY = Math.max(52, insets.top + 44, Math.max(28, insets.bottom));
+  /** Card starts just under the back affordance (see layout annotation). */
+  const scrollPadTop = insets.top + 50;
+  const scrollPadBottom = Math.max(24, insets.bottom) + 16;
+  const cardMinHeight = Math.max(
+    600,
+    Math.round(windowHeight - scrollPadTop - scrollPadBottom - 12),
+  );
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
@@ -235,13 +242,13 @@ export default function MainRecordingScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            { paddingTop: scrollPadY, paddingBottom: scrollPadY },
+            { paddingTop: scrollPadTop, paddingBottom: scrollPadBottom },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.cardShell}>
+          <View style={[styles.cardShell, { height: cardMinHeight }]}>
             <View pointerEvents="none" style={styles.cardBackdrop} />
-            <View style={styles.card}>
+            <View style={[styles.card, styles.cardFlexFill]}>
             <View style={styles.location}>
               <View style={styles.pinWrap}>
                 <PinIcon />
@@ -435,11 +442,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     alignSelf: 'center',
-    minHeight: 570,
+    flexDirection: 'column',
   },
   cardBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2, 10, 8, 0.88)',
+    backgroundColor: 'rgba(2, 14, 10, 0.94)',
   },
   container: {
     flex: 1,
@@ -463,15 +470,18 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 16,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   card: {
     paddingTop: 36,
     paddingHorizontal: 22,
     paddingBottom: 36,
-    backgroundColor: 'rgba(22, 26, 30, 0.42)',
+    backgroundColor: 'rgba(16, 20, 24, 0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  cardFlexFill: {
+    flex: 1,
   },
   location: {
     flexDirection: 'row',
