@@ -7,6 +7,7 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import axiosInstance from '@/utils/axiosInstance';
+import { getRecordingButtonHighlightCount } from '@/lib/fieldflix-api';
 import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -85,6 +86,7 @@ export default function MainRecordingScreen() {
   } = useLocalSearchParams();
 
   const [turfDetails, setTurfDetails] = useState<Record<string, unknown>>({});
+  const [highlightButtonCount, setHighlightButtonCount] = useState(0);
 
   const totalSeconds = useMemo(() => {
     const resume = routeParamFirst(Resume);
@@ -122,6 +124,7 @@ export default function MainRecordingScreen() {
     setShowStop,
     showStop,
     ModalComponent,
+    activeRecordingSessionId,
   } = useCountdown(
     totalSeconds,
     routeParamFirst(turfId) ?? '',
@@ -142,6 +145,29 @@ export default function MainRecordingScreen() {
     };
     void fetchData();
   }, [turfId]);
+
+  useEffect(() => {
+    if (!isRunning || !activeRecordingSessionId) {
+      setHighlightButtonCount(0);
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { count } =
+          await getRecordingButtonHighlightCount(activeRecordingSessionId);
+        if (!cancelled) setHighlightButtonCount(count);
+      } catch {
+        /* live session polling — transient failures are ignored */
+      }
+    };
+    void poll();
+    const intervalId = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [isRunning, activeRecordingSessionId]);
 
   useEffect(() => {
     if (!isRunning) return;
@@ -277,6 +303,14 @@ export default function MainRecordingScreen() {
               </Pressable>
             </View>
 
+            {isRunning && highlightButtonCount > 0 ? (
+              <View style={styles.hlCounter}>
+                <Text style={styles.hlCounterTxt}>
+                  Highlight taps · {highlightButtonCount}
+                </Text>
+              </View>
+            ) : null}
+
             {!isRunning ? (
               <Pressable style={styles.startBtn} onPress={() => void handleStart()}>
                 <PlaySmIcon />
@@ -311,7 +345,7 @@ export default function MainRecordingScreen() {
             <ActivityIndicator size="large" color={ACCENT} />
           </View>
         ) : null}
-        {ModalComponent}
+        {ModalComponent()}
       </ImageBackground>
     </WebShell>
   );
@@ -379,13 +413,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: BG,
   },
-  /** Keep the field photo subtle; main UI is the timer + actions card. */
+  /** Match recording-time setup: greener field, card holds primary contrast. */
   pageBgImage: {
-    opacity: 0.42,
+    opacity: 0.85,
   },
   pageOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2,6,23,0.65)',
+    backgroundColor: 'rgba(6, 48, 32, 0.38)',
   },
   container: {
     flex: 1,
@@ -413,7 +447,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 380,
     borderRadius: 28,
     paddingTop: 24,
     paddingHorizontal: 20,
@@ -491,6 +525,22 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     letterSpacing: 1,
     color: '#fff',
+  },
+  hlCounter: {
+    marginTop: 14,
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(74, 222, 128, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 222, 128, 0.32)',
+  },
+  hlCounterTxt: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    letterSpacing: 0.2,
+    color: ACCENT,
   },
   recPill: {
     marginTop: 10,

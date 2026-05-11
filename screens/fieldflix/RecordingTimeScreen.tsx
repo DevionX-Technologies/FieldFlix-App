@@ -258,7 +258,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         imageStyle={styles.pageBgImage}
         resizeMode="cover"
       >
-        {/* Dark gradient-ish overlay to keep text legible on top of the field. */}
+        {/* Soft green-toned veil: keeps line contrast without washing the turf gray. */}
         <View pointerEvents="none" style={styles.pageOverlay} />
         <Pressable
           accessibilityLabel="Go back"
@@ -434,15 +434,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#020617',
   },
-  /** The cricket-field photo behind the page chrome. Tinted darker via opacity
-   *  so the green court reads as a backdrop, not a foreground. */
+  /** Field photo at high opacity so the green pitch stays visible. */
   pageBgImage: {
-    opacity: 0.45,
+    opacity: 0.85,
   },
-  /** Dark wash so headlines + buttons keep contrast over the field. */
+  /** Dark-green wash (not slate) — slight dimming only; card carries most contrast. */
   pageOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2,6,23,0.62)',
+    backgroundColor: 'rgba(6, 48, 32, 0.38)',
   },
   back: {
     position: 'absolute',
@@ -462,7 +461,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 360,
+    maxWidth: 380,
     borderRadius: 28,
     paddingTop: 24,
     paddingHorizontal: 20,

@@ -585,6 +585,19 @@ export async function getRecordingHighlights(
   return coerceHighlightList(data).map(mergeHighlightEngagementFromPayload);
 }
 
+/** All highlight moments from the venue button during this session (includes pending processing). */
+export async function getRecordingButtonHighlightCount(
+  recordingId: string,
+): Promise<{ count: number }> {
+  const { data } = await axiosInstance.get<unknown>(
+    `/recording/${recordingId}/button-highlight-count`,
+  );
+  const raw = data as Record<string, unknown>;
+  const wrapped = raw?.data as Record<string, unknown> | undefined;
+  const c = wrapped?.count ?? raw?.count;
+  return { count: typeof c === 'number' && Number.isFinite(c) ? c : 0 };
+}
+
 export async function toggleRecordingHighlightLike(highlightId: string): Promise<{
   liked: boolean;
   likesCount: number;

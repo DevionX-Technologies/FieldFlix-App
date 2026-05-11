@@ -68,6 +68,10 @@ export function useCountdown(
   const intervalRef = useRef<NodeJS.Timeout>(undefined);
   const timeLeftRef = useRef(initialSeconds);
   const recordingIdRef = useRef<string | undefined>(undefined);
+  const autoStopTriggeredRef = useRef(false);
+  const [activeRecordingSessionId, setActiveRecordingSessionId] = useState<
+    string | null
+  >(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [showStop, setShowStop] = useState(false);
@@ -158,6 +162,7 @@ export function useCountdown(
         const recRowId = await SecureStore.getItemAsync(RECORDING_CAMERA_ID);
         if (remaining > 0 && recRowId) {
           recordingIdRef.current = recRowId;
+          setActiveRecordingSessionId(recRowId);
           setTimeLeft(remaining);
           timeLeftRef.current = remaining;
           setIsPaused(false);
@@ -166,6 +171,8 @@ export function useCountdown(
         }
       }
 
+      recordingIdRef.current = undefined;
+      setActiveRecordingSessionId(null);
       setTimeLeft(initialSeconds);
       timeLeftRef.current = initialSeconds;
       setIsRunning(false);
@@ -272,6 +279,8 @@ export function useCountdown(
       });
 
       recordingIdRef.current = newId;
+      autoStopTriggeredRef.current = false;
+      setActiveRecordingSessionId(String(newId));
       setTimeLeft(initialSeconds);
       setIsPaused(false);
       const endMs = Date.now() + initialSeconds * 1000;
@@ -351,6 +360,7 @@ export function useCountdown(
     const cameraID = await SecureStore.getItemAsync(RECORDING_CAMERA_ID);
 
     recordingIdRef.current = cameraID ?? undefined;
+    setActiveRecordingSessionId(cameraID ?? null);
     const endStr = await SecureStore.getItemAsync("end_time");
     if (endStr) {
       const endMs = parseInt(endStr, 10);
@@ -375,31 +385,34 @@ export function useCountdown(
       console.warn("Already stopping, skipping...");
       return;
     }
-    isStoppingRef.current = true;
 
     const id = recordingIdRef.current;
     setShowStop(false);
-    setLoading(true);
 
     if (!id) {
       console.warn("stop() called before start()");
-      isStoppingRef.current = false;
+      setLoading(false);
       return;
     }
 
-    setIsRunning(false);
-
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = undefined;
-    }
-
-    setTimeLeft(initialSeconds);
+    isStoppingRef.current = true;
+    setLoading(true);
 
     try {
       console.log("PUT /recording/stop", { recordingId: id });
 
       await axiosInstance.put(`/recording/stop/${id}`, { recordingId: id });
+
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
+      }
+
+      setIsRunning(false);
+      recordingIdRef.current = undefined;
+      setActiveRecordingSessionId(null);
+      autoStopTriggeredRef.current = false;
+      setTimeLeft(initialSeconds);
 
       try {
         await presentEventNotification({
@@ -420,12 +433,10 @@ export function useCountdown(
 
       console.log("recording stopped!");
 
-      // Persist the most recently stopped recording so RecordingsScreen can poll
-      // for the Mux source.ready event and surface an in-app "ready" toast.
       try {
         await SecureStore.setItemAsync(LAST_STOPPED_RECORDING_ID, String(id));
       } catch {
-        // SecureStore can fail on Android emulators without a keystore — ignore.
+        /* SecureStore can fail on emulators — ignore */
       }
 
       await Promise.all([
@@ -438,17 +449,19 @@ export function useCountdown(
         SecureStore.deleteItemAsync(TURF_ID),
         SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID),
       ]);
-      setLoading(false);
-      
-      // Delay navigation to allow user to see the success modal
+
       setTimeout(() => {
         navigation.replace(Paths.sessions as never);
       }, 2000);
     } catch (err: any) {
       console.error("❌ stop() error:", err.response?.data || err.message);
-      showModal("error", "Stop failed", err.response?.data?.message || err.message);
+      showModal(
+        "error",
+        "Stop failed",
+        err.response?.data?.message || err.message
+      );
     } finally {
-      isStoppingRef.current = false; // Allow retry if needed
+      isStoppingRef.current = false;
       setLoading(false);
     }
   }, [initialSeconds, navigation]);
@@ -489,10 +502,14 @@ export function useCountdown(
       const remaining = Math.max(0, Math.floor((endTime - Date.now()) / 1000));
       setTimeLeft(remaining);
       if (remaining <= 0) {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-        setIsRunning(false);
-        await emptyALLlocalStorage();
-        stop();
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = undefined;
+        }
+        if (!autoStopTriggeredRef.current) {
+          autoStopTriggeredRef.current = true;
+          void stop();
+        }
       }
     };
 
@@ -507,7 +524,7 @@ export function useCountdown(
         intervalRef.current = undefined;
       }
     };
-  }, [isRunning, isPaused]);
+  }, [isRunning, isPaused, stop]);
 
   const togglePause = useCallback(async () => {
     if (!isRunning) return;
@@ -556,9 +573,10 @@ export function useCountdown(
             if (newTimeLeft > 0) {
               setIsRunning(true);
             } else {
-              setIsRunning(false);
-              await emptyALLlocalStorage();
-              stop();
+              if (!autoStopTriggeredRef.current) {
+                autoStopTriggeredRef.current = true;
+                void stop();
+              }
             }
           }
         }
@@ -566,7 +584,7 @@ export function useCountdown(
     );
 
     return () => subscription.remove();
-  }, []);
+  }, [stop]);
 
   const emptyALLlocalStorage = async () => {
     await SecureStore.deleteItemAsync("end_time");
@@ -589,6 +607,7 @@ export function useCountdown(
     adjustRemaining,
     stepAdjustSec: STEP_ADJUST_SEC,
     restoreTimer,
+    activeRecordingSessionId,
     showStop,
     loading,
     setShowStop,

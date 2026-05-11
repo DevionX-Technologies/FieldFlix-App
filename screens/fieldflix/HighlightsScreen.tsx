@@ -787,7 +787,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         );
       }
       const titleBase = recording?.turf?.name ?? 'Recording';
-      router.push({
+      const videoRoute = {
         pathname: Paths.VideoRecording,
         params: {
           source: h.mux_public_playback_url,
@@ -797,7 +797,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           previewMode: '0',
           ...(soloHighlightPlayback ? { soloHighlight: '1' } : {}),
         },
-      });
+      };
+      // Saved-clips flow: replace the transient Highlights hub so hardware back /
+      // gesture from the player returns to Saved Highlights, not this screen.
+      if (soloHighlightPlayback) {
+        router.replace(videoRoute as never);
+      } else {
+        router.push(videoRoute as never);
+      }
     },
     [
       hasRecordingAccess,
