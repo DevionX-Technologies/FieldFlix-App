@@ -66,6 +66,9 @@ interface VideoPlayerProps {
   recordingId?: string;
   /** When true, only the requested clip plays — no related-highlight list below the player. */
   soloHighlight?: boolean;
+  /** When set with `allowShareClips`, drives full-match link share + paywall parity with Highlights. */
+  shareRecordingId?: string | null;
+  allowShareClips?: boolean;
 }
 
 export default function VideoPlayer({
@@ -79,6 +82,8 @@ export default function VideoPlayer({
   previewCap,
   recordingId,
   soloHighlight = false,
+  shareRecordingId = null,
+  allowShareClips = false,
 }: VideoPlayerProps) {
   const insets = useSafeAreaInsets();
   const [logOpen, setLogOpen] = useState(false);
@@ -226,6 +231,8 @@ export default function VideoPlayer({
             originalVideoSource={source}
             filename={filename}
             onMainVideoPress={handleMainVideoPress}
+            shareRecordingId={shareRecordingId ?? recordingId ?? null}
+            allowShare={allowShareClips}
           />
         ) : null}
       </ScrollView>

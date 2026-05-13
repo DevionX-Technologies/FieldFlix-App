@@ -1,15 +1,15 @@
 import { Paths } from "@/data/paths";
-import { createShareLink } from "@/lib/fieldflix-api";
-import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
 import {
   getSavedRecordingHighlights,
   type SavedRecordingHighlightSummary,
 } from "@/lib/fieldflix-api";
+import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
 import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
 import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { FF } from "@/screens/fieldflix/fonts";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
+import { shareHighlightAsMp4File } from "@/utils/shareHighlightClip";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -17,10 +17,10 @@ import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -40,6 +40,7 @@ export default function SavedHighlightsScreen() {
   const router = useRouter();
   const [items, setItems] = useState<SavedRecordingHighlightSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,25 +56,28 @@ export default function SavedHighlightsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
       void load();
     }, [load]),
   );
 
-  const onShare = useCallback(async (recordingId: string) => {
-    if (!recordingId) return;
-    try {
-      const { shareableLink } = await createShareLink(recordingId);
-      await Share.share({
-        message: `Watch my game on FieldFlicks: ${shareableLink}`,
-        url: shareableLink,
-      });
-    } catch {
-      const appLink = buildHighlightsAppLink(recordingId);
-      await Share.share({
-        message: `Watch my game on FieldFlicks: ${appLink}`,
-      }).catch(() => null);
-    }
-  }, []);
+  const onShareHighlight = useCallback(
+    async (recordingId: string, highlightId: string) => {
+      if (!recordingId || !highlightId) return;
+      if (!unlockedRecordingIds.includes(String(recordingId))) {
+        Alert.alert(
+          'Unlock required',
+          'Unlock this recording on its Highlights page to share clips as video files.',
+        );
+        return;
+      }
+      const result = await shareHighlightAsMp4File(highlightId);
+      if (!result.ok) {
+        Alert.alert('Share', result.message);
+      }
+    },
+    [unlockedRecordingIds],
+  );
 
   return (
     <WebShell backgroundColor={BG_COLOR}>
@@ -171,7 +175,7 @@ export default function SavedHighlightsScreen() {
                     <Pressable
                       onPress={(e) => {
                         e.stopPropagation();
-                        void onShare(item.recordingId);
+                        void onShareHighlight(item.recordingId, item.highlightId);
                       }}
                       hitSlop={6}
                       style={styles.action}

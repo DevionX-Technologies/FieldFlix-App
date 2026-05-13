@@ -1,15 +1,16 @@
 import { Text } from '@/components/ui/text';
 import useTheme from '@/theme/hooks/useTheme';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect } from 'react';
 import {
-    ActivityIndicator,
-    Modal,
+  ActivityIndicator,
+  Modal,
   Platform,
-    Pressable,
-    StyleSheet,
-    useColorScheme,
-    View,
+  Pressable,
+  StyleSheet,
+  useColorScheme,
+  View,
 } from 'react-native';
 
 interface CustomModalProps {
@@ -20,6 +21,9 @@ interface CustomModalProps {
   showCloseButton?: boolean;
   onClose?: () => void;
   buttonText?: string;
+  /** When set (and type is not `loading`), `onClose` runs after this many ms. */
+  autoDismissMs?: number;
+  visualVariant?: 'default' | 'session';
 }
 
 export const CustomModal: React.FC<CustomModalProps> = ({
@@ -30,11 +34,18 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   showCloseButton = true,
   onClose,
   buttonText = 'Got it',
+  autoDismissMs,
+  visualVariant = 'default',
 }) => {
   const { colors } = useTheme();
   const systemColorScheme = useColorScheme();
-  // Use system color scheme or force dark mode if needed
   const isDark = systemColorScheme === 'dark' || true;
+
+  useEffect(() => {
+    if (!visible || !autoDismissMs || type === 'loading' || !onClose) return;
+    const id = setTimeout(() => onClose(), autoDismissMs);
+    return () => clearTimeout(id);
+  }, [visible, autoDismissMs, type, onClose]);
 
   const getIconColor = () => '#FFFFFF';
 
@@ -69,7 +80,7 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   };
 
   const dynamicStyles = StyleSheet.create({
-    modalContent: {
+    modalInner: {
       backgroundColor: isDark ? 'rgba(13,21,31,0.98)' : '#FFFFFF',
       borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0, 0, 0, 0.1)',
     },
@@ -87,7 +98,54 @@ export const CustomModal: React.FC<CustomModalProps> = ({
     modalButtonText: {
       color: '#FFFFFF',
     },
+    sessionHint: {
+      color: isDark ? 'rgba(148,163,184,0.85)' : 'rgba(0,0,0,0.45)',
+    },
   });
+
+  const showSessionChrome = visualVariant === 'session' && type !== 'loading';
+
+  const innerCard = (
+    <View
+      style={[
+        styles.modalInner,
+        dynamicStyles.modalInner,
+        showSessionChrome && styles.sessionInnerCard,
+      ]}
+    >
+      <View style={styles.modalHeader}>
+        <View
+          style={[
+            styles.modalIcon,
+            showSessionChrome && styles.sessionIconRing,
+            { backgroundColor: getIconBackgroundColor() },
+          ]}
+        >
+          {getIcon()}
+        </View>
+        <Text style={[styles.modalTitle, dynamicStyles.modalTitle]}>{title}</Text>
+      </View>
+
+      <Text style={[styles.modalMessage, dynamicStyles.modalMessage]}>{message}</Text>
+
+      {showSessionChrome && autoDismissMs ? (
+        <Text style={[styles.autoDismissHint, dynamicStyles.sessionHint]}>
+          Closes automatically in a few seconds — tap ✕ to dismiss.
+        </Text>
+      ) : null}
+
+      {showCloseButton && type !== 'loading' && onClose && !showSessionChrome ? (
+        <Pressable
+          style={[styles.modalButton, dynamicStyles.modalButton]}
+          onPress={onClose}
+        >
+          <Text style={[styles.modalButtonText, dynamicStyles.modalButtonText]}>
+            {buttonText}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 
   return (
     <Modal
@@ -100,34 +158,27 @@ export const CustomModal: React.FC<CustomModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, dynamicStyles.modalContent]}>
-          <View style={styles.modalHeader}>
-            <View
-              style={[
-                styles.modalIcon,
-                { backgroundColor: getIconBackgroundColor() },
-              ]}
-            >
-              {getIcon()}
-            </View>
-            <Text style={[styles.modalTitle, dynamicStyles.modalTitle]}>
-              {title}
-            </Text>
-          </View>
-
-          <Text style={[styles.modalMessage, dynamicStyles.modalMessage]}>
-            {message}
-          </Text>
-
-          {showCloseButton && type !== 'loading' && onClose && (
+        {showSessionChrome ? (
+          <LinearGradient
+            colors={['rgba(34,197,94,0.55)', 'rgba(22,163,74,0.25)', 'rgba(2,6,23,0.92)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.sessionFrame}
+          >
             <Pressable
-              style={[styles.modalButton, dynamicStyles.modalButton]}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              hitSlop={12}
+              style={styles.sessionClose}
               onPress={onClose}
             >
-              <Text style={[styles.modalButtonText, dynamicStyles.modalButtonText]}>{buttonText}</Text>
+              <Ionicons name="close" size={22} color="rgba(248,250,252,0.9)" />
             </Pressable>
-          )}
-        </View>
+            {innerCard}
+          </LinearGradient>
+        ) : (
+          innerCard
+        )}
       </View>
     </Modal>
   );
@@ -141,7 +192,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  modalContent: {
+  sessionFrame: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 22,
+    padding: 2,
+    position: 'relative',
+    shadowColor: '#22c55e',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  sessionClose: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(2,6,23,0.45)',
+  },
+  sessionInnerCard: {
+    borderRadius: 20,
+    borderWidth: 0,
+  },
+  sessionIconRing: {
+    shadowColor: '#22c55e',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  modalInner: {
     width: '100%',
     maxWidth: 340,
     borderRadius: 16,
@@ -182,6 +268,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
     marginBottom: 18,
+  },
+  autoDismissHint: {
+    fontSize: 11,
+    textAlign: 'center',
+    lineHeight: 15,
+    marginTop: -10,
+    marginBottom: 14,
+    paddingHorizontal: 8,
   },
   modalButton: {
     minHeight: 44,

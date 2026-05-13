@@ -13,6 +13,10 @@ interface HighlightListProps {
   originalVideoSource: string;
   filename?: string;
   onMainVideoPress: () => void;
+  /** Real recording id for URL + unlock checks (full match share). */
+  shareRecordingId?: string | null;
+  /** When false, share actions are hidden (user has not unlocked this recording). */
+  allowShare?: boolean;
 }
 
 // Email functionality constants
@@ -71,6 +75,8 @@ export const HighlightList: React.FC<HighlightListProps> = ({
   originalVideoSource,
   filename = "Original Recording",
   onMainVideoPress,
+  shareRecordingId = null,
+  allowShare = false,
 }) => {
   // Create a main video highlight object for the original recording
   const mainVideoHighlight: RecordingHighlight = {
@@ -152,6 +158,8 @@ export const HighlightList: React.FC<HighlightListProps> = ({
               }}
               isMainVideo={isMainVideo}
               mainVideoTitle={filename}
+              shareRecordingId={shareRecordingId}
+              allowShare={allowShare}
             />
           );
         })}

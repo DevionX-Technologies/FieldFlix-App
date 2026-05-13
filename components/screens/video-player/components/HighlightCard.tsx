@@ -2,17 +2,14 @@ import { Card } from "@/components/ui/card";
 import { HStack } from "@/components/ui/hstack";
 import { Text } from "@/components/ui/text";
 import { VStack } from "@/components/ui/vstack";
-import axiosInstance from "@/utils/axiosInstance";
 import { createShareLink } from "@/lib/fieldflix-api";
 import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
+import { shareHighlightAsMp4File } from "@/utils/shareHighlightClip";
 import { Ionicons } from "@expo/vector-icons";
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Clipboard,
   Image,
   Modal,
   Pressable,
@@ -31,6 +28,10 @@ interface HighlightCardProps {
   onPress: (highlight: RecordingHighlight, index: number) => void;
   isMainVideo?: boolean;
   mainVideoTitle?: string;
+  /** Real recording UUID for sharing the full match (not the placeholder `original` row id). */
+  shareRecordingId?: string | null;
+  /** Per-recording unlock / plan gate — same truth as Highlights hero share. */
+  allowShare?: boolean;
 }
 
 export const HighlightCard: React.FC<HighlightCardProps> = ({
@@ -40,6 +41,8 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
   onPress,
   isMainVideo = false,
   mainVideoTitle,
+  shareRecordingId = null,
+  allowShare = false,
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalContent, setModalContent] = useState({
@@ -64,66 +67,22 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
     }
   };
 
-  const downloadVideo = async (signedUrl: string, highlightId: string) => {
-    try {
-      // Create filename for temporary download
-      const fileName = `fieldflicks_highlight.mp4`;
-      const fileUri = FileSystem.documentDirectory + fileName;
-
-      console.log('Starting download from:', signedUrl);
-      console.log('Temporary file location:', fileUri);
-
-      // Download the file temporarily
-      const downloadResult = await FileSystem.downloadAsync(signedUrl, fileUri);
-      
-      if (downloadResult.status === 200) {
-        console.log('Download completed:', downloadResult.uri);
-        
-        // Try to share the video
-        await shareVideo(downloadResult.uri);
-        
-        // Clean up temporary file after sharing
-        try {
-          await FileSystem.deleteAsync(downloadResult.uri);
-          console.log('Temporary file cleaned up');
-        } catch (cleanupError) {
-          console.warn('Failed to clean up temporary file:', cleanupError);
-        }
-      } else {
-        throw new Error(`Download failed with status: ${downloadResult.status}`);
-      }
-    } catch (error) {
-      console.error('Error downloading video:', error);
-      showCustomAlert("error", "Download Failed", "Failed to prepare video for sharing. Please check your connection and try again.");
-    }
-  };
-
-  const shareVideo = async (videoUri: string) => {
-    try {
-      // Check if Expo sharing is available
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (isAvailable) {
-        // Copy text to clipboard for easy pasting
-        Clipboard.setString('Here is the recording by FieldFlicks');
-        
-        // Share the video file with a helpful dialog title
-        await Sharing.shareAsync(videoUri, {
-          mimeType: 'video/mp4',
-          dialogTitle: 'FieldFlicks recording (Text copied to clipboard!)'
-        });
-        
-        hideCustomAlert();
-      } else {
-        showCustomAlert("error", "Share Error", "Sharing is not available on this device");
-      }
-    } catch (error) {
-      console.error('Error sharing video:', error);
-      showCustomAlert("error", "Share Failed", "Failed to share video. Please try again.");
-    }
-  };
-
   // Determine if this highlight can be played
   const canPlay = highlight.mux_public_playback_url;
+  const hid = String(highlight.id ?? '');
+  const isFlickShort = hid.startsWith('flick-');
+  const recordingIdForLink =
+    (shareRecordingId && String(shareRecordingId).trim()) ||
+    (highlight as { recording_id?: string }).recording_id ||
+    (highlight as { recordingId?: string }).recordingId ||
+    null;
+  const showShare =
+    allowShare &&
+    canPlay &&
+    !isFlickShort &&
+    (isMainVideo
+      ? Boolean(recordingIdForLink && recordingIdForLink !== 'original')
+      : true);
 
   return (
     <>
@@ -292,58 +251,68 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                   : formatDate(highlight.button_click_timestamp)
               }
             </Text>
-            {canPlay && (
+            {showShare && (
               <Pressable
                 style={styles.shareButton}
                 onPress={async () => {
                   try {
-                    // Always share an in-app deep link, never the raw Mux URL.
-                    // The deep link routes via the universal-link domain and
-                    // falls back to the app's `fieldflicks://` scheme when
-                    // the app is installed — so the share NEVER opens Mux
-                    // in Chrome and never shows an "invalid link" page.
-                    let shareUrl: string | null = null;
-                    const recordingId =
-                      (highlight as { recording_id?: string }).recording_id ??
-                      (highlight as { recordingId?: string }).recordingId ??
-                      null;
-                    if (recordingId) {
-                      try {
-                        const { shareableLink } =
-                          await createShareLink(String(recordingId));
-                        shareUrl = shareableLink;
-                      } catch {
-                        // Backend share-link creation failed — fall back to
-                        // the in-app universal/deep link for this recording.
-                        shareUrl = buildHighlightsAppLink(String(recordingId));
+                    if (isMainVideo) {
+                      let shareUrl: string | null = null;
+                      const rid = String(recordingIdForLink);
+                      if (rid) {
+                        try {
+                          const { shareableLink } = await createShareLink(rid);
+                          shareUrl = shareableLink;
+                        } catch {
+                          shareUrl = buildHighlightsAppLink(rid);
+                        }
                       }
+                      if (!shareUrl) {
+                        showCustomAlert(
+                          'error',
+                          'Share unavailable',
+                          'Could not generate a shareable link. Please try again.',
+                        );
+                        return;
+                      }
+                      await Share.share({
+                        message: `Watch my full match on FieldFlicks: ${shareUrl}`,
+                        url: shareUrl,
+                        title: 'FieldFlicks',
+                      });
+                      return;
                     }
-                    if (!shareUrl) {
+
+                    showCustomAlert('loading', 'Preparing highlight', 'Getting your MP4 ready to share…', false);
+                    const clipId = String(highlight.id ?? '').trim();
+                    if (!clipId || clipId === 'main-video') {
+                      hideCustomAlert();
                       showCustomAlert(
                         'error',
                         'Share unavailable',
-                        'Could not generate a shareable link. Please try again.',
+                        'This clip cannot be shared. Open the recording from Highlights and try again.',
                       );
                       return;
                     }
-                    await Share.share({
-                      message: `Watch this on FieldFlicks: ${shareUrl}`,
-                      url: shareUrl,
-                      title: 'FieldFlicks',
-                    });
+                    const result = await shareHighlightAsMp4File(clipId);
+                    hideCustomAlert();
+                    if (!result.ok) {
+                      showCustomAlert('error', 'Could not share', result.message);
+                    }
                   } catch (error) {
-                    console.error('Error sharing highlight:', error);
+                    console.error('Error sharing:', error);
+                    hideCustomAlert();
                     showCustomAlert(
                       'error',
-                      'Share Failed',
-                      'Failed to share. Please try again.',
+                      'Share failed',
+                      'Something went wrong. Please try again.',
                     );
                   }
                 }}
               >
                 <Ionicons name="share" size={16} color="#FFFFFF" />
                 <Text style={styles.shareButtonText}>
-                  {isMainVideo ? 'Share Recording' : 'Share Video'}
+                  {isMainVideo ? 'Share full match' : 'Share highlight'}
                 </Text>
               </Pressable>
             )}

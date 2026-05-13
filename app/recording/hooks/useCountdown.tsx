@@ -83,13 +83,26 @@ export function useCountdown(
     type: 'info' as 'info' | 'success' | 'error' | 'loading',
     title: '',
     message: '',
+    autoDismissMs: undefined as number | undefined,
+    visualVariant: 'default' as 'default' | 'session',
   });
 
   const navigation = useRouter();
 
   // Helper function to show custom modal
-  const showModal = (type: 'info' | 'success' | 'error' | 'loading', title: string, message: string) => {
-    setModalConfig({ type, title, message });
+  const showModal = (
+    type: 'info' | 'success' | 'error' | 'loading',
+    title: string,
+    message: string,
+    options?: { autoDismissMs?: number; visualVariant?: 'default' | 'session' },
+  ) => {
+    setModalConfig({
+      type,
+      title,
+      message,
+      autoDismissMs: options?.autoDismissMs,
+      visualVariant: options?.visualVariant ?? 'default',
+    });
     setModalVisible(true);
   };
 
@@ -302,9 +315,10 @@ export function useCountdown(
       // pop-up so the user gets immediate visual confirmation regardless of OS
       // notification permissions or focus state.
       showModal(
-        "success",
-        "Recording Started",
-        "Your session is live. We'll notify you when processing finishes."
+        'success',
+        'Session live',
+        "You're recording. We'll nudge you when processing wraps up.",
+        { autoDismissMs: 5000, visualVariant: 'session' },
       );
 
       const nowIso = new Date().toISOString();
@@ -426,9 +440,10 @@ export function useCountdown(
       }
 
       showModal(
-        "success",
-        "Recording Stopped",
-        "Your recording has been successfully stopped. You would be able to view it in your recordings list in a few minutes."
+        'success',
+        'Session saved',
+        'Recording stopped. Your match will land in Sessions shortly — we will ping you when it is ready.',
+        { autoDismissMs: 5000, visualVariant: 'session' },
       );
 
       console.log("recording stopped!");
@@ -452,7 +467,7 @@ export function useCountdown(
 
       setTimeout(() => {
         navigation.replace(Paths.sessions as never);
-      }, 2000);
+      }, 5200);
     } catch (err: any) {
       console.error("❌ stop() error:", err.response?.data || err.message);
       showModal(
@@ -623,6 +638,10 @@ export function useCountdown(
         title={modalConfig.title}
         message={modalConfig.message}
         onClose={hideModal}
+        autoDismissMs={modalConfig.autoDismissMs}
+        visualVariant={modalConfig.visualVariant}
+        showCloseButton={modalConfig.type !== 'loading'}
+        buttonText="OK"
       />
     ),
   };

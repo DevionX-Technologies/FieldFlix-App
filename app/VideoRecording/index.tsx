@@ -3,6 +3,8 @@ import { PaywallSheet } from "@/components/screens/video-player/components/Paywa
 import { RecordingHighlight } from "@/components/screens/video-player/type";
 import VideoPlayer from "@/components/screens/video-player/VideoPlayer";
 import { useEntitlement } from "@/lib/fieldflix-entitlement";
+import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
+import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams } from "expo-router";
 import React, { useCallback, useState } from "react";
 
@@ -38,6 +40,18 @@ export default function VideoPlayerScreen() {
   const soloHighlight =
     soloParam === "1" || (Array.isArray(soloParam) && soloParam[0] === "1");
 
+  const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
+    }, []),
+  );
+
+  const allowShareClips = Boolean(
+    recordingId && unlockedRecordingIds.includes(String(recordingId).trim()),
+  );
+
   const onPaywall = useCallback(() => {
     setPaywallVisible(true);
   }, []);
@@ -65,6 +79,7 @@ export default function VideoPlayerScreen() {
         recordingId={recordingId}
         previewCap={{ isPaid, onPaywall }}
         soloHighlight={soloHighlight}
+        allowShareClips={allowShareClips}
       />
       <PaywallSheet
         visible={paywallVisible}

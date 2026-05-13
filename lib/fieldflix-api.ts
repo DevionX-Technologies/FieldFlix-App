@@ -756,6 +756,26 @@ export async function createShareLink(
   return data;
 }
 
+/** Converts / returns an MP4 export URL for a highlight (`POST /recording/highlight/:id/process`). */
+export type ProcessHighlightShareResult = {
+  success: boolean;
+  highlightId: string;
+  s3Path?: string;
+  bucketName?: string;
+  signedUrl?: string;
+  message: string;
+};
+
+export async function processRecordingHighlightForShare(
+  highlightId: string,
+): Promise<ProcessHighlightShareResult> {
+  const { data } = await axiosInstance.post<ProcessHighlightShareResult>(
+    `/recording/highlight/${encodeURIComponent(highlightId)}/process`,
+    {},
+  );
+  return data;
+}
+
 export type ShareLinkResolution = {
   recording_id: string | null;
   owner_id: string | null;
