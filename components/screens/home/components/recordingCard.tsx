@@ -56,9 +56,7 @@ export const RecordingCard: React.FC<CardCarouselProps> = ({
       : "N/A";
 
     const subject = `Failed Recording Report - ID: ${recordingId}`;
-    const body = `Hello Admin,
-
-The following recording has failed and requires investigation:
+    const body = `This is an automated failure report from the FieldFlicks app.
 
 RECORDING DETAILS:
 • Recording ID: ${recordingId}

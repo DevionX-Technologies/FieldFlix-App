@@ -25,7 +25,7 @@ const EMAIL_TEMPLATES = {
   FAILED_HIGHLIGHTS: {
     subject: (count: number) => `${count} Failed Highlight${count === 1 ? '' : 's'} - Processing Issue`,
     body: (highlights: RecordingHighlight[]) => {
-      const highlightDetails = highlights.map((h, index) => 
+      const highlightDetails = highlights.map((h, index) =>
         `Highlight #${index + 1}:\n` +
         `- Asset ID: ${h.asset_id || 'N/A'}\n` +
         `- Source Asset ID: ${h.source_asset_id}\n` +
@@ -33,7 +33,7 @@ const EMAIL_TEMPLATES = {
         `- Failed Message: ${h.failed_message || 'No specific error message'}\n` +
         `- Timestamp: ${h.button_click_timestamp}\n`
       ).join('\n');
-      
+
       return `Hello Admin,\n\nThe following highlight${highlights.length === 1 ? '' : 's'} failed to process:\n\n${highlightDetails}\nPlease investigate the processing issues.\n\nThank you.`;
     }
   }
@@ -45,7 +45,7 @@ const sendFailedHighlightsEmail = async (failedHighlights: RecordingHighlight[])
     subject: EMAIL_TEMPLATES.FAILED_HIGHLIGHTS.subject(failedHighlights.length),
     body: EMAIL_TEMPLATES.FAILED_HIGHLIGHTS.body(failedHighlights)
   };
-  
+
   const mailtoLink = `mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent(
     emailData.subject
   )}&body=${encodeURIComponent(emailData.body)}`;
@@ -95,15 +95,15 @@ export const HighlightList: React.FC<HighlightListProps> = ({
 
   // Combine main video with highlights
   const allHighlights = [mainVideoHighlight, ...recordingHighlights];
-  
+
   // Filter highlights by status
   const playableHighlights = allHighlights.filter((highlight) => {
     if (highlight.id === "main-video") return true;
     const st = String(highlight.status ?? "").toLowerCase();
     return st === "ready" || st === "clip_created" || st === "processing";
   });
-  
-  const failedHighlights = recordingHighlights.filter(highlight => 
+
+  const failedHighlights = recordingHighlights.filter(highlight =>
     highlight.status === "failed"
   );
 
@@ -130,17 +130,17 @@ export const HighlightList: React.FC<HighlightListProps> = ({
         {playableHighlights.map((highlight, index) => {
           // Handle main video differently
           const isMainVideo = highlight.id === "main-video";
-          
+
           // For display purposes, we need to calculate the original highlight index
           // from the recordingHighlights array (not the filtered playableHighlights)
           let originalHighlightIndex = -1;
           if (!isMainVideo) {
             originalHighlightIndex = recordingHighlights.findIndex(h => h.id === highlight.id);
           }
-          
+
           const displayIndex = isMainVideo ? -1 : originalHighlightIndex;
-          const isActive = isMainVideo 
-            ? activeHighlightIndex === null 
+          const isActive = isMainVideo
+            ? activeHighlightIndex === null
             : activeHighlightIndex === originalHighlightIndex;
 
           return (
@@ -164,7 +164,7 @@ export const HighlightList: React.FC<HighlightListProps> = ({
           );
         })}
       </VStack>
-      
+
       {/* Show failed highlights as text summary */}
       {failedHighlights.length > 0 && (
         <View style={styles.failedSection}>
@@ -174,9 +174,9 @@ export const HighlightList: React.FC<HighlightListProps> = ({
           <Text style={styles.failedDescription}>
             Some highlights could not be processed due to technical issues.
           </Text>
-          
+
           {/* Email Admin Button */}
-          <Pressable 
+          <Pressable
             style={styles.emailButton}
             onPress={() => sendFailedHighlightsEmail(failedHighlights)}
           >

@@ -285,6 +285,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         >
           <View style={[styles.cardShell, { minHeight: cardMinHeight }]}>
             <View pointerEvents="none" style={styles.cardBackdrop} />
+            <View pointerEvents="none" style={styles.cardTint} />
             <View style={styles.card}>
             <View style={styles.location}>
               <View style={styles.pinWrap}>
@@ -477,6 +478,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     alignSelf: 'center',
     flexDirection: 'column',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 24 },
     shadowOpacity: 0.45,
@@ -487,13 +490,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(2, 14, 10, 0.94)',
   },
+  /** Same tone as former `card` fill — covers full shell so tall min-heights don’t show bare backdrop. */
+  cardTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16, 20, 24, 0.78)',
+  },
+  /** Insets content inside the tinted shell; background stays on `cardTint`. */
   card: {
     paddingTop: 32,
     paddingHorizontal: 22,
-    paddingBottom: 34,
-    backgroundColor: 'rgba(16, 20, 24, 0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    paddingBottom: 32,
+    position: 'relative',
   },
   location: {
     flexDirection: 'row',
@@ -515,7 +522,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   court: {
-    marginTop: 18,
+    marginTop: 24,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -532,7 +539,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   timerRow: {
-    marginTop: 28,
+    marginTop: 36,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -570,7 +577,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   presetsScrollOuter: {
-    marginTop: 24,
+    marginTop: 34,
     maxHeight: 64,
     flexGrow: 0,
   },
@@ -616,7 +623,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.95)',
   },
   sportBlock: {
-    marginTop: 18,
+    marginTop: 26,
     width: '100%',
     gap: 10,
   },
@@ -658,14 +665,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   venueLoading: {
-    marginTop: 14,
+    marginTop: 20,
     fontFamily: FF.semiBold,
     fontSize: 13,
     color: MUTED,
     textAlign: 'center',
   },
   start: {
-    marginTop: 24,
+    marginTop: 36,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

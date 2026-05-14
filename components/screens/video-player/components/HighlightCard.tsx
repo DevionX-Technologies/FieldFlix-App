@@ -251,39 +251,60 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                   : formatDate(highlight.button_click_timestamp)
               }
             </Text>
-            {showShare && (
+            {showShare && isMainVideo && (
               <Pressable
                 style={styles.shareButton}
                 onPress={async () => {
                   try {
-                    if (isMainVideo) {
-                      let shareUrl: string | null = null;
-                      const rid = String(recordingIdForLink);
-                      if (rid) {
-                        try {
-                          const { shareableLink } = await createShareLink(rid);
-                          shareUrl = shareableLink;
-                        } catch {
-                          shareUrl = buildHighlightsAppLink(rid);
-                        }
+                    let shareUrl: string | null = null;
+                    const rid = String(recordingIdForLink);
+                    if (rid) {
+                      try {
+                        const { shareableLink } = await createShareLink(rid);
+                        shareUrl = shareableLink;
+                      } catch {
+                        shareUrl = buildHighlightsAppLink(rid);
                       }
-                      if (!shareUrl) {
-                        showCustomAlert(
-                          'error',
-                          'Share unavailable',
-                          'Could not generate a shareable link. Please try again.',
-                        );
-                        return;
-                      }
-                      await Share.share({
-                        message: `Watch my full match on FieldFlicks: ${shareUrl}`,
-                        url: shareUrl,
-                        title: 'FieldFlicks',
-                      });
+                    }
+                    if (!shareUrl) {
+                      showCustomAlert(
+                        'error',
+                        'Share unavailable',
+                        'Could not generate a shareable link. Please try again.',
+                      );
                       return;
                     }
+                    await Share.share({
+                      message: `Watch my full match on FieldFlicks: ${shareUrl}`,
+                      url: shareUrl,
+                      title: 'FieldFlicks',
+                    });
+                  } catch (error) {
+                    console.error('Error sharing:', error);
+                    showCustomAlert(
+                      'error',
+                      'Share failed',
+                      'Something went wrong. Please try again.',
+                    );
+                  }
+                }}
+              >
+                <Ionicons name="share" size={16} color="#FFFFFF" />
+                <Text style={styles.shareButtonText}>Share full match</Text>
+              </Pressable>
+            )}
 
-                    showCustomAlert('loading', 'Preparing highlight', 'Getting your MP4 ready to share…', false);
+            {showShare && !isMainVideo && (
+              <Pressable
+                style={styles.shareButton}
+                onPress={async () => {
+                  try {
+                    showCustomAlert(
+                      'loading',
+                      'Preparing highlight',
+                      'Getting your MP4 ready to share…',
+                      false,
+                    );
                     const clipId = String(highlight.id ?? '').trim();
                     if (!clipId || clipId === 'main-video') {
                       hideCustomAlert();
@@ -297,10 +318,14 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                     const result = await shareHighlightAsMp4File(clipId);
                     hideCustomAlert();
                     if (!result.ok) {
-                      showCustomAlert('error', 'Could not share', result.message);
+                      showCustomAlert(
+                        'error',
+                        'Could not share',
+                        result.message,
+                      );
                     }
                   } catch (error) {
-                    console.error('Error sharing:', error);
+                    console.error('Error sharing highlight:', error);
                     hideCustomAlert();
                     showCustomAlert(
                       'error',
@@ -311,9 +336,7 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                 }}
               >
                 <Ionicons name="share" size={16} color="#FFFFFF" />
-                <Text style={styles.shareButtonText}>
-                  {isMainVideo ? 'Share full match' : 'Share highlight'}
-                </Text>
+                <Text style={styles.shareButtonText}>Share highlight</Text>
               </Pressable>
             )}
 

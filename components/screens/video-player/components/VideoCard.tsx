@@ -49,9 +49,7 @@ const EMAIL_TEMPLATES = {
   FAILED_RECORDING: {
     subject: (recordingId: string) => `Failed Recording Report - ID: ${recordingId}`,
     body: (recordingId: string, recordingTime: string, userInfo: { name?: string; email?: string; phone?: string }) => 
-      `Hello Admin,
-
-The following recording has failed and requires investigation:
+      `This is an automated failure report from the FieldFlicks app.
 
 RECORDING DETAILS:
 • Recording ID: ${recordingId}
