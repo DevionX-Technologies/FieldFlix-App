@@ -84,6 +84,8 @@ type TurfRow = {
   id: string;
   name?: string;
   city?: string;
+  /** API `turfs.location` — sole source for subtitle under arena name on Home. */
+  location?: string;
   address_line?: string;
   hourly_rate?: string | number;
   sports_supported?: unknown;
@@ -215,24 +217,11 @@ function compactOneLine(s: string): string {
   return String(s).replace(/\s+/g, " ").trim();
 }
 
-/** When `city` is null, derive area from turf name (`| Goregaon East`, double-spaced locality, etc.). */
-function inferLocationFromTurfName(arenaName: string): string {
-  const n = compactOneLine(arenaName);
-  if (!n) return "";
-  const pipeParts = n.split("|").map((p) => compactOneLine(p));
-  if (pipeParts.length >= 2) {
-    const tail = pipeParts[pipeParts.length - 1];
-    if (tail.length >= 2) return tail;
-  }
-  const doubleGap = n.match(/\s{2,}([^|]+)$/);
-  if (doubleGap?.[1]) return compactOneLine(doubleGap[1]);
-  return "";
-}
-
+/** Subtitle under arena name uses only `turfs.location` from the API — backfill in DB when empty. */
 function turfRowLocationLabel(t: TurfRow): string {
-  const fromFields = compactOneLine((t.city ?? t.address_line ?? "").split(",")[0] ?? "");
-  if (fromFields) return fromFields;
-  return inferLocationFromTurfName(t.name ?? "") || "—";
+  const loc = compactOneLine(t.location ?? "");
+  if (loc) return loc;
+  return "—";
 }
 
 /** Fold duplicate turf rows (one per camera/QR UUID) into a single homepage card per venue label. */
@@ -246,7 +235,7 @@ function canonicalVenueKey(name?: string): string {
 
 function turfRowQualityScore(t: TurfRow): number {
   let s = 0;
-  if (compactOneLine(t.city ?? "")) s += 2;
+  if (compactOneLine(t.location ?? "")) s += 2;
   if (compactOneLine(t.address_line ?? "")) s += 1;
   if (extractTurfLngLat(t.geo_location)) s += 3;
   return s;
@@ -277,6 +266,9 @@ function mergeTurfDuplicatesBucket(bucket: TurfRow[]): TurfRow {
     city:
       compactOneLine(base.city ?? "") ? base.city :
         bucket.map((x) => x.city).find((c) => compactOneLine(c ?? "")) ?? base.city,
+    location:
+      compactOneLine(base.location ?? "") ? base.location :
+        bucket.map((x) => x.location).find((l) => compactOneLine(l ?? "")) ?? base.location,
     address_line:
       compactOneLine(base.address_line ?? "") ? base.address_line :
         bucket.map((x) => x.address_line).find((a) => compactOneLine(a ?? "")) ?? base.address_line,

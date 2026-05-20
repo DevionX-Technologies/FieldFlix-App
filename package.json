@@ -1,7 +1,7 @@
 {
   "name": "fieldflicks-mobile-latest",
   "main": "expo-router/entry",
-  "version": "1.1.9",
+  "version": "2.0.3",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -72,6 +72,7 @@
     "expo-mail-composer": "~14.1.6",
     "expo-notifications": "~0.31.4",
     "expo-router": "~5.1.7",
+    "expo-screen-orientation": "~8.1.7",
     "expo-secure-store": "~14.2.4",
     "expo-sharing": "~13.1.5",
     "expo-splash-screen": "~0.30.10",

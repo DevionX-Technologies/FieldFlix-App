@@ -22,7 +22,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HighlightList, VideoPlayerControls } from "./components";
+import { HighlightList, PlaybackShareRow, VideoPlayerControls } from "./components";
 import { DebugVideoPlayerControls } from "./components/DebugVideoPlayerControls";
 import { SafeVideoPlayerControls } from "./components/SafeVideoPlayerControls";
 import { useVideoPlayerState } from "./hooks";
@@ -64,8 +64,13 @@ interface VideoPlayerProps {
   };
   /** Recording id when opened from highlights / preview (for debug logs). */
   recordingId?: string;
-  /** When true, only the requested clip plays — no related-highlight list below the player. */
+  /** When solo clip mode, hides list regardless of showVideosListBelow. */
   soloHighlight?: boolean;
+  /**
+   * When true, show the Videos / highlights list below the player (Hero from Highlights passes `showVideosList=1` on `/VideoRecording`).
+   * Routes that omit `showVideosList` default to playlist hidden (recording cards, Saved-clips playback, solo highlight routes).
+   */
+  showVideosListBelow?: boolean;
   /** When set with `allowShareClips`, drives full-match link share + paywall parity with Highlights. */
   shareRecordingId?: string | null;
   allowShareClips?: boolean;
@@ -82,6 +87,7 @@ export default function VideoPlayer({
   previewCap,
   recordingId,
   soloHighlight = false,
+  showVideosListBelow = false,
   shareRecordingId = null,
   allowShareClips = false,
 }: VideoPlayerProps) {
@@ -95,6 +101,52 @@ export default function VideoPlayer({
     handleHighlightPress,
     handleMainVideoPress,
   } = useVideoPlayerState(source, previewCap);
+
+  const [immersivePlaybackOpen, setImmersivePlaybackOpen] = useState(false);
+
+  /** Hide carousel unless Hero explicitly requests it (`showVideosList=1`). Solo clip stays hidden regardless. */
+  const hideVideosBelow = soloHighlight || !showVideosListBelow;
+
+  const playbackShareRecordingId =
+    typeof (shareRecordingId ?? recordingId) === "string"
+      ? String(shareRecordingId ?? recordingId ?? "").trim() || null
+      : null;
+
+  /** Clip aligned with expo-video URL (Mux); used for Share highlight MP4 gate. */
+  const clipPlayingForShare = useMemo((): RecordingHighlight | null => {
+    if (activeHighlightIndex == null || activeHighlightIndex < 0)
+      return null;
+    const h = recordingHighlights[activeHighlightIndex];
+    const idStr = String(h?.id ?? "");
+    if (
+      !h ||
+      !idStr ||
+      idStr === "main-video"
+    )
+      return null;
+    const url = h.mux_public_playback_url;
+    if (
+      typeof url !== "string" ||
+      !url.trim() ||
+      url.trim() !== String(currentVideoSource ?? "").trim()
+    ) {
+      return null;
+    }
+    return h;
+  }, [
+    activeHighlightIndex,
+    recordingHighlights,
+    currentVideoSource,
+  ]);
+
+  const playbackShareProps =
+    allowShareClips && playbackShareRecordingId
+      ? {
+          allowShare: true as const,
+          shareRecordingId: playbackShareRecordingId,
+          activeHighlightClip: clipPlayingForShare,
+        }
+      : null;
 
   const activeEngageHighlight = useMemo((): RecordingHighlight | null => {
     if (
@@ -180,12 +232,16 @@ export default function VideoPlayer({
     }
   }, [logText]);
 
-  // Choose which controls component to use
-  const ControlsComponent = debugMode
-    ? DebugVideoPlayerControls
-    : safeMode
-      ? SafeVideoPlayerControls
-      : VideoPlayerControls;
+  const baseCtrl = {
+    player,
+    isPlaying,
+    source: currentVideoSource,
+    filename,
+    skipSeconds: performance?.skipSeconds,
+    timeUpdateHz: performance?.timeUpdateHz,
+    colors: performance?.colors,
+    onProgress,
+  };
 
   return (
     <View style={styles.root}>
@@ -212,18 +268,29 @@ export default function VideoPlayer({
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
       >
-        <ControlsComponent
-          player={player}
-          isPlaying={isPlaying}
-          source={currentVideoSource}
-          filename={filename}
-          skipSeconds={performance?.skipSeconds}
-          timeUpdateHz={performance?.timeUpdateHz}
-          colors={performance?.colors}
-          onProgress={onProgress}
-        />
+        {debugMode ? (
+          <DebugVideoPlayerControls {...baseCtrl} />
+        ) : safeMode ? (
+          <SafeVideoPlayerControls {...baseCtrl} />
+        ) : (
+          <VideoPlayerControls
+            {...baseCtrl}
+            fullscreenFooter={
+              playbackShareProps ? (
+                <PlaybackShareRow {...playbackShareProps} />
+              ) : undefined
+            }
+            onImmersiveChange={setImmersivePlaybackOpen}
+          />
+        )}
 
-        {!soloHighlight ? (
+        {hideVideosBelow &&
+        !immersivePlaybackOpen &&
+        playbackShareProps ? (
+          <PlaybackShareRow {...playbackShareProps} />
+        ) : null}
+
+        {!hideVideosBelow && recordingHighlights.length > 0 ? (
           <HighlightList
             recordingHighlights={recordingHighlights}
             activeHighlightIndex={activeHighlightIndex}

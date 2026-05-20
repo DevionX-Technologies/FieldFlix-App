@@ -16,8 +16,10 @@ interface VideoPlayerScreenParams {
   previewMode?: string;
   /** Originating recording id (highlights / preview flow). */
   recordingId?: string;
-  /** When `'1'`, hide the highlight carousel below the player (Saved-clips playback). */
+  /** When `'1'`, hide the carousel (Saved-clips / single-highlight playback via solo mode). */
   soloHighlight?: string;
+  /** When `'1'`, show the Videos / highlights list below the player (Hero from Highlights). Omit for carousel-only Recording. */
+  showVideosList?: string;
 }
 
 export default function VideoPlayerScreen() {
@@ -29,6 +31,7 @@ export default function VideoPlayerScreen() {
     previewMode,
     recordingId: rid,
     soloHighlight: soloParam,
+    showVideosList: showVideosParam,
   } = params;
   const recordingId =
     typeof rid === "string" ? rid : Array.isArray(rid) ? rid[0] : undefined;
@@ -39,6 +42,14 @@ export default function VideoPlayerScreen() {
   const isPaid = forcedPreview ? false : rawIsPaid;
   const soloHighlight =
     soloParam === "1" || (Array.isArray(soloParam) && soloParam[0] === "1");
+
+  const showVideosRaw =
+    typeof showVideosParam === "string"
+      ? showVideosParam
+      : Array.isArray(showVideosParam)
+        ? showVideosParam[0]
+        : undefined;
+  const showVideosListBelow = showVideosRaw === "1";
 
   const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>([]);
 
@@ -79,6 +90,7 @@ export default function VideoPlayerScreen() {
         recordingId={recordingId}
         previewCap={{ isPaid, onPaywall }}
         soloHighlight={soloHighlight}
+        showVideosListBelow={showVideosListBelow}
         allowShareClips={allowShareClips}
       />
       <PaywallSheet

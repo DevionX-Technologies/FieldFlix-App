@@ -718,6 +718,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         recordingHighlights: JSON.stringify(highlights),
         recordingId,
         previewMode: !hasRecordingAccess ? '1' : '0',
+        showVideosList: '1',
       },
     });
   }, [
@@ -750,6 +751,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         recordingHighlights: JSON.stringify(highlights),
         recordingId,
         previewMode: '1',
+        showVideosList: '1',
       },
     });
   }, [recordingId, heroPlaybackUrl, recording, playback, highlights, router, apiDebug]);
@@ -795,7 +797,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           recordingHighlights: JSON.stringify(soloHighlightPlayback ? [] : highlights),
           recordingId,
           previewMode: '0',
-          ...(soloHighlightPlayback ? { soloHighlight: '1' } : {}),
+          ...(soloHighlightPlayback
+            ? { soloHighlight: '1' }
+            : { showVideosList: '1' }),
         },
       };
       // Saved-clips flow: replace the transient Highlights hub so hardware back /

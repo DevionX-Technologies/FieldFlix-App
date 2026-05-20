@@ -1,5 +1,6 @@
 export { HighlightCard } from './HighlightCard';
 export { HighlightList } from './HighlightList';
+export { PlaybackShareRow } from './PlaybackShareRow';
 export { VideoCardSkeleton } from './VideoCardSkeleton';
 export { VideoPlayerControls } from './VideoPlayerControls';
 
