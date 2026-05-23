@@ -23,12 +23,12 @@ import {
   recordingSportUi,
   recordingThumbUrl,
 } from "@/utils/recordingDisplay";
-import { readPreferredHomeSport, writePreferredHomeSport } from "@/utils/homeSportPreference";
+import { writePreferredHomeSport } from "@/utils/homeSportPreference";
 import type { HomeSportKey } from "@/utils/turfSports";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -126,7 +126,6 @@ export default function FieldflixSessionsScreen() {
     mapRecordingToSessionRow,
   );
 
-  const prefHydratedRef = useRef(false);
   const [sportFilter, setSportFilter] = useState<SessionsSportFilter>("all");
   /** Recordings the user has paid to unlock — drives the lock/unlock badge on each card,
    *  mirroring the same source of truth used on RecordingsScreen. */
@@ -137,14 +136,6 @@ export default function FieldflixSessionsScreen() {
   useEffect(() => {
     refreshUnlockedIds();
   }, [refreshUnlockedIds]);
-
-  useEffect(() => {
-    if (prefHydratedRef.current) return;
-    prefHydratedRef.current = true;
-    void readPreferredHomeSport().then((p) => {
-      if (p) setSportFilter(p);
-    });
-  }, []);
 
   const filteredRows = useMemo(
     () => rows.filter((r) => sessionRowMatchesFilter(r, sportFilter)),

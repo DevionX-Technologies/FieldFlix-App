@@ -2,7 +2,6 @@
 import { PaywallSheet } from "@/components/screens/video-player/components/PaywallSheet";
 import { RecordingHighlight } from "@/components/screens/video-player/type";
 import VideoPlayer from "@/components/screens/video-player/VideoPlayer";
-import { useEntitlement } from "@/lib/fieldflix-entitlement";
 import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams } from "expo-router";
@@ -18,6 +17,8 @@ interface VideoPlayerScreenParams {
   recordingId?: string;
   /** When `'1'`, hide the carousel (Saved-clips / single-highlight playback via solo mode). */
   soloHighlight?: string;
+  /** When `soloHighlight`, backend highlight id — drives Share MP4 below the player. */
+  highlightShareId?: string;
   /** When `'1'`, show the Videos / highlights list below the player (Hero from Highlights). Omit for carousel-only Recording. */
   showVideosList?: string;
 }
@@ -32,14 +33,23 @@ export default function VideoPlayerScreen() {
     recordingId: rid,
     soloHighlight: soloParam,
     showVideosList: showVideosParam,
+    highlightShareId: hidParam,
   } = params;
   const recordingId =
     typeof rid === "string" ? rid : Array.isArray(rid) ? rid[0] : undefined;
-  const { isPaid: rawIsPaid } = useEntitlement();
+  const highlightShareIdRaw =
+    typeof hidParam === "string"
+      ? hidParam
+      : Array.isArray(hidParam)
+        ? hidParam[0]
+        : undefined;
+  const highlightShareId =
+    typeof highlightShareIdRaw === "string" && highlightShareIdRaw.trim()
+      ? highlightShareIdRaw.trim()
+      : undefined;
   const [paywallVisible, setPaywallVisible] = useState(false);
 
   const forcedPreview = previewMode === '1';
-  const isPaid = forcedPreview ? false : rawIsPaid;
   const soloHighlight =
     soloParam === "1" || (Array.isArray(soloParam) && soloParam[0] === "1");
 
@@ -53,6 +63,7 @@ export default function VideoPlayerScreen() {
 
   const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>([]);
 
+
   useFocusEffect(
     useCallback(() => {
       void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
@@ -62,6 +73,13 @@ export default function VideoPlayerScreen() {
   const allowShareClips = Boolean(
     recordingId && unlockedRecordingIds.includes(String(recordingId).trim()),
   );
+
+  /** Per-recording unlock only — sport subscription must not imply full-match access here. */
+  const recordingUnlocked = Boolean(
+    recordingId &&
+      unlockedRecordingIds.includes(String(recordingId).trim()),
+  );
+  const isPaidPlayback = forcedPreview ? false : recordingUnlocked;
 
   const onPaywall = useCallback(() => {
     setPaywallVisible(true);
@@ -88,8 +106,11 @@ export default function VideoPlayerScreen() {
         filename={filename}
         recordingHighlights={recordingHighlights}
         recordingId={recordingId}
-        previewCap={{ isPaid, onPaywall }}
+        previewCap={{ isPaid: isPaidPlayback, onPaywall }}
         soloHighlight={soloHighlight}
+        soloHighlightShareId={
+          soloHighlight ? highlightShareId ?? undefined : undefined
+        }
         showVideosListBelow={showVideosListBelow}
         allowShareClips={allowShareClips}
       />

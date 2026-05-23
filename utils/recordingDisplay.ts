@@ -1,8 +1,9 @@
 /** Shared display helpers for `Recording` payloads from the Nest API. */
 
 import {
-  fieldflixHomeSportsFromSupported,
+  fieldflixHomeSportsKeysFromStoredTurfSports,
   summarizeTurfSportsLine,
+  turfNameIsOperationalBalkanjiVenue,
   type HomeSportKey,
 } from '@/utils/turfSports';
 
@@ -81,15 +82,17 @@ function normalizeSportToken(raw: string): string {
 /**
  * Labels a session/recording turf for FieldFlix UI.
  *
- * Turfs expose `sports_supported` as Postgres enum arrays; the first element is often
- * a generic/default (e.g. Football) unrelated to FieldFlix. We therefore **prefer**
- * pickleball → padel → cricket when **any** list entry matches, aligned with backend
- * `deriveFlickSportFromTurf`, and avoid showing unrelated sports alone.
+ * Third arg `venueNameForMarketingOverride`: when set for Balkanji, forces “Pickleball” for arena-style
+ * copy only. For recordings/sessions/pricing rails, prefer **`fieldflixHomeSportsKeysFromStoredTurfSports`**
+ * so tiers match stored `turfs.sports_supported`.
  */
 export function sportLabelFromTurf(
   supported: string[] | undefined | null,
   fallback = 'Pickleball',
+  venueNameForMarketingOverride?: string | null,
 ): string {
+  if (turfNameIsOperationalBalkanjiVenue(venueNameForMarketingOverride))
+    return 'Pickleball';
   if (!supported?.length) return fallback;
   const norm = supported.map((x) => normalizeSportToken(String(x)));
   const hasPickle = norm.some((s) => s.includes('pickle'));
@@ -131,9 +134,10 @@ export function parseFieldflixSessionSportFromMetadata(
  */
 export function recordingSportUi(rec: {
   metadata?: unknown;
-  turf?: { sports_supported?: string[] | null } | null;
+  turf?: { sports_supported?: string[] | null; name?: string | null } | null;
 }): { sportLabel: string; sportFilterKeys: HomeSportKey[] } {
   const meta = parseFieldflixSessionSportFromMetadata(rec.metadata);
+
   if (meta) {
     return {
       sportLabel: homeSportToLabel(meta),
@@ -142,7 +146,8 @@ export function recordingSportUi(rec: {
   }
 
   const supported = rec.turf?.sports_supported ?? null;
-  const ffKeys = fieldflixHomeSportsFromSupported(supported);
+  /** Raw DB enums so cricket-priced legacy turfs stay under cricket tiers when metadata absent. */
+  const ffKeys = fieldflixHomeSportsKeysFromStoredTurfSports(supported);
 
   if (ffKeys.length === 0) {
     return {
@@ -166,15 +171,16 @@ export function recordingSportUi(rec: {
 }
 
 /**
- * Highlights tab / IAP plan: pinned metadata wins, else single turf sport, else pickleball fallback.
+ * Highlights tab / IAP plan: persisted session sport wins, else turf enums **as stored in DB**
+ * (so cricket tier pricing matches backend `unlockTierAndAmounts` without rewriting historical rows).
  */
 export function homeSportPlanFromRecording(rec: {
   metadata?: unknown;
-  turf?: { sports_supported?: string[] | null } | null;
+  turf?: { sports_supported?: string[] | null; name?: string | null } | null;
 }): HomeSportKey {
   const meta = parseFieldflixSessionSportFromMetadata(rec.metadata);
   if (meta) return meta;
-  const keys = fieldflixHomeSportsFromSupported(rec.turf?.sports_supported);
+  const keys = fieldflixHomeSportsKeysFromStoredTurfSports(rec.turf?.sports_supported);
   if (keys.length === 1) return keys[0]!;
   return 'pickleball';
 }

@@ -127,6 +127,8 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
 
   const turfIdTrim = String(params.turfId ?? '').trim();
   const [turfSportsRaw, setTurfSportsRaw] = useState<unknown>(null);
+  /** From GET `/turfs/:id` — used so Balkanji venues map Pickleball even if legacy DB lacks Pickleball in array. */
+  const [turfApiNameForSport, setTurfApiNameForSport] = useState<string | null>(null);
   const [turfLoadState, setTurfLoadState] = useState<'idle' | 'loading' | 'loaded' | 'error'>(
     turfIdTrim ? 'loading' : 'idle',
   );
@@ -135,14 +137,19 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
   );
 
   const ffSports = useMemo(
-    () => fieldflixHomeSportsFromSupported(turfSportsRaw),
-    [turfSportsRaw],
+    () =>
+      fieldflixHomeSportsFromSupported(
+        turfSportsRaw,
+        turfApiNameForSport ?? (venueName.toLowerCase().includes('balkanji') ? venueName : undefined),
+      ),
+    [turfSportsRaw, turfApiNameForSport, venueName],
   );
 
   useEffect(() => {
     if (!turfIdTrim) {
       setTurfLoadState('idle');
       setTurfSportsRaw(null);
+      setTurfApiNameForSport(null);
       return;
     }
     let cancelled = false;
@@ -154,6 +161,8 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         const body = resp.data as Record<string, unknown>;
         const t = (body?.data ?? body) as Record<string, unknown> | undefined;
         setTurfSportsRaw(t?.sports_supported ?? null);
+        const n = typeof t?.name === 'string' ? t.name.trim() : '';
+        setTurfApiNameForSport(n.length > 0 ? n : null);
         setTurfLoadState('loaded');
         logRecordingFlowDebug('turf_fetch_ok', {
           request: { method: 'GET', path: `/turfs/${turfIdTrim}` },
@@ -165,6 +174,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
       } catch (e) {
         if (!cancelled) {
           setTurfSportsRaw(null);
+          setTurfApiNameForSport(null);
           setTurfLoadState('error');
           logRecordingFlowDebug('turf_fetch_error', {
             request: { method: 'GET', path: `/turfs/${turfIdTrim}` },

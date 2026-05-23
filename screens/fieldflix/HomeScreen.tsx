@@ -21,6 +21,7 @@ import {
   coerceSportsSupported,
   homeSportToApiEnum,
   summarizeTurfSportsLine,
+  turfNameIsOperationalBalkanjiVenue,
   turfSupportsHomeSport,
   type HomeSportKey,
 } from "@/utils/turfSports";
@@ -38,8 +39,6 @@ import {
   FlatList,
   Image,
   type ImageSourcePropType,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   Linking,
   Platform,
   Pressable,
@@ -49,6 +48,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type ViewToken,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 
@@ -259,10 +259,11 @@ function mergeTurfDuplicatesBucket(bucket: TurfRow[]): TurfRow {
   const mergedSports = [...uniq];
   const withGeo =
     bucket.find((x) => extractTurfLngLat(x.geo_location)) ?? base;
-  return {
+  const bestNameResolved = bestName || base.name;
+  const merged: TurfRow = {
     ...base,
     id: base.id,
-    name: bestName || base.name,
+    name: bestNameResolved,
     city:
       compactOneLine(base.city ?? "") ? base.city :
         bucket.map((x) => x.city).find((c) => compactOneLine(c ?? "")) ?? base.city,
@@ -275,6 +276,10 @@ function mergeTurfDuplicatesBucket(bucket: TurfRow[]): TurfRow {
     sports_supported: mergedSports.length ? mergedSports : base.sports_supported,
     geo_location: withGeo.geo_location ?? base.geo_location,
   };
+  if (turfNameIsOperationalBalkanjiVenue(merged.name)) {
+    merged.sports_supported = ["Pickleball"];
+  }
+  return merged;
 }
 
 function dedupeTurfsForHomeDisplay(rows: TurfRow[]): TurfRow[] {
@@ -309,7 +314,7 @@ function mapTurfToArena(t: TurfRow, i: number): ArenaRow {
     location: loc,
     status: "Indoor • Available Now",
     imageSource,
-    sportsLine: summarizeTurfSportsLine(t.sports_supported),
+    sportsLine: summarizeTurfSportsLine(t.sports_supported, arenaName),
     distanceKm: null,
   };
 }
@@ -457,7 +462,7 @@ export default function FieldflixHomeScreen() {
         getPublicFlickShorts(undefined).catch(() => []),
       ]);
       const filtered = rawList.filter((t) =>
-        turfSupportsHomeSport(t.sports_supported, sport),
+        turfSupportsHomeSport(t.sports_supported, sport, t.name),
       );
       const deduped = dedupeTurfsForHomeDisplay(filtered);
       deduped.sort((a, b) =>
@@ -573,32 +578,30 @@ export default function FieldflixHomeScreen() {
     [],
   );
 
+  /** Snap + separators; dot index also tracks focus via FlatList visibility. */
   const slideW = carouselW + comingSoonGap;
+
+  const onComingSoonViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      const ix = viewableItems[0]?.index;
+      if (typeof ix === "number") {
+        setComingSoonIndex(
+          Math.min(comingSoonSlides.length - 1, Math.max(0, ix)),
+        );
+      }
+    },
+    [comingSoonSlides.length],
+  );
+
+  const comingSoonViewabilityConfig = useMemo(
+    () => ({ viewAreaCoveragePercentThreshold: 55 }),
+    [],
+  );
+
   /** Cap height on narrow screens so vertical layout stays balanced. */
   const comingSoonTileHeight = Math.min(
     COMING_SOON_CARD_HEIGHT,
     Math.max(132, Math.floor(carouselW * 0.44)),
-  );
-
-  const syncComingSoonIndex = useCallback(
-    (offsetX: number) => {
-      if (slideW <= 0) return;
-      const i = Math.round(offsetX / slideW);
-      setComingSoonIndex(Math.min(comingSoonSlides.length - 1, Math.max(0, i)));
-    },
-    [slideW, comingSoonSlides.length],
-  );
-
-  const onComingSoonScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) =>
-      syncComingSoonIndex(e.nativeEvent.contentOffset.x),
-    [syncComingSoonIndex],
-  );
-
-  const onComingSoonScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) =>
-      syncComingSoonIndex(e.nativeEvent.contentOffset.x),
-    [syncComingSoonIndex],
   );
 
   return (
@@ -1030,9 +1033,8 @@ export default function FieldflixHomeScreen() {
                 }
                 style={[styles.bannerFlatList, { maxWidth: carouselW }]}
                 contentContainerStyle={styles.bannerFlatListContent}
-                onScroll={onComingSoonScroll}
-                scrollEventThrottle={16}
-                onMomentumScrollEnd={onComingSoonScrollEnd}
+                viewabilityConfig={comingSoonViewabilityConfig}
+                onViewableItemsChanged={onComingSoonViewableItemsChanged}
                 renderItem={({ item, index }) =>
                   carouselW <= 0 ? null : (
                     <View

@@ -67,6 +67,11 @@ interface VideoPlayerProps {
   /** When solo clip mode, hides list regardless of showVideosListBelow. */
   soloHighlight?: boolean;
   /**
+   * When playing a solo clip with an empty carousel, pass backend highlight id so
+   * the share strip can expose “Share MP4” (matches mux URL in the player).
+   */
+  soloHighlightShareId?: string;
+  /**
    * When true, show the Videos / highlights list below the player (Hero from Highlights passes `showVideosList=1` on `/VideoRecording`).
    * Routes that omit `showVideosList` default to playlist hidden (recording cards, Saved-clips playback, solo highlight routes).
    */
@@ -87,6 +92,7 @@ export default function VideoPlayer({
   previewCap,
   recordingId,
   soloHighlight = false,
+  soloHighlightShareId,
   showVideosListBelow = false,
   shareRecordingId = null,
   allowShareClips = false,
@@ -114,6 +120,16 @@ export default function VideoPlayer({
 
   /** Clip aligned with expo-video URL (Mux); used for Share highlight MP4 gate. */
   const clipPlayingForShare = useMemo((): RecordingHighlight | null => {
+    if (
+      soloHighlight &&
+      soloHighlightShareId?.trim() &&
+      String(source).trim() === String(currentVideoSource ?? '').trim()
+    ) {
+      return {
+        id: soloHighlightShareId.trim(),
+        mux_public_playback_url: source,
+      } as RecordingHighlight;
+    }
     if (activeHighlightIndex == null || activeHighlightIndex < 0)
       return null;
     const h = recordingHighlights[activeHighlightIndex];
@@ -134,6 +150,9 @@ export default function VideoPlayer({
     }
     return h;
   }, [
+    soloHighlight,
+    soloHighlightShareId,
+    source,
     activeHighlightIndex,
     recordingHighlights,
     currentVideoSource,
@@ -275,11 +294,6 @@ export default function VideoPlayer({
         ) : (
           <VideoPlayerControls
             {...baseCtrl}
-            fullscreenFooter={
-              playbackShareProps ? (
-                <PlaybackShareRow {...playbackShareProps} />
-              ) : undefined
-            }
             onImmersiveChange={setImmersivePlaybackOpen}
           />
         )}

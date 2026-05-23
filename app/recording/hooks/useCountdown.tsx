@@ -4,6 +4,7 @@ import {
   LAST_STOPPED_RECORDING_ID,
   RECORDING_CAMERA_ID,
   RECORDING_KEY,
+  RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
   RECORDING_QR_CAMERA_ID,
   TIME_GROUNDLOCATION,
   TIME_LEFT_KEY,
@@ -463,6 +464,7 @@ export function useCountdown(
         SecureStore.deleteItemAsync(RECORDING_CAMERA_ID),
         SecureStore.deleteItemAsync(TURF_ID),
         SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID),
+        SecureStore.deleteItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY),
       ]);
 
       setTimeout(() => {
@@ -610,6 +612,7 @@ export function useCountdown(
     await SecureStore.deleteItemAsync(RECORDING_CAMERA_ID);
     await SecureStore.deleteItemAsync(TURF_ID);
     await SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID);
+    await SecureStore.deleteItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY);
   };
 
   return {

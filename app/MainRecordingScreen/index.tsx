@@ -1,4 +1,5 @@
 import {
+  RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
   TIME_GROUNDLOCATION,
   TIME_TOTAL,
   TIME_TURF_NAME,
@@ -9,14 +10,16 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import axiosInstance from '@/utils/axiosInstance';
 import { getRecordingButtonHighlightCount } from '@/lib/fieldflix-api';
 import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
+import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   BackHandler,
   ImageBackground,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -73,6 +76,7 @@ const CIRC = 2 * Math.PI * R;
  */
 export default function MainRecordingScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const {
@@ -176,6 +180,51 @@ export default function MainRecordingScreen() {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
     return () => sub.remove();
   }, [isRunning]);
+
+  /** Cold-killed app restores via Splash; disallow swipe-away from this card while recording. */
+  useLayoutEffect(() => {
+    try {
+      navigation.setOptions({
+        gestureEnabled: !isRunning,
+        ...(Platform.OS === 'ios'
+          ? { fullScreenGestureEnabled: !isRunning }
+          : {}),
+      });
+    } catch {
+      /* expo-router navigator options — best-effort */
+    }
+  }, [navigation, isRunning]);
+
+  /** Persist routing context so Splash / resume can reopen this exact session. */
+  useEffect(() => {
+    if (!isRunning || !activeRecordingSessionId) return;
+    const record = {
+      Name: routeParamFirst(Name) ?? '',
+      GroundLocation: routeParamFirst(GroundLocation) ?? '',
+      turfId: routeParamFirst(turfId) ?? '',
+      cameraId: routeParamFirst(cameraId) ?? '',
+      ChoosenTimeInMinutes: routeParamFirst(ChoosenTimeInMinutes) ?? '',
+      plannedDurationSec: routeParamFirst(plannedDurationSec) ?? '',
+      sessionSport: routeParamFirst(sessionSport) ?? '',
+      remainingSeconds: routeParamFirst(remainingSeconds) ?? '',
+      Resume: '1',
+    };
+    void SecureStore.setItemAsync(
+      RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
+      JSON.stringify(record),
+    );
+  }, [
+    isRunning,
+    activeRecordingSessionId,
+    Name,
+    GroundLocation,
+    turfId,
+    cameraId,
+    ChoosenTimeInMinutes,
+    plannedDurationSec,
+    sessionSport,
+    remainingSeconds,
+  ]);
 
   useEffect(() => {
     if (Resume) {

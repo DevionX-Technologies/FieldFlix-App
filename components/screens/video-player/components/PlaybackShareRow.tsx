@@ -45,7 +45,7 @@ export const PlaybackShareRow: React.FC<PlaybackShareRowProps> = ({
             accessibilityLabel="Share highlight"
           >
             <Ionicons name="share" size={18} color="#FFFFFF" />
-            <Text style={styles.btnLabel}>Share highlight</Text>
+            <Text style={styles.btnLabel}>Share MP4</Text>
           </Pressable>
         ) : null}
         <Pressable

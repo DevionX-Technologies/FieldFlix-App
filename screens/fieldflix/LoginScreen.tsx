@@ -252,26 +252,6 @@ export default function FieldflixLoginScreen() {
                       </View>
                     ) : null}
                   </View>
-
-                  <View style={styles.footerRow}>
-                    <Text
-                      style={styles.footerMuted}
-                      maxFontSizeMultiplier={1.2}
-                    >
-                      Don&apos;t have an account?{" "}
-                    </Text>
-                    <Pressable
-                      onPress={() => router.push(Paths.signup)}
-                      hitSlop={8}
-                    >
-                      <Text
-                        style={styles.footerLink}
-                        maxFontSizeMultiplier={1.2}
-                      >
-                        Sign up
-                      </Text>
-                    </Pressable>
-                  </View>
                 </View>
               </View>
             </View>

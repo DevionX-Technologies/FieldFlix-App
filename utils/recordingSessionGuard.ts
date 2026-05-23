@@ -1,5 +1,14 @@
-import { RECORDING_KEY } from '@/data/constants';
+import {
+  RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
+  RECORDING_KEY,
+  RECORDING_QR_CAMERA_ID,
+  TURF_ID,
+} from '@/data/constants';
 import * as SecureStore from 'expo-secure-store';
+
+function remainingSecondsFromEndMs(endMs: number): number {
+  return Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+}
 
 /**
  * True when this device still has an in-flight recording workflow (running countdown,
@@ -15,4 +24,54 @@ export async function hasPersistedRecordingSession(): Promise<boolean> {
   const endMs = parseInt(endStr, 10);
   if (!Number.isFinite(endMs)) return true;
   return endMs > Date.now();
+}
+
+/**
+ * Router search params for `/recording-active` so cold start resumes the live timer dial.
+ */
+export async function buildRecordingActiveResumeSearchParams(): Promise<Record<
+  string,
+  string
+> | null> {
+  if (!(await hasPersistedRecordingSession())) return null;
+  const endStr = await SecureStore.getItemAsync('end_time');
+  let remainingSeconds = '0';
+  if (endStr?.trim()) {
+    remainingSeconds = String(
+      remainingSecondsFromEndMs(parseInt(endStr, 10)),
+    );
+  }
+  const turf = (await SecureStore.getItemAsync(TURF_ID))?.trim() ?? '';
+  const camera =
+    (await SecureStore.getItemAsync(RECORDING_QR_CAMERA_ID))?.trim() ?? '';
+
+  const fromDisk: Record<string, string> = {};
+  try {
+    const raw = await SecureStore.getItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY);
+    if (raw?.trim()) {
+      const o = JSON.parse(raw) as Record<string, unknown>;
+      for (const [k, v] of Object.entries(o)) {
+        if (v == null) continue;
+        fromDisk[String(k)] = typeof v === 'string' ? v : String(v);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const out: Record<string, string> = {
+    ...fromDisk,
+    Resume: '1',
+  };
+
+  // Prefer live countdown from wall clock when running; else keep disk (e.g. paused).
+  if (remainingSeconds !== '0') {
+    out.remainingSeconds = remainingSeconds;
+  } else if (!out.remainingSeconds) {
+    out.remainingSeconds = remainingSeconds;
+  }
+
+  if (turf && !out.turfId) out.turfId = turf;
+  if (camera && !out.cameraId) out.cameraId = camera;
+  return out;
 }

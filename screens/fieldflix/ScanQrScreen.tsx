@@ -14,7 +14,14 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  InteractionManager,
+  Alert,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 export default function FieldflixScanQrScreen() {
   const router = useRouter();
@@ -25,6 +32,12 @@ export default function FieldflixScanQrScreen() {
   const [cameraMountKey, setCameraMountKey] = React.useState(0);
   /** Re-entrancy guard so two focus events don't double-fire requestPermission. */
   const requestingRef = React.useRef(false);
+  /** Wait for transitions to finish before remounting the camera preview (helps first-open). */
+  const bumpCameraMount = React.useCallback(() => {
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(() => setCameraMountKey((k) => k + 1));
+    });
+  }, []);
 
   /**
    * On every screen focus:
@@ -46,11 +59,7 @@ export default function FieldflixScanQrScreen() {
         try {
           const next = await requestPermission();
           if (cancelled) return;
-          if (next?.granted) {
-            // Force a fresh CameraView mount in case a previous unmount left
-            // the surface in a bad state (Android Camera2 quirk).
-            setCameraMountKey((k) => k + 1);
-          }
+          if (next?.granted) bumpCameraMount();
         } finally {
           requestingRef.current = false;
         }
@@ -58,7 +67,7 @@ export default function FieldflixScanQrScreen() {
       return () => {
         cancelled = true;
       };
-    }, [requestPermission]),
+    }, [requestPermission, bumpCameraMount]),
   );
 
   const onValidQr = React.useCallback(
@@ -100,6 +109,10 @@ export default function FieldflixScanQrScreen() {
           onBack={() => navigateBackOrHome(router)}
           backAccessibilityLabel="Go back"
         />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#B6FC00" />
+          <Text style={styles.permissionHint}>Opening camera…</Text>
+        </View>
       </View>
     );
   }
@@ -116,11 +129,7 @@ export default function FieldflixScanQrScreen() {
           status={permissionInfo.status}
           onRetry={async () => {
             const next = await requestPermission();
-            if (next?.granted) {
-              // Same fix as the useFocusEffect path: remount <CameraView>
-              // so it picks up the freshly-granted permission first try.
-              setCameraMountKey((k) => k + 1);
-            }
+            if (next?.granted) bumpCameraMount();
             resetScan();
           }}
         />
@@ -139,6 +148,7 @@ export default function FieldflixScanQrScreen() {
         <CameraView
           key={`cam-${cameraMountKey}`}
           style={styles.camera}
+          active
           onBarcodeScanned={handleBarCodeScanned}
           barcodeScannerSettings={{
             barcodeTypes: ['qr'],
@@ -182,6 +192,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  permissionHint: {
+    marginTop: 12,
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 15,
   },
   infoText: {
     color: '#fff',

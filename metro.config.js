@@ -1,5 +1,15 @@
 // metro.config.js
+const fs = require('fs');
 const path = require('path');
+
+// Export:embed / some Gradle-invoked bundles can start Node with cwd = android/. NativeWind's
+// CSS interop warns via @expo/config using getConfig(process.cwd()), which expects package.json
+// beside app.json → chdir to the real JS project root (this file lives there).
+const projectRoot = __dirname;
+if (fs.existsSync(path.join(projectRoot, 'package.json'))) {
+  process.chdir(projectRoot);
+}
+
 const { getDefaultConfig } = require('expo/metro-config');
 const { withNativeWind } = require('nativewind/metro');
 
@@ -21,8 +31,11 @@ module.exports = (() => {
   };
 
   // 2️⃣ Let NativeWind patch in its loaders for Tailwind classes
+  // Use absolute paths: Gradle/EAS may run Metro with cwd = android/, and
+  // NativeWind uses path.resolve() on configPath/input (relative → cwd).
   const nativeWindConfig = withNativeWind(config, {
-    input: './global.css',    // or wherever your tailwind entry is
+    input: path.join(__dirname, 'global.css'),
+    configPath: path.join(__dirname, 'tailwind.config.js'),
   });
 
   // 3️⃣ Remove 'svg' from assetExts so svg files are treated as source

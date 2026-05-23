@@ -24,10 +24,12 @@ export function hrefFromNotificationData(
     }
     return Paths.recordings as Href;
   }
+  if (u === 'LOCAL_PAYMENT_SUCCESS') {
+    return Paths.profilePaymentHistory as Href;
+  }
   if (u === 'PAYMENT_SUCCESS' || (u.includes('PAYMENT') && u.includes('SUCCESS'))) {
     return Paths.profilePremium as Href;
-  }
-  if (u === 'RECORDING_START' || u === 'RECORDING_STOP' || u.includes('LOCAL_RECORDING')) {
+  }  if (u === 'RECORDING_START' || u === 'RECORDING_STOP' || u.includes('LOCAL_RECORDING')) {
     return Paths.recordings as Href;
   }
   return null;
@@ -57,11 +59,14 @@ export function routeFromNotificationData(
     router.push(Paths.recordings);
     return;
   }
+  if (u === 'LOCAL_PAYMENT_SUCCESS') {
+    router.push(Paths.profilePaymentHistory);
+    return;
+  }
   if (u === 'PAYMENT_SUCCESS') {
     router.push(Paths.profilePremium);
     return;
-  }
-  if (u === 'RECORDING_START' || u === 'RECORDING_STOP') {
+  }  if (u === 'RECORDING_START' || u === 'RECORDING_STOP') {
     router.push(Paths.recordings);
     return;
   }

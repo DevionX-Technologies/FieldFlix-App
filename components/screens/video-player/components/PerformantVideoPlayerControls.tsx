@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { VideoView } from 'expo-video';
 import React, { useCallback, useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Platform, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
     runOnJS,
@@ -201,6 +201,7 @@ export const PerformantVideoPlayerControls: React.FC<PerformantVideoPlayerContro
         allowsPictureInPicture
         showsTimecodes={false} // Use custom controls
         contentFit="contain"
+        {...(Platform.OS === 'android' ? { surfaceType: 'textureView' as const } : {})}
       />
 
       {/* Play/Pause Overlay */}

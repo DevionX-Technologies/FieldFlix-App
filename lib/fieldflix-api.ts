@@ -950,6 +950,9 @@ export type Camera = {
   id: string;
   name: string;
   turfId: string;
+  /** When set by admin/backend, prefers venue "Court/Ground No." over parsing `name`. */
+  court_number?: number | string | null;
+  ground_number?: number | string | null;
 };
 
 export async function getCameras(turfId?: string): Promise<Camera[]> {

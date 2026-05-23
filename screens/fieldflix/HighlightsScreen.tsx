@@ -34,6 +34,7 @@ import { useEntitlement } from '@/lib/fieldflix-entitlement';
 import { mergeServerUnlockedRecordingIds } from '@/lib/unlockedRecordingSync';
 import { appendLocalPaymentHistory } from '@/lib/paymentHistoryLocal';
 import { presentEventNotification } from '@/utils/presentEventNotification';
+import { shareHighlightClipMp4 } from '@/utils/recordingPlaybackShare';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
@@ -715,10 +716,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       params: {
         source: heroPlaybackUrl,
         filename: recording?.turf?.name ?? 'Recording',
-        recordingHighlights: JSON.stringify(highlights),
+        recordingHighlights: JSON.stringify([]),
         recordingId,
         previewMode: !hasRecordingAccess ? '1' : '0',
-        showVideosList: '1',
       },
     });
   }, [
@@ -728,7 +728,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     heroPlaybackUrl,
     recording,
     playback,
-    highlights,
     router,
     apiDebug,
     openUnlockSheet,
@@ -748,13 +747,12 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       params: {
         source: heroPlaybackUrl,
         filename: recording?.turf?.name ?? 'Recording',
-        recordingHighlights: JSON.stringify(highlights),
+        recordingHighlights: JSON.stringify([]),
         recordingId,
         previewMode: '1',
-        showVideosList: '1',
       },
     });
-  }, [recordingId, heroPlaybackUrl, recording, playback, highlights, router, apiDebug]);
+  }, [recordingId, heroPlaybackUrl, recording, playback, router, apiDebug]);
 
   const onShareHero = useCallback(async () => {
     if (!recordingId) return;
@@ -794,12 +792,11 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         params: {
           source: h.mux_public_playback_url,
           filename: `${titleBase} — Highlight`,
-          recordingHighlights: JSON.stringify(soloHighlightPlayback ? [] : highlights),
+          recordingHighlights: JSON.stringify([]),
           recordingId,
           previewMode: '0',
-          ...(soloHighlightPlayback
-            ? { soloHighlight: '1' }
-            : { showVideosList: '1' }),
+          soloHighlight: '1',
+          highlightShareId: String(h.id ?? ''),
         },
       };
       // Saved-clips flow: replace the transient Highlights hub so hardware back /
@@ -814,7 +811,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       hasRecordingAccess,
       recording,
       recordingId,
-      highlights,
       router,
       openUnlockSheet,
       soloHighlightPlayback,
@@ -993,7 +989,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             ) : null}
             {highlights.map((h, idx) => {
               const isSavedLocally = flickLocalSavedIds.includes(String(h.id));
-              const isSaved = Boolean(h.viewerSaved) || isSavedLocally;
               return (
                 <HighlightRow
                   key={h.id}
@@ -1002,19 +997,10 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   hasAccess={hasRecordingAccess}
                   flickSavedLocally={isSavedLocally}
                   engageBusy={engageBusy}
-                  onPress={() => {
-                    // Saved highlights take a detour through the Saved Highlights
-                    // index so the user lands on their bookmarked collection
-                    // before drilling back into the clip. Non-saved highlights
-                    // open the player directly as before.
-                    if (isSaved) {
-                      router.push({
-                        pathname: Paths.savedHighlights as never,
-                      });
-                      return;
-                    }
-                    void onHighlightPress(h);
-                  }}
+                  onShareHighlight={() =>
+                    void shareHighlightClipMp4(String(h.id ?? ''))
+                  }
+                  onPress={() => void onHighlightPress(h)}
                   onToggleLike={() => void onToggleHighlightLike(h.id)}
                   onToggleSave={() => void onToggleHighlightSave(h.id)}
                 />
@@ -1194,6 +1180,7 @@ function HighlightRow({
   hasAccess,
   flickSavedLocally,
   engageBusy,
+  onShareHighlight,
   onPress,
   onToggleLike,
   onToggleSave,
@@ -1203,6 +1190,7 @@ function HighlightRow({
   hasAccess: boolean;
   flickSavedLocally: boolean;
   engageBusy: string | null;
+  onShareHighlight?: () => void;
   onPress: () => void;
   onToggleLike: () => void;
   onToggleSave: () => void;
@@ -1215,6 +1203,10 @@ function HighlightRow({
   const busySave = engageBusy === `save-${highlight.id}`;
   const liked = Boolean(highlight.viewerLiked);
   const saved = Boolean(highlight.viewerSaved) || flickSavedLocally;
+  const canMp4Share =
+    showEngage &&
+    onShareHighlight &&
+    !String(highlight.id ?? '').startsWith('flick-');
 
   return (
     <View style={styles.row}>
@@ -1231,6 +1223,20 @@ function HighlightRow({
               {highlightBadgeTimestamp(highlight)}
             </Text>
           </View>
+          {canMp4Share ? (
+            <Pressable
+              style={styles.rowThumbShare}
+              onPress={(e) => {
+                e.stopPropagation();
+                onShareHighlight?.();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Share highlight as MP4"
+              hitSlop={8}
+            >
+              <ShareIconSmall />
+            </Pressable>
+          ) : null}
         </View>
         <View style={styles.rowBody}>
           <Text style={styles.rowTitle} numberOfLines={2}>
@@ -1288,6 +1294,20 @@ function HighlightRow({
         </View>
       ) : null}
     </View>
+  );
+}
+
+function ShareIconSmall() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+        stroke="#fff"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
@@ -1651,6 +1671,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
     position: 'relative',
+  },
+  rowThumbShare: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(2, 6, 23, 0.55)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.28)',
+    zIndex: 4,
   },
   rowLockBadge: {
     position: 'absolute',

@@ -109,8 +109,37 @@ function isUuidCourtLabel(label: string): boolean {
   return UUID_RE.test(rest);
 }
 
+/** Prefer admin-supplied identifiers on `/cameras` when present. */
+function explicitCourtNumberFromCamera(cam: Camera): number | null {
+  const raw =
+    cam.court_number !== undefined && cam.court_number !== null
+      ? cam.court_number
+      : cam.ground_number;
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return null;
+  }
+  const n = Number(String(raw).trim());
+  return Number.isFinite(n) ? n : null;
+}
+
 function recordingGroundLabel(r: any): string {
   const turf = r?.turf;
+  const cam = (r?.camera ?? null) as Camera | null;
+  if (cam) {
+    const n = explicitCourtNumberFromCamera(cam);
+    if (n != null) return `Court ${n}`;
+    const rawStr =
+      compactText(
+        cam.court_number != null ? String(cam.court_number) : "",
+      ) ||
+      compactText(
+        cam.ground_number != null ? String(cam.ground_number) : "",
+      );
+    if (rawStr) {
+      if (/^court\b/i.test(rawStr) || /^ground\b/i.test(rawStr)) return rawStr;
+      return `Court ${rawStr}`;
+    }
+  }
   const camName = compactText(r?.camera?.name ?? "");
   const fromFields = compactText(
     r?.GroundNumber ??
@@ -393,8 +422,8 @@ export default function FieldflixRecordingsScreen() {
    * Build the court / ground dropdown from this turf's cameras.
    *
    * Strategy:
-   *   1. For every camera, derive a court_number — preferred source is digits
-   *      embedded in `camera.name` (e.g. "Camera 12" → 12, "Court 4" → 4).
+   *   1. For every camera, use `court_number` / `ground_number` when the API sends them,
+   *      else digits embedded in `camera.name` (e.g. "Camera 12" → 12, "Court 4" → 4).
    *   2. Camera rows whose name is a UUID or has no digits are assigned a
    *      synthetic court number based on their stable order in the list
    *      (id-sorted) so each one still gets a usable label.
@@ -419,7 +448,10 @@ export default function FieldflixRecordingsScreen() {
         ? rawName.match(/(\d+)/)?.[1]
         : null;
       let courtNumber: number;
-      if (digitsInName) {
+      const explicitN = explicitCourtNumberFromCamera(cam);
+      if (explicitN != null) {
+        courtNumber = explicitN;
+      } else if (digitsInName) {
         courtNumber = Number(digitsInName);
       } else {
         // Synthetic: smallest unused positive integer based on this camera's
@@ -1500,11 +1532,17 @@ export default function FieldflixRecordingsScreen() {
                   {findMatches.map((r: any) => {
                     const title = r?.turf?.name ?? r?.name ?? "Recording";
                     const when = formatRecordingListWhen(r?.startTime);
+                    const court = recordingGroundLabel(r);
                     return (
                       <View key={String(r.id)} style={styles.findResultRow}>
                         <Text style={styles.findResultName} numberOfLines={2}>
                           {title}
                         </Text>
+                        {court ? (
+                          <Text style={styles.findResultCourt} numberOfLines={1}>
+                            {court}
+                          </Text>
+                        ) : null}
                         <Text style={styles.findResultWhen}>{when}</Text>
                       </View>
                     );
@@ -2548,6 +2586,12 @@ const styles = StyleSheet.create({
     fontFamily: FF.semiBold,
     fontSize: 15,
     color: "#fff",
+  },
+  findResultCourt: {
+    marginTop: 2,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: ACCENT,
   },
   findResultWhen: {
     marginTop: 4,

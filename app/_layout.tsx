@@ -1,6 +1,10 @@
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import { BASE_URL } from "@/data/constants";
 import { Paths } from "@/data/paths";
+import {
+  buildRecordingActiveResumeSearchParams,
+  hasPersistedRecordingSession,
+} from "@/utils/recordingSessionGuard";
 import "@/global.css";
 import { useCustomModal } from "@/hooks/useCustomModal";
 import { store } from "@/store";
@@ -119,6 +123,27 @@ export default function RootLayout() {
   useEffect(() => {
     setCurrentPathname(pathname);
   }, [pathname]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void (async () => {
+        try {
+          const token = await SecureStore.getItemAsync('token');
+          if (!token) return;
+          if (!pathname || isPublicRoutePath(pathname)) return;
+          if (pathname === '/recording-active') return;
+          if (!(await hasPersistedRecordingSession())) return;
+          const params = await buildRecordingActiveResumeSearchParams();
+          if (!params) return;
+          router.replace({ pathname: Paths.recordingActive, params });
+        } catch {
+          /* ignore */
+        }
+      })();
+    });
+    return () => sub.remove();
+  }, [pathname, router]);
 
   const [interLoaded] = useFonts({
     Inter_400Regular,

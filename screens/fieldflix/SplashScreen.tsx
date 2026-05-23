@@ -1,4 +1,8 @@
 import { Paths } from "@/data/paths";
+import {
+  buildRecordingActiveResumeSearchParams,
+  hasPersistedRecordingSession,
+} from "@/utils/recordingSessionGuard";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import { LinearGradient } from "expo-linear-gradient";
@@ -59,6 +63,17 @@ export default function FieldflixSplashScreen() {
           const token = await SecureStore.getItemAsync("token");
           // Defensive: clear any stack from a previous app run / deep link.
           router.dismissAll?.();
+          if (token && (await hasPersistedRecordingSession())) {
+            const resumeParams =
+              await buildRecordingActiveResumeSearchParams();
+            if (resumeParams) {
+              router.replace({
+                pathname: Paths.recordingActive,
+                params: resumeParams,
+              });
+              return;
+            }
+          }
           router.replace(token ? Paths.home : Paths.login);
         } catch {
           // Never let startup routing crash the app; fail-safe to login.

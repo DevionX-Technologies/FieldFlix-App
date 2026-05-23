@@ -32,6 +32,8 @@ export const TIME_GROUNDLOCATION = "groundLocation";
 export const RECORDING_CAMERA_ID = "recordingCameraID";
 /** Camera UUID from the QR for the session in progress (vs `RECORDING_CAMERA_ID` = recording row id). */
 export const RECORDING_QR_CAMERA_ID = "fieldflix-recording-qr-camera-id";
+/** JSON blob of `/recording-active` route params — restored on cold start while a session runs. */
+export const RECORDING_ACTIVE_ROUTE_PARAMS_KEY = "fieldflix-recording-active-route-params-v1";
 export const TIME_TOTAL = "totalTime";
 export const TURF_ID = "turfId";
 /** SecureStore key tracking the most recently stopped recording — drives the post-stop "ready" toast on Recordings. */

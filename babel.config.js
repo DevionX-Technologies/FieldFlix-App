@@ -1,3 +1,5 @@
+const path = require('path');
+
 module.exports = function(api) {
     api.cache(true);
 
@@ -7,11 +9,11 @@ module.exports = function(api) {
         }], "nativewind/babel"],
 
         plugins: [["module-resolver", {
-            root: ["./"],
+            root: [path.resolve(__dirname)],
 
             alias: {
-                "@": "./",
-                "tailwind.config": "./tailwind.config.js"
+                "@": path.resolve(__dirname),
+                "tailwind.config": path.resolve(__dirname, "tailwind.config.js")
             }
         }]]
     };
