@@ -60,7 +60,7 @@
       ],
       "package": "com.fieldflicks",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 43,
+      "versionCode": 44,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyCr-EoENqIoMq9ftiQKsuNUpWNUEHtM0d4"
