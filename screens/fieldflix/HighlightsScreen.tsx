@@ -579,6 +579,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         open: (opts: Record<string, unknown>) => Promise<{
           razorpay_payment_id: string;
           razorpay_order_id: string;
+          razorpay_signature: string;
         }>;
       };
       const amountPaise = String(Math.round(orderAmount * 100));
@@ -591,9 +592,23 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         amount: amountPaise,
         theme: { color: '#22C55E' },
       });
+      const signature =
+        typeof data.razorpay_signature === 'string'
+          ? data.razorpay_signature.trim()
+          : '';
+      const payId =
+        typeof data.razorpay_payment_id === 'string'
+          ? data.razorpay_payment_id.trim()
+          : '';
+      if (!signature || !payId || !data.razorpay_order_id?.trim()) {
+        throw new Error(
+          'Payment did not finish — missing Razorpay confirmation. Nothing was charged for access.',
+        );
+      }
       const verified = await verifyRazorpayPayment({
         razorpay_order_id: data.razorpay_order_id,
-        razorpay_payment_id: data.razorpay_payment_id,
+        razorpay_payment_id: payId,
+        razorpay_signature: signature,
         status: 'completed',
       });
       const merged = await mergeServerUnlockedRecordingIds();
@@ -610,7 +625,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         createdAtIso: new Date().toISOString(),
         note: `${sportLabel} recording unlock`,
         razorpay_order_id: data.razorpay_order_id,
-        razorpay_payment_id: data.razorpay_payment_id,
+        razorpay_payment_id: payId,
         server_payment_id: verified.payment_id,
       });
       setShowUnlockSheet(false);
@@ -1231,7 +1246,7 @@ function HighlightRow({
                 onShareHighlight?.();
               }}
               accessibilityRole="button"
-              accessibilityLabel="Share highlight as MP4"
+              accessibilityLabel="Share highlight"
               hitSlop={8}
             >
               <ShareIconSmall />

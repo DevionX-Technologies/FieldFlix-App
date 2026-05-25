@@ -7,6 +7,8 @@ const VENUE_ASSETS = {
   padelArena: require("@/assets/venues/tsg-padel-arena.png"),
   eskay: require("@/assets/venues/tsg-eskay-resort.png"),
   balkanji: require("@/assets/venues/tsg-balkanji-bari.png"),
+  /** Santacruz West cricket hero. Basename avoids clashing drawables (png/jpg normalize to same Android drawable name). */
+  tsgSantacruzCricket: require("@/assets/venues/tsg-cricket-santacruz-west-hero.jpg"),
   /** Botanical Gardens hero — uses a hyphenated, lowercase filename in
    *  `assets/venues/` so Metro reliably bundles it (paths with spaces and
    *  underscores in the original name silently fail static asset resolution
@@ -29,6 +31,9 @@ export function venueImageKeyForTurfName(name: string): VenueImageKey | null {
   if (n.includes("padel arena") || (n.includes("tsg") && n.includes("padel"))) {
     return "padelArena";
   }
+  // TSG cricket at Santacruz West — explicit hero; must run before legacy
+  // `santacruz` → Balkanji handling for mismatched spreadsheet rows.
+  if (n.includes("tsg") && n.includes("santacruz")) return "tsgSantacruzCricket";
   if (n.includes("eskay")) return "eskay";
   if (
     n.includes("balkanji") ||

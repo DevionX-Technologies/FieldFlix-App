@@ -14,7 +14,7 @@ export default function FieldflixProfilePrivacyScreen() {
     {
       title: 'Privacy Policy',
       paragraphs: [
-        `This Privacy Policy ("Policy") describes the policies and procedures on the collection, use, disclosure, and protection of your information when you use our website located at www.fieldflicks.com, or the FieldFlicks mobile application (collectively, "Platform") made available by FieldFlicks ("FieldFlicks," "we," "us" and "our"), having its registered office at Flat No. 502, Ann Abode Condominiums, St. Martin's Road, Bandra (West), Mumbai - 400 050, Maharashtra.`,
+        `This Privacy Policy ("Policy") describes the policies and procedures on the collection, use, disclosure, and protection of your information when you use our website located at www.fieldflicks.com, or the FieldFlicks mobile application (collectively, "Platform"). The Platform is operated by FLICKSPORT PRIVATE LIMITED (a private limited company incorporated under the laws of India, trading as FieldFlicks). In this Policy, "FieldFlicks," "we," "us," and "our" refer to FLICKSPORT PRIVATE LIMITED, whose registered office is at Flat No. 502, Ann Abode Condominiums, St. Martin's Road, Bandra (West), Mumbai - 400 050, Maharashtra.`,
         `The terms "you" and "your" refer to the user of the Platform. The term "Services" refers to any services offered by FieldFlicks whether on the Platform or otherwise.`,
         `Please read this Policy before using the FieldFlicks Platform or submitting any personal information to FieldFlicks. This Policy is a part of and incorporated within, and is to be read along with, the Terms of Use.`,
       ],
@@ -106,7 +106,7 @@ export default function FieldflixProfilePrivacyScreen() {
       title: 'Grievance Officer And Platform Security',
       paragraphs: [
         `If you have queries related to processing/usage of information, email info@fieldflicks.in.`,
-        `Grievance Officer Address: FieldFlicks Grievance Officer, Flat No. 502, Ann Abode Condominiums, St. Martin's Road, Bandra (West), Mumbai - 400 050, Maharashtra.`,
+        `Grievance Officer Address: FLICKSPORT PRIVATE LIMITED — FieldFlicks Grievance Officer, Flat No. 502, Ann Abode Condominiums, St. Martin's Road, Bandra (West), Mumbai - 400 050, Maharashtra.`,
         `To report abuse or policy violations, email info@fieldflicks.com.`,
       ],
     },
@@ -132,7 +132,7 @@ export default function FieldflixProfilePrivacyScreen() {
               We collect only what is required to run your experience, keep your account secure,
               and improve product quality.
             </Text>
-            <Text style={styles.heroMeta}>Last updated: Apr 2026</Text>
+            <Text style={styles.heroMeta}>Last updated: May 2026</Text>
           </View>
 
           {policySections.map((section, idx) => (

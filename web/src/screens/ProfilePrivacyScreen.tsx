@@ -22,6 +22,9 @@ export default function ProfilePrivacyScreen() {
           </div>
           <div className="pp-copy">
             <p>
+              FieldFlicks (the Platform) is operated by <strong>FLICKSPORT PRIVATE LIMITED</strong>, a private limited company incorporated under the laws of India (“FieldFlicks,” “we,” “us”).
+            </p>
+            <p>
               We take your privacy seriously and are committed to safeguarding your personal information. The data we collect is used responsibly to enhance our services and provide a personalized experience while
               using the app.
             </p>
@@ -45,7 +48,7 @@ export default function ProfilePrivacyScreen() {
           </div>
           <div className="pp-copy">
             <p>
-              By using our app, you agree to follow our terms and conditions, ensuring that the platform is used responsibly and in accordance with applicable guidelines.
+              FLICKSPORT PRIVATE LIMITED publishes this policy for users of FieldFlicks. By using our app, you agree to follow our terms and conditions, ensuring that the platform is used responsibly and in accordance with applicable guidelines.
             </p>
             <p>We do not sell, rent, or misuse your personal data.</p>
             <p>

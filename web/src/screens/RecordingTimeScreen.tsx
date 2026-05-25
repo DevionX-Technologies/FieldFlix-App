@@ -4,6 +4,34 @@ import './recordingTimeScreen.css'
 
 type LocationState = { scanned?: string; venueName?: string; venueAddress?: string } | null
 
+type QrParsed = {
+  GroundNumber?: string | null
+  GroundDescription?: string | null
+  Name?: string | null
+  GroundLocation?: string | null
+}
+
+function parseQr(raw: string | undefined): QrParsed | null {
+  const s = raw?.trim()
+  if (!s) return null
+  try {
+    return JSON.parse(s) as QrParsed
+  } catch {
+    return null
+  }
+}
+
+/** Web flow has no authenticated `/cameras` fetch — derive from QR `GroundNumber`. */
+function courtLabelFromQr(p: QrParsed | null): string {
+  const rawNum = String(p?.GroundNumber ?? '').trim()
+  const rawDesc = String(p?.GroundDescription ?? '').trim()
+  const source = rawNum || rawDesc
+  if (!source) return 'Court 1'
+  const normalized = source.replace(/\s+/g, ' ').trim()
+  if (/^court\b/i.test(normalized) || /^ground\b/i.test(normalized)) return normalized
+  return `Court ${normalized}`
+}
+
 const ACCENT = '#4ade80'
 
 const PRESETS = [
@@ -36,9 +64,16 @@ export default function RecordingTimeScreen() {
   const location = useLocation()
   const state = location.state as LocationState
   const scanned = state?.scanned?.trim() || ''
+  const parsedQr = useMemo(() => parseQr(scanned), [scanned])
 
-  const venueName = state?.venueName?.trim() || 'TGS Sports Arena'
-  const venueAddress = state?.venueAddress?.trim() || 'Andheri West, Mumbai'
+  const venueName =
+    state?.venueName?.trim() || String(parsedQr?.Name ?? '').trim() || 'TGS Sports Arena'
+  const venueAddress =
+    state?.venueAddress?.trim() ||
+    String(parsedQr?.GroundLocation ?? '').trim() ||
+    'Andheri West, Mumbai'
+
+  const courtLabel = useMemo(() => courtLabelFromQr(parsedQr), [parsedQr])
 
   const [durationSec, setDurationSec] = useState(60 * 60)
   const [activePreset, setActivePreset] = useState<string>('60')
@@ -70,6 +105,7 @@ export default function RecordingTimeScreen() {
         scanned: scanned || undefined,
         venueName,
         venueAddress,
+        courtLabel,
       },
     })
   }
@@ -99,7 +135,7 @@ export default function RecordingTimeScreen() {
 
           <button type="button" className="rt-court">
             <GridIcon />
-            <span>Court 1</span>
+            <span>{courtLabel}</span>
           </button>
 
           <div className="rt-timer-row">

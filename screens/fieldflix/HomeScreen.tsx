@@ -97,7 +97,8 @@ type ArenaRow = {
   id: string;
   name: string;
   location: string;
-  status: string;
+  /** Optional secondary line next to location (bullet-separated). Omit when unused. */
+  status?: string;
   imageSource: ImageSourcePropType;
   /** FieldFlix sports from `turf.sports_supported` (Pickleball / Padel / Cricket). */
   sportsLine: string | null;
@@ -312,7 +313,6 @@ function mapTurfToArena(t: TurfRow, i: number): ArenaRow {
     id: String(t.id ?? i),
     name: arenaName,
     location: loc,
-    status: "Indoor • Available Now",
     imageSource,
     sportsLine: summarizeTurfSportsLine(t.sports_supported, arenaName),
     distanceKm: null,
@@ -858,7 +858,11 @@ export default function FieldflixHomeScreen() {
                     accessibilityLabel={`Open QR scan for ${arena.name}`}
                   >
                     <View style={styles.arenaImgWrap}>
-                      <Image source={arena.imageSource} style={styles.arenaImg} />
+                      <ExpoImage
+                        source={arena.imageSource}
+                        style={styles.arenaImg}
+                        contentFit="cover"
+                      />
                       <LinearGradient
                         colors={[
                           "rgba(2,6,23,0)",
@@ -905,10 +909,17 @@ export default function FieldflixHomeScreen() {
                         >
                           {arena.location}
                         </Text>
-                        <Text style={styles.arenaMetaSep}>•</Text>
-                        <Text style={styles.arenaStatusInline} numberOfLines={1}>
-                          {arena.status}
-                        </Text>
+                        {arena.status ? (
+                          <>
+                            <Text style={styles.arenaMetaSep}>•</Text>
+                            <Text
+                              style={styles.arenaStatusInline}
+                              numberOfLines={1}
+                            >
+                              {arena.status}
+                            </Text>
+                          </>
+                        ) : null}
                       </View>
                     </View>
                   </Pressable>

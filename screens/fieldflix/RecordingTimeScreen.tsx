@@ -4,10 +4,14 @@ import { WEB } from '@/screens/fieldflix/webDesign';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import axiosInstance from '@/utils/axiosInstance';
 import { logRecordingFlowDebug } from '@/utils/recordingFlowDebug';
+import {
+  resolveCourtLabelForRecordingSession,
+} from '@/utils/cameraCourtLabel';
 import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
 import { fieldflixHomeSportsFromSupported, type HomeSportKey } from '@/utils/turfSports';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
+import { getCameras, type Camera } from '@/lib/fieldflix-api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -16,7 +20,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -62,18 +65,6 @@ function homeSportChipLabel(key: HomeSportKey): string {
   return 'Cricket';
 }
 
-function normalizeGroundLabel(groundNumber?: string, groundDescription?: string): string {
-  const rawNumber = String(groundNumber ?? '').trim();
-  const rawDesc = String(groundDescription ?? '').trim();
-  const source = rawNumber || rawDesc;
-  if (!source) return 'Court';
-  const normalized = source.replace(/\s+/g, ' ').trim();
-  if (/^court\b/i.test(normalized) || /^ground\b/i.test(normalized)) {
-    return normalized;
-  }
-  return `Court ${normalized}`;
-}
-
 export type RecordingTimeParams = {
   Name?: string;
   GroundLocation?: string;
@@ -88,13 +79,45 @@ export type RecordingTimeParams = {
 export default function RecordingTimeScreen({ params }: { params: RecordingTimeParams }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
-
   const venueName = params.Name?.trim() || 'Venue';
   const venueAddress = params.GroundLocation?.trim() || 'Location unavailable';
-  const groundLabel = normalizeGroundLabel(
-    params.GroundNumber,
-    params.GroundDescription,
+  const turfIdTrim = String(params.turfId ?? '').trim();
+  const cameraIdTrim = String(params.cameraId ?? '').trim();
+
+  const [venueCameras, setVenueCameras] = useState<Camera[]>([]);
+
+  useEffect(() => {
+    if (!turfIdTrim) {
+      setVenueCameras([]);
+      return;
+    }
+    let cancelled = false;
+    void getCameras(turfIdTrim)
+      .then((list) => {
+        if (!cancelled) setVenueCameras(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (!cancelled) setVenueCameras([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [turfIdTrim]);
+
+  const groundLabel = useMemo(
+    () =>
+      resolveCourtLabelForRecordingSession(
+        venueCameras,
+        cameraIdTrim,
+        params.GroundNumber,
+        params.GroundDescription,
+      ),
+    [
+      venueCameras,
+      cameraIdTrim,
+      params.GroundNumber,
+      params.GroundDescription,
+    ],
   );
   /** Kept for `/recording-active` params only (not shown under the venue title). */
   const scanned =
@@ -125,7 +148,6 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
   const [durationSec, setDurationSec] = useState(60 * 60);
   const [activePreset, setActivePreset] = useState<string>('60');
 
-  const turfIdTrim = String(params.turfId ?? '').trim();
   const [turfSportsRaw, setTurfSportsRaw] = useState<unknown>(null);
   /** From GET `/turfs/:id` — used so Balkanji venues map Pickleball even if legacy DB lacks Pickleball in array. */
   const [turfApiNameForSport, setTurfApiNameForSport] = useState<string | null>(null);
@@ -228,7 +250,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
       if (await hasPersistedRecordingSession()) {
         Alert.alert(
           'Recording in progress',
-          'You already have an active session. Open your recording screen to finish it, or check Sessions — you can’t start another venue until that one ends.',
+          'Recording is already in progress. Please wait until the current session is completed.',
         );
         return;
       }
@@ -248,6 +270,7 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         plannedDurationSec: String(durationSec),
         turfId: params.turfId ?? '',
         cameraId: params.cameraId ?? '',
+        courtLabel: groundLabel,
         scanned: scanned.slice(0, 200),
         ...(metaSport ? { sessionSport: metaSport } : {}),
       };
@@ -259,13 +282,9 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
     })();
   };
 
-  /** Card starts just under the back control; tall shell fills toward bottom inset. */
+  /** Padding under absolute back affordance + home indicator. */
   const scrollPadTop = insets.top + 50;
   const scrollPadBottom = Math.max(24, insets.bottom) + 16;
-  const cardMinHeight = Math.max(
-    640,
-    Math.round(windowHeight - scrollPadTop - scrollPadBottom - 12),
-  );
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
@@ -285,122 +304,127 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
           <BackIcon />
         </Pressable>
 
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
+        <View
+          style={[
+            styles.screenBody,
             { paddingTop: scrollPadTop, paddingBottom: scrollPadBottom },
           ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.cardShell, { minHeight: cardMinHeight }]}>
+          <View style={styles.cardShell}>
             <View pointerEvents="none" style={styles.cardBackdrop} />
             <View pointerEvents="none" style={styles.cardTint} />
             <View style={styles.card}>
-            <View style={styles.location}>
-              <View style={styles.pinWrap}>
-                <PinIcon />
-              </View>
-              <View style={styles.locText}>
-                <Text style={styles.locName}>{venueName}</Text>
-              </View>
-            </View>
+              <View style={styles.cardTop}>
+                <View style={styles.location}>
+                  <View style={styles.pinWrap}>
+                    <PinIcon />
+                  </View>
+                  <View style={styles.locText}>
+                    <Text style={styles.locName}>{venueName}</Text>
+                  </View>
+                </View>
 
-            <Pressable style={styles.court} accessibilityRole="button">
-              <GridIcon />
-              <Text style={styles.courtText} numberOfLines={1}>
-                {groundLabel}
-              </Text>
-            </Pressable>
-
-            <View style={styles.timerRow}>
-              <Pressable
-                style={styles.step}
-                onPress={() => bump(-STEP_SEC)}
-                accessibilityLabel="Decrease duration"
-              >
-                <Text style={styles.stepTxt}>−</Text>
-              </Pressable>
-
-              <View style={styles.dial}>
-                <Text style={styles.dialTime}>{displayTime}</Text>
-              </View>
-
-              <Pressable
-                style={styles.step}
-                onPress={() => bump(STEP_SEC)}
-                accessibilityLabel="Increase duration"
-              >
-                <Text style={styles.stepTxt}>+</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.presetsScroll}
-              style={styles.presetsScrollOuter}
-            >
-              {PRESETS.map((p) => (
-                <Pressable
-                  key={p.id}
-                  onPress={() => applyPreset(p.id)}
-                  style={[styles.preset, activePreset === p.id && styles.presetActive]}
-                >
-                  <Text style={[styles.presetTop, activePreset === p.id && styles.presetTopActive]}>
-                    {p.top}
-                  </Text>
-                  <Text
-                    style={[styles.presetBot, activePreset === p.id && styles.presetBotActive]}
-                  >
-                    {p.bottom}
+                <Pressable style={styles.court} accessibilityRole="button">
+                  <GridIcon />
+                  <Text style={styles.courtText} numberOfLines={1}>
+                    {groundLabel}
                   </Text>
                 </Pressable>
-              ))}
-            </ScrollView>
 
-            {needsSportPick ? (
-              <View style={styles.sportBlock}>
-                <Text style={styles.sportHeading}>Which sport is this session?</Text>
-                <View style={styles.sportChipRow}>
-                  {ffSports.map((k) => {
-                    const on = selectedSessionSport === k;
-                    return (
-                      <Pressable
-                        key={k}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: on }}
-                        onPress={() => setSelectedSessionSport(k)}
-                        style={[styles.sportChip, on && styles.sportChipSelected]}
-                      >
-                        <Text style={[styles.sportChipTxt, on && styles.sportChipTxtSelected]}>
-                          {homeSportChipLabel(k)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                <View style={styles.timerRow}>
+                  <Pressable
+                    style={styles.step}
+                    onPress={() => bump(-STEP_SEC)}
+                    accessibilityLabel="Decrease duration"
+                  >
+                    <Text style={styles.stepTxt}>−</Text>
+                  </Pressable>
+
+                  <View style={styles.dial}>
+                    <Text style={styles.dialTime}>{displayTime}</Text>
+                  </View>
+
+                  <Pressable
+                    style={styles.step}
+                    onPress={() => bump(STEP_SEC)}
+                    accessibilityLabel="Increase duration"
+                  >
+                    <Text style={styles.stepTxt}>+</Text>
+                  </Pressable>
                 </View>
-                {!selectedSessionSport && turfLoadState === 'loaded' ? (
-                  <Text style={styles.sportHint}>Select a sport before starting.</Text>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.presetsScroll}
+                  keyboardShouldPersistTaps="handled"
+                  style={styles.presetsScrollOuter}
+                >
+                  {PRESETS.map((p) => (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => applyPreset(p.id)}
+                      style={[styles.preset, activePreset === p.id && styles.presetActive]}
+                    >
+                      <Text
+                        style={[styles.presetTop, activePreset === p.id && styles.presetTopActive]}
+                      >
+                        {p.top}
+                      </Text>
+                      <Text
+                        style={[styles.presetBot, activePreset === p.id && styles.presetBotActive]}
+                      >
+                        {p.bottom}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+
+                {needsSportPick ? (
+                  <View style={styles.sportBlock}>
+                    <Text style={styles.sportHeading}>Which sport is this session?</Text>
+                    <View style={styles.sportChipRow}>
+                      {ffSports.map((k) => {
+                        const on = selectedSessionSport === k;
+                        return (
+                          <Pressable
+                            key={k}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: on }}
+                            onPress={() => setSelectedSessionSport(k)}
+                            style={[styles.sportChip, on && styles.sportChipSelected]}
+                          >
+                            <Text style={[styles.sportChipTxt, on && styles.sportChipTxtSelected]}>
+                              {homeSportChipLabel(k)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {!selectedSessionSport && turfLoadState === 'loaded' ? (
+                      <Text style={styles.sportHint}>Select a sport before starting.</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {turfBlocking ? (
+                  <Text style={styles.venueLoading}>Loading venue…</Text>
                 ) : null}
               </View>
-            ) : null}
 
-            {turfBlocking ? (
-              <Text style={styles.venueLoading}>Loading venue…</Text>
-            ) : null}
+              <View style={styles.cardFlexSpacer} />
 
-            <Pressable
-              style={[styles.start, startBlocked && styles.startDisabled]}
-              onPress={onStart}
-              accessibilityState={{ disabled: startBlocked }}
-            >
-              <PlayIcon />
-              <Text style={styles.startText}>Start Recording</Text>
-            </Pressable>
+              <Pressable
+                style={[styles.start, startBlocked && styles.startDisabled]}
+                onPress={onStart}
+                accessibilityState={{ disabled: startBlocked }}
+              >
+                <PlayIcon />
+                <Text style={styles.startText}>Start Recording</Text>
+              </Pressable>
             </View>
           </View>
-        </ScrollView>
+        </View>
       </ImageBackground>
     </WebShell>
   );
@@ -474,13 +498,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 12,
   },
-  scroll: {
-    flexGrow: 1,
+  screenBody: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
     paddingHorizontal: 16,
     alignItems: 'center',
-    justifyContent: 'flex-start',
   },
   cardShell: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: 380,
     borderRadius: 28,
@@ -505,12 +532,22 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(16, 20, 24, 0.78)',
   },
-  /** Insets content inside the tinted shell; background stays on `cardTint`. */
+  /** Insets content inside the tinted shell; flex column fills viewport. */
   card: {
-    paddingTop: 32,
+    flex: 1,
+    minHeight: 0,
+    paddingTop: 28,
     paddingHorizontal: 22,
     paddingBottom: 32,
     position: 'relative',
+  },
+  cardTop: {
+    flexShrink: 0,
+  },
+  cardFlexSpacer: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 8,
   },
   location: {
     flexDirection: 'row',
@@ -549,7 +586,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   timerRow: {
-    marginTop: 36,
+    marginTop: 28,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -587,7 +624,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   presetsScrollOuter: {
-    marginTop: 34,
+    marginTop: 26,
     maxHeight: 64,
     flexGrow: 0,
   },
@@ -633,7 +670,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.95)',
   },
   sportBlock: {
-    marginTop: 26,
+    marginTop: 18,
     width: '100%',
     gap: 10,
   },
@@ -682,7 +719,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   start: {
-    marginTop: 36,
+    marginTop: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

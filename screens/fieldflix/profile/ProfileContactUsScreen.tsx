@@ -1,11 +1,18 @@
+import { FIELDFLIX_SUPPORT_EMAIL } from '@/data/constants';
+import {
+  getFieldflixApiErrorMessage,
+  submitSupportContact,
+} from '@/lib/fieldflix-api';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { BackHeader } from '@/screens/fieldflix/profile/BackHeader';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -35,6 +42,46 @@ export default function FieldflixProfileContactUsScreen() {
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
   const [description, setDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const onSend = useCallback(async () => {
+    const name = fullName.trim();
+    const digits = mobile.replace(/\D/g, '');
+    const body = description.trim();
+    if (name.length === 0) {
+      Alert.alert('Missing name', 'Please enter your full name.');
+      return;
+    }
+    if (digits.length < 10) {
+      Alert.alert('Mobile number', 'Please enter at least 10 digits for your mobile number.');
+      return;
+    }
+    if (body.length < 3) {
+      Alert.alert('Message too short', 'Please describe your issue in a bit more detail (at least 3 characters).');
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await submitSupportContact({
+        issueType: issue,
+        fullName: name,
+        mobile: digits.slice(0, 15),
+        description: body,
+      });
+      setDescription('');
+      Alert.alert(
+        'Message sent',
+        'Thanks — we received your message and usually reply within 24 hours.',
+      );
+    } catch (e) {
+      Alert.alert(
+        'Could not send',
+        getFieldflixApiErrorMessage(e, 'Something went wrong. Try again later.'),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }, [description, fullName, issue, mobile]);
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
@@ -111,18 +158,33 @@ export default function FieldflixProfileContactUsScreen() {
               />
             </View>
 
-            <Pressable style={styles.sendBtn}>
+            <Pressable
+              style={[styles.sendBtn, submitting && styles.sendBtnDisabled]}
+              onPress={onSend}
+              disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
+              accessibilityState={{ disabled: submitting }}
+            >
               <LinearGradient
                 colors={[PG_SOFT, PG]}
                 style={[StyleSheet.absoluteFill, { borderRadius: 999 }]}
               />
-              <Text style={styles.sendText}>Send Message</Text>
+              {submitting ? (
+                <ActivityIndicator color="#fff" accessibilityLabel="Sending" />
+              ) : (
+                <Text style={styles.sendText}>Send Message</Text>
+              )}
             </Pressable>
 
             <Text style={styles.foot}>We usually respond within 24 hours</Text>
             <Text style={styles.or}>Or contact us directly</Text>
-            <Pressable onPress={() => Linking.openURL('mailto:support@fieldflix.com')}>
-              <Text style={styles.email}>support@fieldflix.com</Text>
+            <Pressable
+              onPress={() =>
+                Linking.openURL(`mailto:${encodeURIComponent(FIELDFLIX_SUPPORT_EMAIL)}`)
+              }
+            >
+              <Text style={styles.email}>{FIELDFLIX_SUPPORT_EMAIL}</Text>
             </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -222,6 +284,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
+  },
+  sendBtnDisabled: {
+    opacity: 0.7,
   },
   sendText: {
     fontFamily: FF.bold,

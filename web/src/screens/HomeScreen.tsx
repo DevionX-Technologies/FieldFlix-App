@@ -72,7 +72,6 @@ const ARENA_CARDS = [
     id: 'a1',
     name: 'TSG Arena',
     location: 'Andheri West',
-    status: 'Indoor • Available Now',
     rating: 4.5,
     distanceKm: 1.2,
     pricePerHr: 200,
@@ -81,7 +80,6 @@ const ARENA_CARDS = [
     id: 'a2',
     name: 'Velocity Padel Mumbai',
     location: 'Bandra East',
-    status: 'Indoor • Available Now',
     rating: 4.8,
     distanceKm: 2.1,
     pricePerHr: 350,
@@ -90,7 +88,6 @@ const ARENA_CARDS = [
     id: 'a3',
     name: 'Greenline Pickleball Hub',
     location: 'Powai',
-    status: 'Outdoor • Available Now',
     rating: 4.6,
     distanceKm: 3.4,
     pricePerHr: 250,
@@ -99,7 +96,6 @@ const ARENA_CARDS = [
     id: 'a4',
     name: 'Urban Court Padel',
     location: 'Lower Parel',
-    status: 'Indoor • Opens 6 PM',
     rating: 4.3,
     distanceKm: 0.8,
     pricePerHr: 400,
@@ -108,7 +104,6 @@ const ARENA_CARDS = [
     id: 'a5',
     name: 'Rally Point Pickleball',
     location: 'Juhu',
-    status: 'Indoor • Available Now',
     rating: 4.7,
     distanceKm: 4.2,
     pricePerHr: 280,
@@ -117,7 +112,6 @@ const ARENA_CARDS = [
     id: 'a6',
     name: 'Coastal Padel Club',
     location: 'Worli',
-    status: 'Rooftop • Available Now',
     rating: 4.4,
     distanceKm: 2.6,
     pricePerHr: 320,
@@ -315,7 +309,6 @@ export default function HomeScreen() {
                       <MapPinIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                       <span>{arena.location}</span>
                     </div>
-                    <p className="text-[12px] text-slate-500">{arena.status}</p>
                     <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-slate-500">
                       <span className="inline-flex items-center gap-0.5">
                         <StarIcon className="h-3 w-3 text-amber-400" />

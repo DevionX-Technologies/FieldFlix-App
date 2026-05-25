@@ -5,7 +5,9 @@ import {
   RECORDING_CAMERA_ID,
   RECORDING_KEY,
   RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
+  RECORDING_PAUSE_REMAINING_SEC,
   RECORDING_QR_CAMERA_ID,
+  RECORDING_TIMER_PAUSED,
   TIME_GROUNDLOCATION,
   TIME_LEFT_KEY,
   TIME_TURF_NAME,
@@ -21,7 +23,13 @@ import axios from "axios";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { jwtDecode } from "jwt-decode";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { AppState } from "react-native";
 
 type DecodedToken = { user_id?: string };
@@ -77,7 +85,13 @@ export function useCountdown(
   const [token, setToken] = useState<string | null>(null);
   const [showStop, setShowStop] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
+  /** Bumped after SecureStore hydrate so the ticking interval restarts even when `isRunning` stays `true`. */
+  const [recordingTimerEpoch, bumpRecordingTimerEpoch] = useReducer(
+    (x: number) => x + 1,
+    0,
+  );
+
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState({
@@ -128,13 +142,12 @@ export function useCountdown(
     fetchToken();
   }, []);
 
-  /** Sync planned duration vs active session — do not wipe an in-progress timer on remount. */
+  /** Sync planned duration vs active session — avoid clearing tick interval before re-hydrate (frozen UI bug). */
   useEffect(() => {
     let cancelled = false;
     async function sync() {
       const tidRaw = Array.isArray(turfId) ? turfId[0] : turfId;
       const tid = String(tidRaw ?? "").trim();
-      const endStr = await SecureStore.getItemAsync("end_time");
       const rk = await SecureStore.getItemAsync(RECORDING_KEY);
       const storedTurf = (await SecureStore.getItemAsync(TURF_ID))?.trim() ?? "";
       const storedQrCam =
@@ -144,52 +157,74 @@ export function useCountdown(
         camFromRoute != null && String(camFromRoute).trim() !== ""
           ? String(camFromRoute).trim()
           : "";
+      const paused = (await SecureStore.getItemAsync(RECORDING_TIMER_PAUSED)) === "1";
+      const pauseRemStr =
+        (await SecureStore.getItemAsync(RECORDING_PAUSE_REMAINING_SEC))?.trim() ?? "";
+      const endStr = await SecureStore.getItemAsync("end_time");
+      const recRowIdHydrate =
+        (await SecureStore.getItemAsync(RECORDING_CAMERA_ID))?.trim() ?? "";
+
+      if (cancelled) return;
+
+      const cameraOk =
+        !storedQrCam || !routeCam ? true : storedQrCam === routeCam;
+
+      const sessionCore =
+        Boolean(tid && rk && storedTurf === tid && recRowIdHydrate !== "");
 
       let activeLocal = false;
-      if (tid && rk && endStr && storedTurf === tid) {
-        const endMs = parseInt(endStr, 10);
-        const rem =
-          Number.isFinite(endMs) && endMs > Date.now()
-            ? remainingSecondsFromEndMs(endMs)
-            : 0;
-        if (rem > 0) {
-          // Require an explicit QR camera match when persisted — do not hydrate when
-          // `cameraId` is still missing from the route (avoids attaching stale timers).
-          if (storedQrCam) {
-            activeLocal = Boolean(routeCam) && storedQrCam === routeCam;
-          } else {
+      let hydrateRemaining = 0;
+      let hydratePaused = false;
+
+      if (sessionCore && cameraOk) {
+        if (paused && pauseRemStr !== "") {
+          const pr = parseInt(pauseRemStr, 10);
+          if (Number.isFinite(pr) && pr > 0) {
             activeLocal = true;
+            hydratePaused = true;
+            hydrateRemaining = pr;
+          }
+        } else if (endStr) {
+          const endMs = parseInt(endStr, 10);
+          const rem =
+            Number.isFinite(endMs) && endMs > Date.now()
+              ? remainingSecondsFromEndMs(endMs)
+              : 0;
+          if (rem > 0) {
+            activeLocal = true;
+            hydratePaused = false;
+            hydrateRemaining = rem;
           }
         }
       }
 
       if (cancelled) return;
 
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = undefined;
-      }
-
-      if (activeLocal && endStr) {
-        const endMs = parseInt(endStr, 10);
-        const remaining = remainingSecondsFromEndMs(endMs);
-        const recRowId = await SecureStore.getItemAsync(RECORDING_CAMERA_ID);
-        if (remaining > 0 && recRowId) {
-          recordingIdRef.current = recRowId;
-          setActiveRecordingSessionId(recRowId);
-          setTimeLeft(remaining);
-          timeLeftRef.current = remaining;
-          setIsPaused(false);
-          setIsRunning(true);
-          return;
+      const goIdle = () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = undefined;
         }
+        recordingIdRef.current = undefined;
+        setActiveRecordingSessionId(null);
+        setTimeLeft(initialSeconds);
+        timeLeftRef.current = initialSeconds;
+        setIsRunning(false);
+        setIsPaused(false);
+      };
+
+      if (activeLocal) {
+        recordingIdRef.current = recRowIdHydrate;
+        setActiveRecordingSessionId(recRowIdHydrate);
+        setTimeLeft(hydrateRemaining);
+        timeLeftRef.current = hydrateRemaining;
+        setIsPaused(hydratePaused);
+        setIsRunning(true);
+        bumpRecordingTimerEpoch();
+        return;
       }
 
-      recordingIdRef.current = undefined;
-      setActiveRecordingSessionId(null);
-      setTimeLeft(initialSeconds);
-      timeLeftRef.current = initialSeconds;
-      setIsRunning(false);
+      goIdle();
     }
 
     void sync();
@@ -304,7 +339,8 @@ export function useCountdown(
       try {
         await presentEventNotification({
           title: "Recording started",
-          body: "Your session is live. We will notify you when processing finishes.",
+          body:
+            "Your session is now being recorded, and your top highlights will be captured automatically.",
           notificationType: "LOCAL_RECORDING_START",
           data: { recordingId: String(newId) },
         });
@@ -317,8 +353,8 @@ export function useCountdown(
       // notification permissions or focus state.
       showModal(
         'success',
-        'Session live',
-        "You're recording. We'll nudge you when processing wraps up.",
+        'Recording started',
+        'Your session is now being recorded, and your top highlights will be captured automatically.',
         { autoDismissMs: 5000, visualVariant: 'session' },
       );
 
@@ -331,6 +367,8 @@ export function useCountdown(
       await SecureStore.setItemAsync(RECORDING_CAMERA_ID, newId.toString());
       await SecureStore.setItemAsync(TURF_ID, turfId.toString());
       await SecureStore.setItemAsync(RECORDING_QR_CAMERA_ID, actualCameraId);
+      await SecureStore.deleteItemAsync(RECORDING_TIMER_PAUSED);
+      await SecureStore.deleteItemAsync(RECORDING_PAUSE_REMAINING_SEC);
     };
 
     setLoading(true);
@@ -349,14 +387,14 @@ export function useCountdown(
       if (status === 409) {
         showModal(
           "error",
-          "Session already active",
-          "This camera already has a recording in progress — often your own unfinished session elsewhere in the app. Finish that session first, or wait if someone else is using this court. We won't start another session automatically.",
+          "Recording in progress",
+          "Recording is already in progress. Please wait until the current session is completed.",
         );
       } else if (isVenueCameraUnreachableError(err)) {
         showModal(
           "error",
           "Camera unavailable",
-          "Currently our camera is unreachable. Please try again in some time.",
+          "Due to technical issues, the camera is currently unavailable for recording. Please try again later or contact support.",
         );
       } else {
         const msg = axios.isAxiosError(err)
@@ -376,23 +414,40 @@ export function useCountdown(
 
     recordingIdRef.current = cameraID ?? undefined;
     setActiveRecordingSessionId(cameraID ?? null);
+    const paused = (await SecureStore.getItemAsync(RECORDING_TIMER_PAUSED)) === "1";
+    const pauseRemStr =
+      (await SecureStore.getItemAsync(RECORDING_PAUSE_REMAINING_SEC))?.trim() ?? "";
     const endStr = await SecureStore.getItemAsync("end_time");
-    if (endStr) {
+    if (paused && pauseRemStr !== "") {
+      const pr = parseInt(pauseRemStr, 10);
+      if (Number.isFinite(pr) && pr > 0) {
+        setTimeLeft(pr);
+        timeLeftRef.current = pr;
+        setIsPaused(true);
+      } else {
+        setTimeLeft(initialSeconds);
+        timeLeftRef.current = initialSeconds;
+        setIsPaused(false);
+      }
+    } else if (endStr) {
       const endMs = parseInt(endStr, 10);
       const remaining = remainingSecondsFromEndMs(endMs);
       if (remaining > 0) {
         setTimeLeft(remaining);
         timeLeftRef.current = remaining;
+        setIsPaused(false);
       } else {
         setTimeLeft(initialSeconds);
         timeLeftRef.current = initialSeconds;
+        setIsPaused(false);
       }
     } else {
       setTimeLeft(initialSeconds);
       timeLeftRef.current = initialSeconds;
+      setIsPaused(false);
     }
-    setIsPaused(false);
     setIsRunning(true);
+    bumpRecordingTimerEpoch();
   };
   const isStoppingRef = useRef(false);
   const stop = useCallback(async () => {
@@ -431,8 +486,9 @@ export function useCountdown(
 
       try {
         await presentEventNotification({
-          title: "Recording stopped",
-          body: "Your video is processing. We will alert you when it is ready to watch.",
+          title: "Session recorded",
+          body:
+            "The session has been successfully recorded. Your highlights and recording will be updated shortly.",
           notificationType: "LOCAL_RECORDING_STOP",
           data: { recordingId: String(id) },
         });
@@ -442,8 +498,8 @@ export function useCountdown(
 
       showModal(
         'success',
-        'Session saved',
-        'Recording stopped. Your match will land in Sessions shortly — we will ping you when it is ready.',
+        'Session recorded',
+        'The session has been successfully recorded. Your highlights and recording will be updated shortly.',
         { autoDismissMs: 5000, visualVariant: 'session' },
       );
 
@@ -465,6 +521,8 @@ export function useCountdown(
         SecureStore.deleteItemAsync(TURF_ID),
         SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID),
         SecureStore.deleteItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY),
+        SecureStore.deleteItemAsync(RECORDING_TIMER_PAUSED),
+        SecureStore.deleteItemAsync(RECORDING_PAUSE_REMAINING_SEC),
       ]);
 
       setTimeout(() => {
@@ -541,22 +599,32 @@ export function useCountdown(
         intervalRef.current = undefined;
       }
     };
-  }, [isRunning, isPaused, stop]);
+  }, [isRunning, isPaused, stop, recordingTimerEpoch]);
 
   const togglePause = useCallback(async () => {
     if (!isRunning) return;
     if (!isPaused) {
       const endTimeStr = await SecureStore.getItemAsync("end_time");
+      let rem = timeLeftRef.current;
       if (endTimeStr) {
-        const rem = Math.max(0, Math.floor((parseInt(endTimeStr, 10) - Date.now()) / 1000));
+        rem = Math.max(
+          0,
+          Math.floor((parseInt(endTimeStr, 10) - Date.now()) / 1000),
+        );
         setTimeLeft(rem);
+        timeLeftRef.current = rem;
       }
+      await SecureStore.setItemAsync(RECORDING_PAUSE_REMAINING_SEC, String(rem));
+      await SecureStore.setItemAsync(RECORDING_TIMER_PAUSED, "1");
       await SecureStore.deleteItemAsync("end_time");
       setIsPaused(true);
     } else {
       const rem = timeLeftRef.current;
+      await SecureStore.deleteItemAsync(RECORDING_TIMER_PAUSED);
+      await SecureStore.deleteItemAsync(RECORDING_PAUSE_REMAINING_SEC);
       await SecureStore.setItemAsync("end_time", String(Date.now() + rem * 1000));
       setIsPaused(false);
+      bumpRecordingTimerEpoch();
     }
   }, [isRunning, isPaused]);
 
@@ -564,8 +632,11 @@ export function useCountdown(
     async (deltaSec: number) => {
       setTimeLeft((r) => {
         const next = Math.min(initialSeconds, Math.max(0, r + deltaSec));
+        timeLeftRef.current = next;
         if (isRunning && !isPaused) {
           void SecureStore.setItemAsync("end_time", String(Date.now() + next * 1000));
+        } else if (isRunning && isPaused) {
+          void SecureStore.setItemAsync(RECORDING_PAUSE_REMAINING_SEC, String(next));
         }
         return next;
       });
@@ -579,6 +650,23 @@ export function useCountdown(
       async (nextState) => {
         console.log("nextState ", nextState);
         if (nextState === "active") {
+          const pausedBg =
+            (await SecureStore.getItemAsync(RECORDING_TIMER_PAUSED)) === "1";
+          const pauseRemStr =
+            (await SecureStore.getItemAsync(RECORDING_PAUSE_REMAINING_SEC))
+              ?.trim() ?? "";
+
+          if (pausedBg && pauseRemStr !== "") {
+            const pr = parseInt(pauseRemStr, 10);
+            if (Number.isFinite(pr) && pr > 0) {
+              setTimeLeft(pr);
+              timeLeftRef.current = pr;
+              setIsPaused(true);
+              setIsRunning(true);
+              return;
+            }
+          }
+
           const endTimeStr = await SecureStore.getItemAsync("end_time");
           if (endTimeStr) {
             const endTime = parseInt(endTimeStr, 10);
@@ -588,7 +676,9 @@ export function useCountdown(
             setTimeLeft(newTimeLeft);
             console.log("newTimeLeft ", newTimeLeft);
             if (newTimeLeft > 0) {
+              setIsPaused(false);
               setIsRunning(true);
+              bumpRecordingTimerEpoch();
             } else {
               if (!autoStopTriggeredRef.current) {
                 autoStopTriggeredRef.current = true;
@@ -613,6 +703,8 @@ export function useCountdown(
     await SecureStore.deleteItemAsync(TURF_ID);
     await SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID);
     await SecureStore.deleteItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY);
+    await SecureStore.deleteItemAsync(RECORDING_TIMER_PAUSED);
+    await SecureStore.deleteItemAsync(RECORDING_PAUSE_REMAINING_SEC);
   };
 
   return {

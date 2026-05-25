@@ -231,7 +231,7 @@ export default function FieldflixProfilePremiumScreen() {
         open: (opts: Record<string, unknown>) => Promise<{
           razorpay_payment_id: string;
           razorpay_order_id: string;
-          razorpay_signature?: string;
+          razorpay_signature: string;
         }>;
       };
       const amountPaise = String(Math.round(orderAmount * 100));
@@ -247,9 +247,23 @@ export default function FieldflixProfilePremiumScreen() {
         /** Lets support correlate UI selection with the checkout session. Razorpay still shows all methods. */
         notes: { fieldflicks_preferred_method: pay },
       });
+      const signature =
+        typeof data.razorpay_signature === "string"
+          ? data.razorpay_signature.trim()
+          : "";
+      const payId =
+        typeof data.razorpay_payment_id === "string"
+          ? data.razorpay_payment_id.trim()
+          : "";
+      if (!signature || !payId || !data.razorpay_order_id?.trim()) {
+        throw new Error(
+          "Payment did not finish — missing Razorpay confirmation.",
+        );
+      }
       await verifyRazorpayPayment({
         razorpay_order_id: data.razorpay_order_id,
-        razorpay_payment_id: data.razorpay_payment_id,
+        razorpay_payment_id: payId,
+        razorpay_signature: signature,
         status: "completed",
       });
       // Refresh server-truth entitlement so paywalled UI (preview cap, lock badges)

@@ -21,6 +21,7 @@ import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { FF } from "@/screens/fieldflix/fonts";
 import { RECORDINGS_REC_LOCAL } from "@/screens/fieldflix/recordingsAssets";
+import { explicitCourtNumberFromCamera } from "@/utils/cameraCourtLabel";
 import {
   formatRecordingListWhen,
   highlightCountFromRecording,
@@ -107,19 +108,6 @@ const UUID_RE =
 function isUuidCourtLabel(label: string): boolean {
   const rest = label.replace(/^court\s+/i, "").trim();
   return UUID_RE.test(rest);
-}
-
-/** Prefer admin-supplied identifiers on `/cameras` when present. */
-function explicitCourtNumberFromCamera(cam: Camera): number | null {
-  const raw =
-    cam.court_number !== undefined && cam.court_number !== null
-      ? cam.court_number
-      : cam.ground_number;
-  if (raw === undefined || raw === null || String(raw).trim() === "") {
-    return null;
-  }
-  const n = Number(String(raw).trim());
-  return Number.isFinite(n) ? n : null;
 }
 
 function recordingGroundLabel(r: any): string {
@@ -762,19 +750,19 @@ export default function FieldflixRecordingsScreen() {
           <View style={styles.readyToast}>
             <View style={styles.readyToastDot} />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.readyToastTitle} numberOfLines={1}>
+              <Text style={styles.readyToastTitle} numberOfLines={2}>
                 {readyState.kind === "ready"
                   ? "Your recording is ready"
                   : readyState.kind === "failed"
-                    ? "Recording failed to process"
+                    ? "Recording capture failed"
                     : "Processing your recording…"}
               </Text>
-              <Text style={styles.readyToastBody} numberOfLines={2}>
+              <Text style={styles.readyToastBody} numberOfLines={3}>
                 {readyState.kind === "ready"
                   ? "Open Highlights to watch the preview and unlock the full match."
                   : readyState.kind === "failed"
-                    ? "Something went wrong on our side. Please try again."
-                    : "Hang tight — we'll let you know the moment it's ready."}
+                    ? "Session completed, but recording capture failed due to a technical issue."
+                    : "Your highlights and recording will be updated shortly."}
               </Text>
             </View>
             {readyState.kind === "ready" ? (

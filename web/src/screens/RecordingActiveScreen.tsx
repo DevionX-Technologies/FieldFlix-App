@@ -9,6 +9,7 @@ type LocationState = {
   scanned?: string
   venueName?: string
   venueAddress?: string
+  courtLabel?: string
 } | null
 
 function formatHMS(totalSeconds: number) {
@@ -30,6 +31,7 @@ export default function RecordingActiveScreen() {
   const scanned = state?.scanned?.trim() || ''
   const venueName = state?.venueName?.trim() || 'TGS Sports Arena'
   const venueAddress = state?.venueAddress?.trim() || 'Andheri West, Mumbai'
+  const courtLabel = state?.courtLabel?.trim() || 'Court 1'
 
   const [remainingSec, setRemainingSec] = useState(planned)
   const [paused, setPaused] = useState(false)
@@ -91,7 +93,7 @@ export default function RecordingActiveScreen() {
 
           <div className="ra-court" aria-hidden>
             <GridIcon />
-            <span>Court 1</span>
+            <span>{courtLabel}</span>
           </div>
 
           <div className="ra-timer-row">

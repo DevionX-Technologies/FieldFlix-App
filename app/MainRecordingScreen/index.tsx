@@ -21,10 +21,8 @@ import {
   ImageBackground,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -78,7 +76,6 @@ export default function MainRecordingScreen() {
   const router = useRouter();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
   const {
     ChoosenTimeInMinutes,
     Name,
@@ -87,6 +84,7 @@ export default function MainRecordingScreen() {
     remainingSeconds,
     turfId,
     cameraId,
+    courtLabel,
     plannedDurationSec,
     sessionSport,
   } = useLocalSearchParams();
@@ -115,6 +113,12 @@ export default function MainRecordingScreen() {
   const venueName = td?.data?.name ?? td?.name ?? Name?.toString() ?? 'TGS Sports Arena';
   const venueAddress =
     GroundLocation?.toString() || 'Andheri West, Mumbai';
+
+  const courtDisplayLabel = useMemo(() => {
+    const raw = routeParamFirst(courtLabel)?.trim();
+    if (raw) return raw;
+    return 'Court';
+  }, [courtLabel]);
 
   const {
     timeLeft,
@@ -203,6 +207,7 @@ export default function MainRecordingScreen() {
       GroundLocation: routeParamFirst(GroundLocation) ?? '',
       turfId: routeParamFirst(turfId) ?? '',
       cameraId: routeParamFirst(cameraId) ?? '',
+      courtLabel: routeParamFirst(courtLabel) ?? '',
       ChoosenTimeInMinutes: routeParamFirst(ChoosenTimeInMinutes) ?? '',
       plannedDurationSec: routeParamFirst(plannedDurationSec) ?? '',
       sessionSport: routeParamFirst(sessionSport) ?? '',
@@ -220,6 +225,7 @@ export default function MainRecordingScreen() {
     GroundLocation,
     turfId,
     cameraId,
+    courtLabel,
     ChoosenTimeInMinutes,
     plannedDurationSec,
     sessionSport,
@@ -236,7 +242,7 @@ export default function MainRecordingScreen() {
     if (!isRunning && (await hasPersistedRecordingSession())) {
       Alert.alert(
         'Recording in progress',
-        'This device already has an active FieldFlicks session. Finish it first before starting here.',
+        'Recording is already in progress. Please wait until the current session is completed.',
       );
       return;
     }
@@ -255,10 +261,6 @@ export default function MainRecordingScreen() {
   /** Card starts just under the back affordance (see layout annotation). */
   const scrollPadTop = insets.top + 50;
   const scrollPadBottom = Math.max(24, insets.bottom) + 16;
-  const cardMinHeight = Math.max(
-    600,
-    Math.round(windowHeight - scrollPadTop - scrollPadBottom - 12),
-  );
 
   return (
     <WebShell backgroundColor={WEB.profileBg}>
@@ -288,113 +290,116 @@ export default function MainRecordingScreen() {
           </Svg>
         </Pressable>
 
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
+        <View
+          style={[
+            styles.screenBody,
             { paddingTop: scrollPadTop, paddingBottom: scrollPadBottom },
           ]}
-          showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.cardShell, { height: cardMinHeight }]}>
+          <View style={styles.cardShell}>
             <View pointerEvents="none" style={styles.cardBackdrop} />
             <View style={[styles.card, styles.cardFlexFill]}>
-            <View style={styles.location}>
-              <View style={styles.pinWrap}>
-                <PinIcon />
-              </View>
-              <View style={styles.locText}>
-                <Text style={styles.locName}>{venueName}</Text>
-              </View>
-            </View>
-
-            <View style={styles.court}>
-              <GridIcon />
-              <Text style={styles.courtText}>Court 1</Text>
-            </View>
-
-            <View style={styles.timerRow}>
-              <Pressable
-                style={styles.step}
-                onPress={() => void adjustRemaining(-stepAdjustSec)}
-                disabled={!isRunning}
-              >
-                <Text style={styles.stepTxt}>−</Text>
-              </Pressable>
-
-              <View style={styles.dialWrap}>
-                <Svg width={DIAL_SIZE} height={DIAL_SIZE} viewBox="0 0 180 180">
-                  <Circle
-                    cx={CX}
-                    cy={CY}
-                    r={R}
-                    fill="none"
-                    stroke="rgba(255,255,255,0.12)"
-                    strokeWidth={10}
-                  />
-                  <Circle
-                    cx={CX}
-                    cy={CY}
-                    r={R}
-                    fill="none"
-                    stroke={ACCENT}
-                    strokeWidth={10}
-                    strokeLinecap="round"
-                    transform={`rotate(-90 ${CX} ${CY})`}
-                    strokeDasharray={CIRC}
-                    strokeDashoffset={CIRC * (1 - progress)}
-                  />
-                </Svg>
-                <View style={styles.dialCenter}>
-                  <Text style={styles.dialTime}>{formatHMS(timeLeft)}</Text>
-                  {isRunning ? (
-                    <View style={styles.recPill}>
-                      <View style={styles.recDot} />
-                      <Text style={styles.recPillText}>Recording</Text>
-                    </View>
-                  ) : null}
+              <View style={styles.cardTop}>
+                <View style={styles.location}>
+                  <View style={styles.pinWrap}>
+                    <PinIcon />
+                  </View>
+                  <View style={styles.locText}>
+                    <Text style={styles.locName}>{venueName}</Text>
+                  </View>
                 </View>
+
+                <View style={styles.court}>
+                  <GridIcon />
+                  <Text style={styles.courtText}>{courtDisplayLabel}</Text>
+                </View>
+
+                <View style={styles.timerRow}>
+                  <Pressable
+                    style={styles.step}
+                    onPress={() => void adjustRemaining(-stepAdjustSec)}
+                    disabled={!isRunning}
+                  >
+                    <Text style={styles.stepTxt}>−</Text>
+                  </Pressable>
+
+                  <View style={styles.dialWrap}>
+                    <Svg width={DIAL_SIZE} height={DIAL_SIZE} viewBox="0 0 180 180">
+                      <Circle
+                        cx={CX}
+                        cy={CY}
+                        r={R}
+                        fill="none"
+                        stroke="rgba(255,255,255,0.12)"
+                        strokeWidth={10}
+                      />
+                      <Circle
+                        cx={CX}
+                        cy={CY}
+                        r={R}
+                        fill="none"
+                        stroke={ACCENT}
+                        strokeWidth={10}
+                        strokeLinecap="round"
+                        transform={`rotate(-90 ${CX} ${CY})`}
+                        strokeDasharray={CIRC}
+                        strokeDashoffset={CIRC * (1 - progress)}
+                      />
+                    </Svg>
+                    <View style={styles.dialCenter}>
+                      <Text style={styles.dialTime}>{formatHMS(timeLeft)}</Text>
+                      {isRunning ? (
+                        <View style={styles.recPill}>
+                          <View style={styles.recDot} />
+                          <Text style={styles.recPillText}>Recording</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <Pressable
+                    style={styles.step}
+                    onPress={() => void adjustRemaining(stepAdjustSec)}
+                    disabled={!isRunning}
+                  >
+                    <Text style={styles.stepTxt}>+</Text>
+                  </Pressable>
+                </View>
+
+                {isRunning && highlightButtonCount > 0 ? (
+                  <View style={styles.hlCounter}>
+                    <Text style={styles.hlCounterTxt}>
+                      Highlight taps · {highlightButtonCount}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
 
-              <Pressable
-                style={styles.step}
-                onPress={() => void adjustRemaining(stepAdjustSec)}
-                disabled={!isRunning}
-              >
-                <Text style={styles.stepTxt}>+</Text>
-              </Pressable>
-            </View>
+              <View style={styles.cardFlexSpacer} />
 
-            {isRunning && highlightButtonCount > 0 ? (
-              <View style={styles.hlCounter}>
-                <Text style={styles.hlCounterTxt}>
-                  Highlight taps · {highlightButtonCount}
-                </Text>
-              </View>
-            ) : null}
-
-            {!isRunning ? (
-              <Pressable style={styles.startBtn} onPress={() => void handleStart()}>
-                <PlaySmIcon />
-                <Text style={styles.startBtnText}>Start Recording</Text>
-              </Pressable>
-            ) : (
-              <View style={styles.actions}>
-                <Pressable
-                  style={[styles.btn, styles.btnPause]}
-                  onPress={() => void togglePause()}
-                >
-                  {isPaused ? <PlaySmIconSmall /> : <PauseIcon />}
-                  <Text style={styles.btnText}>{isPaused ? 'Resume' : 'Pause'}</Text>
+              {!isRunning ? (
+                <Pressable style={styles.startBtn} onPress={() => void handleStart()}>
+                  <PlaySmIcon />
+                  <Text style={styles.startBtnText}>Start Recording</Text>
                 </Pressable>
-                <Pressable style={[styles.btn, styles.btnFinish]} onPress={() => setShowStop(true)}>
-                  <StopIcon />
-                  <Text style={styles.btnText}>Finish</Text>
-                </Pressable>
-              </View>
-            )}
+              ) : (
+                <View style={styles.actions}>
+                  <Pressable
+                    style={[styles.btn, styles.btnPause]}
+                    onPress={() => void togglePause()}
+                  >
+                    {isPaused ? <PlaySmIconSmall /> : <PauseIcon />}
+                    <Text style={styles.btnText}>{isPaused ? 'Resume' : 'Pause'}</Text>
+                  </Pressable>
+                  <Pressable style={[styles.btn, styles.btnFinish]} onPress={() => setShowStop(true)}>
+                    <StopIcon />
+                    <Text style={styles.btnText}>Finish</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           </View>
-        </ScrollView>
+        </View>
 
         <StopDialog
           visible={showStop}
@@ -484,7 +489,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(6, 48, 32, 0.18)',
   },
+  /** Fills viewport under back button (no outer vertical ScrollView). */
+  screenBody: {
+    flex: 1,
+    minHeight: 0,
+    width: '100%',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
   cardShell: {
+    flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: 380,
     borderRadius: 28,
@@ -515,11 +530,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 12,
   },
-  scroll: {
+  cardTop: {
+    flexShrink: 0,
+  },
+  /** Pushes primary actions toward the bottom of the card within the viewport. */
+  cardFlexSpacer: {
     flexGrow: 1,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    flexShrink: 1,
+    minHeight: 8,
   },
   card: {
     paddingTop: 36,
@@ -531,6 +549,7 @@ const styles = StyleSheet.create({
   },
   cardFlexFill: {
     flex: 1,
+    minHeight: 0,
   },
   location: {
     flexDirection: 'row',
@@ -643,7 +662,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   startBtn: {
-    marginTop: 24,
+    marginTop: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -658,7 +677,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   actions: {
-    marginTop: 22,
+    marginTop: 0,
     flexDirection: 'row',
     gap: 10,
   },

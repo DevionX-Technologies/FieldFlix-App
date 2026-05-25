@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { API_BASE_URL, SUPPORT_INBOX_EMAIL } from '../config'
+import { unwrapNestPayload } from '../utils/unwrapNestPayload'
 import { P } from './profileSubScreensAssets'
 import './profileContactUsScreen.css'
 
@@ -15,6 +17,67 @@ export default function ProfileContactUsScreen() {
   const [fullName, setFullName] = useState('')
   const [mobile, setMobile] = useState('')
   const [description, setDescription] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
+  async function handleSend() {
+    setFormError(null)
+    const name = fullName.trim()
+    const digits = mobile.replace(/\D/g, '')
+    const body = description.trim()
+    if (name.length === 0) {
+      setFormError('Please enter your full name.')
+      return
+    }
+    if (digits.length < 10) {
+      setFormError('Please enter at least 10 digits for your mobile number.')
+      return
+    }
+    if (body.length < 3) {
+      setFormError('Please describe your issue in more detail.')
+      return
+    }
+    const base = API_BASE_URL.replace(/\/+$/, '')
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (base.includes('ngrok')) {
+      headers['ngrok-skip-browser-warning'] = 'true'
+    }
+    try {
+      setSubmitting(true)
+      const res = await fetch(`${base}/support/contact`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          issueType: issue,
+          fullName: name,
+          mobile: digits.slice(0, 15),
+          description: body,
+        }),
+      })
+      const json = (await res.json()) as unknown
+      if (!res.ok) {
+        const m =
+          typeof json === 'object' &&
+          json !== null &&
+          'message' in json &&
+          (typeof (json as { message: unknown }).message === 'string' ||
+            Array.isArray((json as { message: unknown }).message))
+            ? Array.isArray((json as { message: unknown }).message)
+              ? ((json as { message: unknown }).message as string[]).join('\n')
+              : String((json as { message: string }).message)
+            : `Request failed (${res.status})`
+        setFormError(m)
+        return
+      }
+      void unwrapNestPayload(json)
+      setDescription('')
+      alert('Thanks — we received your message and usually reply within 24 hours.')
+    } catch {
+      setFormError('Network error — check your connection and API URL.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="pcu-page">
@@ -69,14 +132,25 @@ export default function ProfileContactUsScreen() {
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe your issue" rows={4} aria-label="Describe your issue" />
         </label>
 
-        <button type="button" className="pcu-send">
-          Send Message
+        {formError ? (
+          <p className="pcu-form-error" role="alert">
+            {formError}
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          className={`pcu-send${submitting ? ' pcu-send--busy' : ''}`}
+          onClick={() => void handleSend()}
+          disabled={submitting}
+        >
+          {submitting ? 'Sending…' : 'Send Message'}
         </button>
 
         <p className="pcu-foot">We usually respond within 24 hours</p>
         <p className="pcu-or">Or contact us directly</p>
-        <a className="pcu-email" href="mailto:support@fieldflix.com">
-          support@fieldflix.com
+        <a className="pcu-email" href={`mailto:${encodeURIComponent(SUPPORT_INBOX_EMAIL)}`}>
+          {SUPPORT_INBOX_EMAIL}
         </a>
       </main>
     </div>

@@ -222,6 +222,25 @@
   outline-offset: 2px;
 }
 
+.pcu-send:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.pcu-send--busy {
+  cursor: wait;
+}
+
+.pcu-form-error {
+  margin: 12px auto 0;
+  padding: 0 35px;
+  max-width: 340px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f87171;
+  text-align: center;
+}
+
 .pcu-foot {
   margin: 14px 16px 0;
   text-align: center;

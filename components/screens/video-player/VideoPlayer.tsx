@@ -68,7 +68,7 @@ interface VideoPlayerProps {
   soloHighlight?: boolean;
   /**
    * When playing a solo clip with an empty carousel, pass backend highlight id so
-   * the share strip can expose “Share MP4” (matches mux URL in the player).
+   * the share strip can expose “Share highlight” (matches mux URL in the player).
    */
   soloHighlightShareId?: string;
   /**

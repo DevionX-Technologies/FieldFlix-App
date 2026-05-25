@@ -117,6 +117,24 @@ export async function verifyOtp(mobile: string, otp: string) {
   return data;
 }
 
+export type SupportIssueKey = 'bug' | 'feature' | 'general';
+
+export async function submitSupportContact(payload: {
+  issueType: SupportIssueKey;
+  fullName: string;
+  mobile: string;
+  description: string;
+}): Promise<{ id: string }> {
+  const mobileDigits = payload.mobile.replace(/\D/g, '');
+  const { data } = await axiosInstance.post<{ id: string }>('/support/contact', {
+    issueType: payload.issueType,
+    fullName: payload.fullName.trim(),
+    mobile: mobileDigits,
+    description: payload.description.trim(),
+  });
+  return data;
+}
+
 export async function getNotificationCount() {
   const { data } = await axiosInstance.get('/notification/user/count');
   if (typeof data === 'number' && !Number.isNaN(data)) return data;
@@ -443,6 +461,8 @@ export type VerifyPaymentResult = {
 export async function verifyRazorpayPayment(body: {
   razorpay_order_id: string;
   razorpay_payment_id: string;
+  /** From Checkout success payload (`razorpay_signature`) — backend verifies HMAC before unlocking. */
+  razorpay_signature: string;
   status: 'completed' | 'failed' | 'pending' | 'cancelled' | 'refunded';
 }): Promise<VerifyPaymentResult> {
   const { data } = await axiosInstance.post<VerifyPaymentResult>('/payments/verify', body);
@@ -956,7 +976,10 @@ export type Camera = {
 };
 
 export async function getCameras(turfId?: string): Promise<Camera[]> {
-  const params = turfId ? { turfId } : {};
+  /** Match Find My Game expectations: most venues fit in one page. */
+  const params = turfId
+    ? { turfId, page: 1, limit: 100 }
+    : { page: 1, limit: 100 };
   const { data } = await axiosInstance.get('/cameras', { params });
   if (data && Array.isArray(data.data)) {
     return data.data;

@@ -22,6 +22,9 @@ export const BASE_URL = normalizeApiBaseUrl(
   process.env.EXPO_PUBLIC_BASE_URL ?? "https://api.devionx.com",
 );
 
+/** Display + mailto for Contact Support (“Or contact us directly”). */
+export const FIELDFLIX_SUPPORT_EMAIL = "admin@fieldflix.com";
+
 export const GOOGLE_WEB_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ??
   "350089393900-28gotib243itoj4tlt1tmklcoctjisoa.apps.googleusercontent.com";
@@ -34,6 +37,10 @@ export const RECORDING_CAMERA_ID = "recordingCameraID";
 export const RECORDING_QR_CAMERA_ID = "fieldflix-recording-qr-camera-id";
 /** JSON blob of `/recording-active` route params — restored on cold start while a session runs. */
 export const RECORDING_ACTIVE_ROUTE_PARAMS_KEY = "fieldflix-recording-active-route-params-v1";
+/** When `"1"`, countdown is paused and `end_time` is omitted until resume (`RECORDING_PAUSE_REMAINING_SEC` holds remainder). */
+export const RECORDING_TIMER_PAUSED = "fieldflix-recording-timer-paused";
+/** Remaining seconds at pause — used when re-syncing hydrate (paused sessions have no `end_time`). */
+export const RECORDING_PAUSE_REMAINING_SEC = "fieldflix-recording-pause-remaining-sec";
 export const TIME_TOTAL = "totalTime";
 export const TURF_ID = "turfId";
 /** SecureStore key tracking the most recently stopped recording — drives the post-stop "ready" toast on Recordings. */

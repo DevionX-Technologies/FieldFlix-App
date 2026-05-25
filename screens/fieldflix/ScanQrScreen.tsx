@@ -75,7 +75,7 @@ export default function FieldflixScanQrScreen() {
       if (await hasPersistedRecordingSession()) {
         Alert.alert(
           'Recording in progress',
-          'You already have an active FieldFlicks session on this phone. Finish it from your recording timer or Sessions before scanning a new court.',
+          'Recording is already in progress. Please wait until the current session is completed.',
         );
         return false;
       }

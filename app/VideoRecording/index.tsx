@@ -17,7 +17,7 @@ interface VideoPlayerScreenParams {
   recordingId?: string;
   /** When `'1'`, hide the carousel (Saved-clips / single-highlight playback via solo mode). */
   soloHighlight?: string;
-  /** When `soloHighlight`, backend highlight id — drives Share MP4 below the player. */
+  /** When `soloHighlight`, backend highlight id — drives Share highlight below the player. */
   highlightShareId?: string;
   /** When `'1'`, show the Videos / highlights list below the player (Hero from Highlights). Omit for carousel-only Recording. */
   showVideosList?: string;
