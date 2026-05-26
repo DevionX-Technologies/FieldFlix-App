@@ -34,5 +34,19 @@ allprojects {
   }
 }
 
+// Release "vital" lint across many Expo/RN subprojects is memory-heavy and often OOMs on typical dev machines.
+subprojects { sub ->
+  afterEvaluate {
+    if (sub.plugins.hasPlugin("com.android.library") || sub.plugins.hasPlugin("com.android.application")) {
+      sub.android {
+        lint {
+          checkReleaseBuilds false
+          abortOnError false
+        }
+      }
+    }
+  }
+}
+
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"

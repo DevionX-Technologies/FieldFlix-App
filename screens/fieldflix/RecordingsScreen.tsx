@@ -101,6 +101,13 @@ function compactText(v: unknown): string {
     .trim();
 }
 
+/** Last 10 digits for find-and-claim (handles +91…, spaces, leading country code). */
+function digitsLast10(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  return digits.slice(-10);
+}
+
 /** Matches backend camera UUID — never show raw in "court" UI. */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -160,24 +167,21 @@ function recordingArenaLabel(r: any): string {
   return compactText(turf?.name ?? r?.recording_name ?? r?.name ?? "");
 }
 
-/** Pagination size + cap mirror HomeScreen's `fetchAllSportTurfs` so Find Recordings sees the same arena set. */
+/** Paginated `/turfs` without `sports_supported` — backend returns every active arena with exact DB `name`. */
 const FIND_TURF_PAGE_LIMIT = 100;
 const FIND_MAX_TURF_PAGES = 40;
-const FIND_TURF_SPORT_ENUMS = ["Pickleball", "Paddle", "Cricket"] as const;
 
-async function fetchAllTurfsForFind(apiSport: string): Promise<any[]> {
+async function fetchAllTurfsForFindRecording(): Promise<any[]> {
   const merged: any[] = [];
   for (let page = 1; page <= FIND_MAX_TURF_PAGES; page++) {
     let turfRes: unknown;
     try {
-      turfRes = await getTurfsPage(page, FIND_TURF_PAGE_LIMIT, {
-        sports_supported: apiSport,
-      });
+      turfRes = await getTurfsPage(page, FIND_TURF_PAGE_LIMIT);
     } catch {
       break;
     }
     let itemsRaw: unknown;
-    let totalPages = 1;
+    let declaredTotalPages: number | null = null;
     if (Array.isArray(turfRes)) {
       itemsRaw = turfRes;
     } else if (turfRes && typeof turfRes === "object") {
@@ -188,7 +192,7 @@ async function fetchAllTurfsForFind(apiSport: string): Promise<any[]> {
       };
       itemsRaw = bag.items ?? bag.data ?? [];
       if (typeof bag.meta?.totalPages === "number" && bag.meta.totalPages >= 1) {
-        totalPages = bag.meta.totalPages;
+        declaredTotalPages = bag.meta.totalPages;
       }
     } else {
       itemsRaw = [];
@@ -196,32 +200,25 @@ async function fetchAllTurfsForFind(apiSport: string): Promise<any[]> {
     const chunk = (Array.isArray(itemsRaw) ? itemsRaw : []) as any[];
     merged.push(...chunk);
     if (chunk.length === 0) break;
-    if (page >= totalPages) break;
     if (chunk.length < FIND_TURF_PAGE_LIMIT) break;
+    if (declaredTotalPages != null && page >= declaredTotalPages) break;
   }
-  return merged;
+  return dedupeTurfsByIdForFind(merged);
 }
 
-/** Aggregate arenas across every FieldFlix sport, then collapse duplicate venue rows by name. */
-async function fetchAllTurfsForFindAcrossSports(): Promise<any[]> {
-  const perSport = await Promise.all(
-    FIND_TURF_SPORT_ENUMS.map((s) =>
-      fetchAllTurfsForFind(s).catch(() => [] as any[]),
-    ),
-  );
-  const flat = perSport.flat();
-  const groups = new Map<string, any>();
-  for (const t of flat) {
-    const id = String(t?.id ?? "");
-    const nameKey = String(t?.name ?? "")
-      .toLowerCase()
-      .replace(/\|/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const key = nameKey || (id ? `id:${id}` : `idx:${groups.size}`);
-    if (!groups.has(key)) groups.set(key, t);
+/** One row per turf UUID — never collapse different venues that share a similar name. */
+function dedupeTurfsByIdForFind(rows: any[]): any[] {
+  const byId = new Map<string, any>();
+  for (const t of rows) {
+    const id = String(t?.id ?? "").trim();
+    if (!id) continue;
+    if (!byId.has(id)) byId.set(id, t);
   }
-  return [...groups.values()];
+  return [...byId.values()].sort((a, b) =>
+    String(a?.name ?? "").localeCompare(String(b?.name ?? ""), undefined, {
+      sensitivity: "base",
+    }),
+  );
 }
 
 export default function FieldflixRecordingsScreen() {
@@ -394,8 +391,7 @@ export default function FieldflixRecordingsScreen() {
         String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
           sensitivity: "base",
         }),
-      )
-      .slice(0, 20);
+      );
   }, [findVenue, systemTurfs]);
 
   useEffect(() => {
@@ -407,68 +403,63 @@ export default function FieldflixRecordingsScreen() {
   }, [findVenueId]);
 
   /**
-   * Build the court / ground dropdown from this turf's cameras.
-   *
-   * Strategy:
-   *   1. For every camera, use `court_number` when the API sends it (never `ground_number`
-   *      for the numeric label — it can disagree with real court signage),
-   *      else digits embedded in `camera.name` (e.g. "Camera 12" → 12, "Court 4" → 4).
-   *   2. Camera rows whose name is a UUID or has no digits are assigned a
-   *      synthetic court number based on their stable order in the list
-   *      (id-sorted) so each one still gets a usable label.
-   *   3. Render every option as `Court N` so the dropdown reads cleanly even
-   *      when admin-side `cameras.name` data is messy.
+   * Courts for the chosen turf (`/cameras?turfId=…`). Labels prefer DB `court_number`,
+   * then a number embedded in `camera.name` — never fabricate fake `Court N` indices.
    */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
-    const venueId = String(findVenueId ?? '').trim();
+    const venueId = String(findVenueId ?? "").trim();
+    if (!venueId) return [];
+
     const valid = systemCameras.filter((x) => {
       if (!x?.id) return false;
-      if (!venueId) return true;
-      return String(x.turfId ?? '').trim() === venueId;
+      return String(x.turfId ?? "").trim() === venueId;
     });
     if (valid.length === 0) return [];
 
-    // Stable order so synthetic court numbers don't shuffle between renders.
     const idSorted = [...valid].sort((a, b) =>
       String(a.id).localeCompare(String(b.id)),
     );
 
-    const seenNumbers = new Set<number>();
-    const decorated = idSorted.map((cam, idx) => {
+    const decorated = idSorted.map((cam) => {
       const rawName = String(cam.name ?? "").trim();
       const looksLikeUuid = UUID_RE.test(rawName);
-      const digitsInName = !looksLikeUuid
-        ? rawName.match(/(\d+)/)?.[1]
-        : null;
-      let courtNumber: number;
+      const digitsInName = !looksLikeUuid ? rawName.match(/(\d+)/)?.[1] : null;
+
+      let label: string;
+      let sortKey: number | null = null;
       const explicitN = explicitCourtNumberFromCamera(cam);
       if (explicitN != null) {
-        courtNumber = explicitN;
-      } else if (digitsInName) {
-        courtNumber = Number(digitsInName);
+        sortKey = explicitN;
+        label = `Court ${explicitN}`;
+      } else if (digitsInName != null && Number.isFinite(Number(digitsInName))) {
+        sortKey = Number(digitsInName);
+        label = `Court ${sortKey}`;
+      } else if (rawName && !looksLikeUuid) {
+        label = rawName;
       } else {
-        // Synthetic: smallest unused positive integer based on this camera's
-        // order in the id-sorted list.
-        let candidate = idx + 1;
-        while (seenNumbers.has(candidate)) candidate++;
-        courtNumber = candidate;
+        label = `Camera ${String(cam.id).slice(0, 8)}…`;
       }
-      seenNumbers.add(courtNumber);
-      const label = `Court ${courtNumber}`;
+
       return {
         ...cam,
-        // Override `name` so the dropdown rendering picks the clean label.
         name: label,
-        courtNumber,
-        rawName,
+        courtSortKey: sortKey,
       };
     });
 
     return decorated
       .filter((x) => !q || x.name.toLowerCase().includes(q))
-      .sort((a, b) => a.courtNumber - b.courtNumber)
-      .slice(0, 20);
+      .sort((a, b) => {
+        const na = a.courtSortKey;
+        const nb = b.courtSortKey;
+        if (na != null && nb != null && na !== nb) return na - nb;
+        if (na != null && nb == null) return -1;
+        if (na == null && nb != null) return 1;
+        return a.name.localeCompare(b.name, undefined, {
+          sensitivity: "base",
+        });
+      });
   }, [findGround, findVenueId, systemCameras]);
 
   const isLocationComplete = !!findVenueId;
@@ -476,7 +467,7 @@ export default function FieldflixRecordingsScreen() {
     !!findVenueId &&
     findStart.trim().length > 0 &&
     findEnd.trim().length > 0;
-  const isVerifyComplete = findPhone.trim().length === 10;
+  const isVerifyComplete = digitsLast10(findPhone.trim()) != null;
 
   const onFindDateChange = (_e: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === "android") setShowFindDatePicker(false);
@@ -515,32 +506,6 @@ export default function FieldflixRecordingsScreen() {
     [],
   );
 
-  const runFindGame = useCallback(async () => {
-    if (!findVenueId || !findStart.trim() || !findEnd.trim() || findPhone.trim().length !== 10) return;
-    try {
-      const fd = new Date(findPickDate);
-      const m = String(fd.getMonth() + 1).padStart(2, "0");
-      const d = String(fd.getDate()).padStart(2, "0");
-      const payload = {
-        turfId: findVenueId,
-        cameraId: findGroundId || undefined,
-        date: `${fd.getFullYear()}-${m}-${d}`,
-        startTime: findStart.trim(),
-        endTime: findEnd.trim(),
-        phoneLast10: findPhone.trim(),
-      };
-      const res = await findAndClaimRecording(payload);
-      setFindMatches(res);
-      // Automatically refresh the library/shared tabs so the claimed recording shows up
-      load();
-    } catch (e) {
-      console.warn("Error finding game", e);
-      setFindMatches([]);
-    }
-    setShowVenueOptions(false);
-    setShowGroundOptions(false);
-  }, [findVenueId, findGroundId, findPickDate, findStart, findEnd, findPhone, load]);
-
   const load = useCallback(async () => {
     try {
       const [a, b, c, flickList, allTurfs] = await Promise.all([
@@ -548,8 +513,7 @@ export default function FieldflixRecordingsScreen() {
         getSharedWithMe(),
         getSharedByMe().catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
-        // Mirror HomeScreen: paginate per FieldFlix sport, merge across sports, dedupe by venue name.
-        fetchAllTurfsForFindAcrossSports().catch(() => [] as any[]),
+        fetchAllTurfsForFindRecording().catch(() => [] as any[]),
       ]);
       setMy(a);
       setShared(b);
@@ -578,6 +542,32 @@ export default function FieldflixRecordingsScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const runFindGame = useCallback(async () => {
+    const phoneLast10 = digitsLast10(findPhone.trim());
+    if (!findVenueId || !findStart.trim() || !findEnd.trim() || !phoneLast10) return;
+    try {
+      const fd = new Date(findPickDate);
+      const m = String(fd.getMonth() + 1).padStart(2, "0");
+      const d = String(fd.getDate()).padStart(2, "0");
+      const payload = {
+        turfId: findVenueId,
+        cameraId: findGroundId || undefined,
+        date: `${fd.getFullYear()}-${m}-${d}`,
+        startTime: findStart.trim(),
+        endTime: findEnd.trim(),
+        phoneLast10,
+      };
+      const res = await findAndClaimRecording(payload);
+      setFindMatches(res);
+      load();
+    } catch (e) {
+      console.warn("Error finding game", e);
+      setFindMatches([]);
+    }
+    setShowVenueOptions(false);
+    setShowGroundOptions(false);
+  }, [findVenueId, findGroundId, findPickDate, findStart, findEnd, findPhone, load]);
 
   const myRows =
     my.length > 0
@@ -1305,12 +1295,12 @@ export default function FieldflixRecordingsScreen() {
                   }}
                   style={styles.findInput}
                   placeholder={
-                    findVenue.trim()
+                    findVenueId
                       ? "Select or type court"
-                      : "Select venue first"
+                      : "Select a venue from the list first"
                   }
                   placeholderTextColor="rgba(255,255,255,0.35)"
-                  editable={findVenue.trim().length > 0}
+                  editable={!!findVenueId}
                 />
                 {showGroundOptions && groundOptions.length > 0 ? (
                   <View style={styles.findDropdown}>
@@ -1500,9 +1490,10 @@ export default function FieldflixRecordingsScreen() {
                   <Text style={styles.phoneCc}>+91</Text>
                   <TextInput
                     value={findPhone}
-                    onChangeText={(v) =>
-                      setFindPhone(v.replace(/\D/g, "").slice(0, 10))
-                    }
+                    onChangeText={(v) => {
+                      const d = v.replace(/\D/g, "");
+                      setFindPhone(d.length > 10 ? d.slice(-10) : d);
+                    }}
                     keyboardType="number-pad"
                     placeholder="Enter your mobile..."
                     placeholderTextColor="rgba(255,255,255,0.35)"
