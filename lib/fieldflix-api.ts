@@ -975,16 +975,34 @@ export type Camera = {
   ground_number?: number | string | null;
 };
 
+/** Unify camelCase/snake_case from Nest/serializers so UI reads consistent keys. */
+function normalizeCameraRow(raw: Record<string, unknown>): Camera {
+  return {
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    turfId: String(raw.turfId ?? raw.turf_id ?? ''),
+    court_number:
+      (raw.court_number ?? raw.courtNumber ?? null) as Camera['court_number'],
+    ground_number:
+      (raw.ground_number ?? raw.groundNumber ?? null) as Camera['ground_number'],
+  };
+}
+
 export async function getCameras(turfId?: string): Promise<Camera[]> {
   /** Match Find My Game expectations: most venues fit in one page. */
   const params = turfId
     ? { turfId, page: 1, limit: 100 }
     : { page: 1, limit: 100 };
   const { data } = await axiosInstance.get('/cameras', { params });
-  if (data && Array.isArray(data.data)) {
-    return data.data;
+  let list: unknown[] = [];
+  if (data && typeof data === 'object' && Array.isArray((data as { data?: unknown[] }).data)) {
+    list = (data as { data: unknown[] }).data;
+  } else if (Array.isArray(data)) {
+    list = data;
   }
-  return Array.isArray(data) ? data : [];
+  return list
+    .filter((x): x is Record<string, unknown> => x != null && typeof x === 'object')
+    .map((x) => normalizeCameraRow(x));
 }
 
 export type FindAndClaimRecordingPayload = {

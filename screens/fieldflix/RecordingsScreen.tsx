@@ -410,7 +410,8 @@ export default function FieldflixRecordingsScreen() {
    * Build the court / ground dropdown from this turf's cameras.
    *
    * Strategy:
-   *   1. For every camera, use `court_number` / `ground_number` when the API sends them,
+   *   1. For every camera, use `court_number` when the API sends it (never `ground_number`
+   *      for the numeric label — it can disagree with real court signage),
    *      else digits embedded in `camera.name` (e.g. "Camera 12" → 12, "Court 4" → 4).
    *   2. Camera rows whose name is a UUID or has no digits are assigned a
    *      synthetic court number based on their stable order in the list
@@ -420,7 +421,12 @@ export default function FieldflixRecordingsScreen() {
    */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
-    const valid = systemCameras.filter((x) => x && x.id);
+    const venueId = String(findVenueId ?? '').trim();
+    const valid = systemCameras.filter((x) => {
+      if (!x?.id) return false;
+      if (!venueId) return true;
+      return String(x.turfId ?? '').trim() === venueId;
+    });
     if (valid.length === 0) return [];
 
     // Stable order so synthetic court numbers don't shuffle between renders.
@@ -463,7 +469,7 @@ export default function FieldflixRecordingsScreen() {
       .filter((x) => !q || x.name.toLowerCase().includes(q))
       .sort((a, b) => a.courtNumber - b.courtNumber)
       .slice(0, 20);
-  }, [findGround, systemCameras]);
+  }, [findGround, findVenueId, systemCameras]);
 
   const isLocationComplete = !!findVenueId;
   const isScheduleComplete =

@@ -60,13 +60,12 @@ import { useIsAdminRole } from "@/hooks/useIsAdminRole";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
-/** Static promos until the API supplies Coming Soon assets. The new `coming-hero.png`
- *  REPLACES the original auto-highlight slide (was index 0); the other two follow.
- *  Asset filename is intentionally hyphenated/no-spaces so Metro's static
- *  asset-resolver bundles it reliably across Android/iOS. */
+/** Static promos until the API supplies Coming Soon assets. Slide 1: coming-hero;
+ *  slide 2: Line Calls promo (`coming-soon-2-line-calls.png`, kebab-case for Metro).
+ *  slide 3 follows. Hyphenated names avoid resolver issues on Android/iOS. */
 const COMING_SOON_CAROUSEL_IMAGES = [
   require("@/assets/images/coming-hero.png"),
-  require("@/assets/fieldflix-web/coming-soon/coming-soon-2.png"),
+  require("@/assets/fieldflix-web/coming-soon/coming-soon-2-line-calls.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-3.png"),
 ] as const;
 const COMING_SOON_CARD_HEIGHT = 158;
@@ -1059,6 +1058,13 @@ export default function FieldflixHomeScreen() {
                           style={[
                             styles.bannerSlideImage,
                             { height: comingSoonTileHeight },
+                            /* Second slide (Line Calls): hide 3px from the image’s left inside the clip */
+                            index === 1 && {
+                              marginLeft: -3,
+                              width: carouselW + 3,
+                              maxWidth: carouselW + 3,
+                              alignSelf: "flex-start",
+                            },
                           ]}
                           contentFit="cover"
                           contentPosition={

@@ -9,14 +9,15 @@ function compactText(v: unknown): string {
     .trim();
 }
 
-/** Prefer admin-supplied identifiers on `/cameras` when present. */
+/**
+ * Ops-mapped physical court index from `/cameras` (`court_number` only).
+ * We intentionally ignore `ground_number` for numeric labels — it often disagrees
+ * with on-venue numbering (e.g. Botanical 3–6 vs internal 19–22-style values).
+ */
 export function explicitCourtNumberFromCamera(
   cam: Pick<Camera, 'court_number' | 'ground_number'>,
 ): number | null {
-  const raw =
-    cam.court_number !== undefined && cam.court_number !== null
-      ? cam.court_number
-      : cam.ground_number;
+  const raw = cam.court_number;
   if (raw === undefined || raw === null || String(raw).trim() === '') {
     return null;
   }
@@ -33,7 +34,7 @@ export function courtDisplayLabelFromCamera(cam: Camera | null | undefined): str
   if (n != null) return `Court ${n}`;
   const rawStr =
     compactText(cam.court_number != null ? String(cam.court_number) : '') ||
-      compactText(cam.ground_number != null ? String(cam.ground_number) : ''));
+    compactText(cam.ground_number != null ? String(cam.ground_number) : '');
   if (rawStr) {
     if (/^court\b/i.test(rawStr) || /^ground\b/i.test(rawStr)) return rawStr;
     return `Court ${rawStr}`;
