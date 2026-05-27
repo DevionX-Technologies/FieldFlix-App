@@ -9,7 +9,8 @@ import {
   getSharedWithMe,
   getTurfsPage,
   getCameras,
-  findAndClaimRecording,
+  findRecordings,
+  claimRecording,
   type Camera,
 } from "@/lib/fieldflix-api";
 import {
@@ -38,9 +39,11 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
+import * as Clipboard from "expo-clipboard";
 import type { ComponentProps, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   BackHandler,
   Image,
   InteractionManager,
@@ -176,15 +179,35 @@ function recordingArenaLabel(r: any): string {
 const FIND_TURF_PAGE_LIMIT = 100;
 const FIND_MAX_TURF_PAGES = 40;
 
-async function fetchAllTurfsForFindRecording(): Promise<any[]> {
+type TurfsFetchDiag = {
+  pages: Array<{ page: number; raw: unknown }>;
+  rawCount: number;
+  afterIdDedupeCount: number;
+  finalCount: number;
+  duplicateNameGroups: Array<{ name: string; ids: string[] }>;
+};
+
+async function fetchAllTurfsForFindRecording(): Promise<{
+  turfs: any[];
+  diag: TurfsFetchDiag;
+}> {
   const merged: any[] = [];
+  const diag: TurfsFetchDiag = {
+    pages: [],
+    rawCount: 0,
+    afterIdDedupeCount: 0,
+    finalCount: 0,
+    duplicateNameGroups: [],
+  };
   for (let page = 1; page <= FIND_MAX_TURF_PAGES; page++) {
     let turfRes: unknown;
     try {
       turfRes = await getTurfsPage(page, FIND_TURF_PAGE_LIMIT);
-    } catch {
+    } catch (err) {
+      diag.pages.push({ page, raw: { error: String(err) } });
       break;
     }
+    diag.pages.push({ page, raw: turfRes });
     let itemsRaw: unknown;
     let declaredTotalPages: number | null = null;
     if (Array.isArray(turfRes)) {
@@ -208,10 +231,16 @@ async function fetchAllTurfsForFindRecording(): Promise<any[]> {
     if (chunk.length < FIND_TURF_PAGE_LIMIT) break;
     if (declaredTotalPages != null && page >= declaredTotalPages) break;
   }
-  return dedupeTurfsByIdForFind(merged);
+  diag.rawCount = merged.length;
+  const byId = dedupeTurfsByIdForFind(merged);
+  diag.afterIdDedupeCount = byId.length;
+  const { unique, duplicates } = dedupeTurfsByNormalizedNameForFind(byId);
+  diag.finalCount = unique.length;
+  diag.duplicateNameGroups = duplicates;
+  return { turfs: unique, diag };
 }
 
-/** One row per turf UUID — never collapse different venues that share a similar name. */
+/** One row per turf UUID. */
 function dedupeTurfsByIdForFind(rows: any[]): any[] {
   const byId = new Map<string, any>();
   for (const t of rows) {
@@ -224,6 +253,74 @@ function dedupeTurfsByIdForFind(rows: any[]): any[] {
       sensitivity: "base",
     }),
   );
+}
+
+/**
+ * Normalize a venue name for duplicate detection — lowercase, collapse runs
+ * of whitespace, strip punctuation differences ("|" vs " | "). Used by
+ * `dedupeTurfsByNormalizedNameForFind` to fold duplicate DB rows together.
+ */
+function normalizeTurfNameForDedupe(name: unknown): string {
+  return String(name ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*\|\s*/g, " | ")
+    .trim();
+}
+
+/**
+ * Collapse turfs whose names are identical after normalization.
+ *
+ * Defensive against backend rows that share the same display name but
+ * different UUIDs — usually duplicate seed data or `leftJoinAndSelect` row
+ * fan-out that the paginate wrapper didn't fully fold.
+ *
+ * The surviving row is annotated with `aliasIds` — the full list of every
+ * duplicate turf UUID that collapsed into it. Downstream code uses
+ * `aliasIds` (not just `id`) when querying `/cameras` and `/recording/
+ * find-and-claim`, so cameras and recordings attached to a non-canonical
+ * sibling turf row still light up the court dropdown and still match.
+ *
+ * Returns the surviving rows (lowest id wins so the choice is deterministic)
+ * AND the list of collapsed duplicate id-groups so the debug button can
+ * surface exactly which DB rows are colliding.
+ */
+function dedupeTurfsByNormalizedNameForFind(rows: any[]): {
+  unique: any[];
+  duplicates: Array<{ name: string; ids: string[] }>;
+} {
+  const groups = new Map<string, any[]>();
+  for (const t of rows) {
+    if (!t?.id) continue;
+    const key =
+      normalizeTurfNameForDedupe(t?.name) || `__noname__:${String(t.id)}`;
+    const existing = groups.get(key) ?? [];
+    existing.push(t);
+    groups.set(key, existing);
+  }
+  const unique: any[] = [];
+  const duplicates: Array<{ name: string; ids: string[] }> = [];
+  for (const [, group] of groups) {
+    if (group.length === 0) continue;
+    const sorted = [...group].sort((a, b) =>
+      String(a.id).localeCompare(String(b.id)),
+    );
+    const survivor = sorted[0];
+    const aliasIds = sorted.map((g) => String(g.id));
+    unique.push({ ...survivor, aliasIds });
+    if (sorted.length > 1) {
+      duplicates.push({
+        name: String(survivor?.name ?? ""),
+        ids: aliasIds,
+      });
+    }
+  }
+  unique.sort((a, b) =>
+    String(a?.name ?? "").localeCompare(String(b?.name ?? ""), undefined, {
+      sensitivity: "base",
+    }),
+  );
+  return { unique, duplicates };
 }
 
 export default function FieldflixRecordingsScreen() {
@@ -321,10 +418,36 @@ export default function FieldflixRecordingsScreen() {
 
   const [findVenue, setFindVenue] = useState("");
   const [findVenueId, setFindVenueId] = useState<string | null>(null);
+  /**
+   * Every duplicate turf UUID that name-collapses into the picked venue
+   * (including `findVenueId` itself). Cameras and recordings attached to
+   * any of these rows are treated as belonging to the same venue. Without
+   * this, picking a deduped venue would miss cameras + recordings sitting
+   * on a sibling turf row from a buggy seed run.
+   */
+  const [findVenueAliasIds, setFindVenueAliasIds] = useState<string[]>([]);
   const [findGround, setFindGround] = useState("");
   const [findGroundId, setFindGroundId] = useState<string | null>(null);
+  /**
+   * The DB-backed `court_number` for the picked court. This is what we send
+   * to the backend search — court_number > cameraId because the court might
+   * have multiple cameras attached to different (duplicate) turf rows.
+   */
+  const [findCourtNumber, setFindCourtNumber] = useState<number | null>(null);
+  /** UI state for the per-row "this is mine" claim button in the result list. */
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimedIds, setClaimedIds] = useState<Set<string>>(new Set());
   const [systemTurfs, setSystemTurfs] = useState<any[]>([]);
   const [systemCameras, setSystemCameras] = useState<Camera[]>([]);
+  /** Diagnostics captured during the last `/turfs` pagination — surfaced via
+   *  the in-UI "Debug" button next to the venue dropdown so we can tell at a
+   *  glance whether duplicate-looking rows are an FE or a BE problem. */
+  const [turfsFetchDiag, setTurfsFetchDiag] = useState<TurfsFetchDiag | null>(
+    null,
+  );
+  /** Raw `/cameras` response for the currently selected venue, for the same
+   *  debug button next to the COURT NO. dropdown. */
+  const [camerasFetchDiag, setCamerasFetchDiag] = useState<unknown>(null);
   const [findPickDate, setFindPickDate] = useState(() => {
     const d = new Date();
     d.setHours(12, 0, 0, 0);
@@ -426,13 +549,55 @@ export default function FieldflixRecordingsScreen() {
       );
   }, [findVenue, findVenueId, systemTurfs]);
 
+  /**
+   * Camera fetch fanned out across every alias turf UUID the selected venue
+   * collapses (see `findVenueAliasIds`). Cameras returned for any alias are
+   * merged and de-duplicated by `id`, so cameras attached to a non-canonical
+   * sibling turf row still appear in the court dropdown.
+   *
+   * The aborted-state guard prevents stale fetches from a previous venue
+   * stomping the current state when the user switches venues quickly.
+   */
   useEffect(() => {
-    if (findVenueId) {
-      getCameras(findVenueId).then(setSystemCameras).catch(() => setSystemCameras([]));
-    } else {
+    const ids = findVenueAliasIds.length > 0
+      ? findVenueAliasIds
+      : findVenueId
+        ? [findVenueId]
+        : [];
+    if (ids.length === 0) {
       setSystemCameras([]);
+      setCamerasFetchDiag(null);
+      return;
     }
-  }, [findVenueId]);
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        ids.map((tid) =>
+          getCameras(tid)
+            .then((cams) => ({ turfId: tid, cams, error: null as string | null }))
+            .catch((err) => ({
+              turfId: tid,
+              cams: [] as Camera[],
+              error: String(err),
+            })),
+        ),
+      );
+      if (cancelled) return;
+      const merged = new Map<string, Camera>();
+      for (const r of results) {
+        for (const cam of r.cams) {
+          if (cam?.id && !merged.has(String(cam.id))) {
+            merged.set(String(cam.id), cam);
+          }
+        }
+      }
+      setSystemCameras([...merged.values()]);
+      setCamerasFetchDiag({ requestedTurfIds: ids, perTurf: results });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [findVenueId, findVenueAliasIds]);
 
   /**
    * Courts for the chosen turf (`/cameras?turfId=…`).
@@ -448,9 +613,14 @@ export default function FieldflixRecordingsScreen() {
     const venueId = String(findVenueId ?? "").trim();
     if (!venueId) return [];
 
+    // A camera is valid for this venue if its `turfId` matches the picked
+    // venue OR any of its alias turf UUIDs (see `findVenueAliasIds`).
+    const allowedTurfIds = new Set<string>(
+      findVenueAliasIds.length > 0 ? findVenueAliasIds : [venueId],
+    );
     const valid = systemCameras.filter((x) => {
       if (!x?.id) return false;
-      return String(x.turfId ?? "").trim() === venueId;
+      return allowedTurfIds.has(String(x.turfId ?? "").trim());
     });
     if (valid.length === 0) return [];
 
@@ -506,7 +676,7 @@ export default function FieldflixRecordingsScreen() {
     return [...merged.values()]
       .filter((x) => !q || x.name.toLowerCase().includes(q))
       .sort((a, b) => a.courtSortKey - b.courtSortKey);
-  }, [findGround, findVenueId, systemCameras]);
+  }, [findGround, findVenueId, findVenueAliasIds, systemCameras]);
 
   const isLocationComplete = !!findVenueId;
   const isScheduleComplete =
@@ -514,6 +684,107 @@ export default function FieldflixRecordingsScreen() {
     findStart.trim().length > 0 &&
     findEnd.trim().length > 0;
   const isVerifyComplete = digitsLast10(findPhone.trim()) != null;
+
+  /**
+   * Copy-to-clipboard for the "Debug" button next to the VENUE dropdown.
+   *
+   * Bundles the raw paginated `/turfs` response, the post-dedupe stats, and
+   * the venue list currently being rendered. If the BE returned duplicate
+   * names with distinct IDs (typical when `leftJoinAndSelect` fans out rows
+   * and the paginate wrapper doesn't fully fold them), `duplicateNameGroups`
+   * will list exactly which IDs collided.
+   */
+  const copyVenueDebug = useCallback(async () => {
+    const payload = {
+      kind: "find-recording.venue-dropdown",
+      at: new Date().toISOString(),
+      fetch: turfsFetchDiag,
+      systemTurfsCount: systemTurfs.length,
+      systemTurfs: systemTurfs.map((t: any) => ({
+        id: t?.id,
+        name: t?.name,
+        city: t?.city,
+        is_active: t?.is_active,
+        aliasIds: t?.aliasIds,
+      })),
+      currentFilterText: findVenue,
+      selectedVenueId: findVenueId,
+      selectedVenueAliasIds: findVenueAliasIds,
+      visibleDropdownCount: venueDropdownOptions.length,
+      visibleDropdown: venueDropdownOptions.map((t: any) => ({
+        id: t?.id,
+        name: t?.name,
+        aliasIds: t?.aliasIds,
+      })),
+    };
+    try {
+      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
+      Alert.alert(
+        "Venue debug copied",
+        `Raw rows: ${turfsFetchDiag?.rawCount ?? "?"} · After id-dedupe: ${turfsFetchDiag?.afterIdDedupeCount ?? "?"} · After name-dedupe: ${turfsFetchDiag?.finalCount ?? "?"} · Dropdown shown: ${venueDropdownOptions.length}`,
+      );
+    } catch {
+      Alert.alert("Copy failed", "Could not write to the clipboard.");
+    }
+  }, [
+    turfsFetchDiag,
+    systemTurfs,
+    findVenue,
+    findVenueId,
+    venueDropdownOptions,
+    findVenueAliasIds,
+  ]);
+
+  /**
+   * Copy-to-clipboard for the "Debug" button next to the COURT NO. dropdown.
+   *
+   * Dumps the raw `/cameras?turfId=…` response, every camera the FE sees for
+   * the venue (with `court_number`, `turfId`, `name`), and the processed
+   * dropdown rows. Lets us see whether a missing court is "BE didn't return
+   * a court_number for that camera" vs "FE filtered it out".
+   */
+  const copyCourtDebug = useCallback(async () => {
+    const payload = {
+      kind: "find-recording.court-dropdown",
+      at: new Date().toISOString(),
+      selectedVenueId: findVenueId,
+      selectedVenueAliasIds: findVenueAliasIds,
+      systemCamerasCount: systemCameras.length,
+      systemCameras: systemCameras.map((c) => ({
+        id: c?.id,
+        name: c?.name,
+        turfId: c?.turfId,
+        court_number: c?.court_number,
+        ground_number: c?.ground_number,
+      })),
+      rawCamerasResponse: camerasFetchDiag,
+      currentFilterText: findGround,
+      selectedGroundId: findGroundId,
+      visibleDropdownCount: groundOptions.length,
+      visibleDropdown: groundOptions.map((g: any) => ({
+        id: g?.id,
+        label: g?.name,
+        court_number: g?.court_number,
+      })),
+    };
+    try {
+      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
+      Alert.alert(
+        "Court debug copied",
+        `Cameras for venue: ${systemCameras.length} · Dropdown shown: ${groundOptions.length}`,
+      );
+    } catch {
+      Alert.alert("Copy failed", "Could not write to the clipboard.");
+    }
+  }, [
+    findVenueId,
+    findVenueAliasIds,
+    systemCameras,
+    camerasFetchDiag,
+    findGround,
+    findGroundId,
+    groundOptions,
+  ]);
 
   const onFindDateChange = (_e: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === "android") setShowFindDatePicker(false);
@@ -554,17 +825,26 @@ export default function FieldflixRecordingsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [a, b, c, flickList, allTurfs] = await Promise.all([
+      const [a, b, c, flickList, turfsResult] = await Promise.all([
         getMyRecordings(),
         getSharedWithMe(),
         getSharedByMe().catch(() => []),
         getPublicFlickShorts(undefined).catch(() => []),
-        fetchAllTurfsForFindRecording().catch(() => [] as any[]),
+        fetchAllTurfsForFindRecording().catch(
+          () =>
+            ({ turfs: [], diag: null } as unknown as {
+              turfs: any[];
+              diag: TurfsFetchDiag | null;
+            }),
+        ),
       ]);
       setMy(a);
       setShared(b);
       setSharedByMe(c);
-      setSystemTurfs(Array.isArray(allTurfs) ? allTurfs : []);
+      setSystemTurfs(
+        Array.isArray(turfsResult?.turfs) ? turfsResult.turfs : [],
+      );
+      setTurfsFetchDiag(turfsResult?.diag ?? null);
       const tally: Record<string, number> = {};
       const mine = Array.isArray(a)
         ? new Set<string>(
@@ -589,36 +869,103 @@ export default function FieldflixRecordingsScreen() {
     void load();
   }, [load]);
 
+  /**
+   * Search-only flow for the new "Find My Recording" UX.
+   *
+   * Sends ONE request to `POST /recording/find` with every alias turf UUID
+   * for the picked venue plus the picked court_number, a ±1h time window
+   * (applied server-side), and the last-10-digit phone filter. The backend
+   * does NOT auto-claim. We render the matches and let the user tap "This
+   * is my recording" on the row that's actually theirs — that's when we
+   * call `claimRecording` to add it to their library.
+   */
   const runFindGame = useCallback(async () => {
     const phoneLast10 = digitsLast10(findPhone.trim());
     if (!findVenueId || !findStart.trim() || !findEnd.trim() || !phoneLast10) return;
+    setClaimedIds(new Set());
+    setClaimingId(null);
     try {
       const fd = new Date(findPickDate);
       const m = String(fd.getMonth() + 1).padStart(2, "0");
       const d = String(fd.getDate()).padStart(2, "0");
-      const payload = {
-        turfId: findVenueId,
-        cameraId: findGroundId || undefined,
-        date: `${fd.getFullYear()}-${m}-${d}`,
+      const dateStr = `${fd.getFullYear()}-${m}-${d}`;
+      const turfIds =
+        findVenueAliasIds.length > 0 ? findVenueAliasIds : [findVenueId];
+
+      const matches = await findRecordings({
+        turfIds,
+        courtNumber:
+          typeof findCourtNumber === "number" ? findCourtNumber : undefined,
+        // Pass cameraId only as a legacy fallback for venues where the
+        // court_number column is still NULL — backend prefers courtNumber
+        // when both are present.
+        cameraId:
+          findCourtNumber == null && findGroundId
+            ? findGroundId
+            : undefined,
+        date: dateStr,
         startTime: findStart.trim(),
         endTime: findEnd.trim(),
         phoneLast10,
-      };
-      const res = await findAndClaimRecording(payload);
-      setFindMatches(res);
-      // Reload "My Recordings" + shared list so the just-claimed recording
-      // appears under My Recordings without a manual refresh, and re-sync the
-      // unlock list so the lock icon reflects any payment a group member has
-      // already made for this recording.
-      load();
-      refreshUnlockedIds();
+      });
+
+      // De-dupe defensively in case the backend ever returns multiples for
+      // the same recording id.
+      const merged = new Map<string, any>();
+      for (const rec of Array.isArray(matches) ? matches : []) {
+        const rid = String(rec?.id ?? "");
+        if (!rid || merged.has(rid)) continue;
+        merged.set(rid, rec);
+      }
+      setFindMatches([...merged.values()]);
     } catch (e) {
       console.warn("Error finding game", e);
       setFindMatches([]);
     }
     setShowVenueOptions(false);
     setShowGroundOptions(false);
-  }, [findVenueId, findGroundId, findPickDate, findStart, findEnd, findPhone, load, refreshUnlockedIds]);
+  }, [
+    findVenueId,
+    findVenueAliasIds,
+    findGroundId,
+    findCourtNumber,
+    findPickDate,
+    findStart,
+    findEnd,
+    findPhone,
+  ]);
+
+  /**
+   * Per-row "This is my recording" handler. Calls `POST /recording/claim/:id`
+   * for the picked match, then reloads the lists so the recording appears
+   * in My Recordings (and resyncs unlock state so the lock icon reflects any
+   * group-paid status).
+   */
+  const claimMatch = useCallback(
+    async (recordingId: string) => {
+      if (!recordingId || claimedIds.has(recordingId) || claimingId) return;
+      setClaimingId(recordingId);
+      try {
+        await claimRecording(recordingId);
+        setClaimedIds((prev) => {
+          const next = new Set(prev);
+          next.add(recordingId);
+          return next;
+        });
+        load();
+        refreshUnlockedIds();
+      } catch (e) {
+        console.warn("Error claiming recording", e);
+        Alert.alert(
+          "Couldn't add to My Recordings",
+          "Please try again. If this keeps happening, check the Debug button.",
+        );
+      } finally {
+        setClaimingId(null);
+      }
+    },
+    [claimedIds, claimingId, load, refreshUnlockedIds],
+  );
 
   /**
    * My Recordings list.
@@ -1271,6 +1618,28 @@ export default function FieldflixRecordingsScreen() {
                 <View style={styles.findLabelRow}>
                   <MapPinIcon color={MUTED} size={14} />
                   <Text style={styles.findLabel}>VENUES</Text>
+                  <View style={styles.findLabelSpacer} />
+                  <Pressable
+                    onPress={copyVenueDebug}
+                    style={styles.findDebugBtn}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy venue dropdown debug info"
+                  >
+                    <MaterialCommunityIcons
+                      name="bug-outline"
+                      size={12}
+                      color={ACCENT}
+                    />
+                    <Text style={styles.findDebugBtnText}>
+                      Debug ({turfsFetchDiag?.finalCount ?? systemTurfs.length}
+                      {turfsFetchDiag &&
+                      turfsFetchDiag.rawCount !== turfsFetchDiag.finalCount
+                        ? ` / raw ${turfsFetchDiag.rawCount}`
+                        : ""}
+                      )
+                    </Text>
+                  </Pressable>
                 </View>
 
                 <TextInput
@@ -1281,8 +1650,11 @@ export default function FieldflixRecordingsScreen() {
                   onChangeText={(v) => {
                     setFindVenue(v);
                     setFindVenueId(null);
+                    setFindVenueAliasIds([]);
                     setShowVenueOptions(true);
                     setFindGround("");
+                    setFindGroundId(null);
+                    setFindCourtNumber(null);
                   }}
                   style={styles.findInput}
                   placeholder="Select venue"
@@ -1297,7 +1669,25 @@ export default function FieldflixRecordingsScreen() {
                         onPress={() => {
                           setFindVenue(opt.name);
                           setFindVenueId(opt.id);
+                          // Record every duplicate turf UUID the picked
+                          // venue collapses (including its own). All
+                          // downstream queries (cameras, find-and-claim)
+                          // fan out over these so cameras / recordings
+                          // attached to a sibling row still match.
+                          const aliases: string[] = Array.isArray(
+                            (opt as { aliasIds?: unknown }).aliasIds,
+                          )
+                            ? ((opt as { aliasIds: unknown[] }).aliasIds.map(
+                                (x) => String(x ?? ""),
+                              ) as string[])
+                            : [];
+                          const ids = aliases.length > 0 ? aliases : [opt.id];
+                          setFindVenueAliasIds(
+                            Array.from(new Set(ids.filter((s) => !!s))),
+                          );
                           setFindGround("");
+                          setFindGroundId(null);
+                          setFindCourtNumber(null);
                           setShowVenueOptions(false);
                           scheduleScrollFilledInputToStart(findVenueInputRef);
                         }}
@@ -1376,6 +1766,33 @@ export default function FieldflixRecordingsScreen() {
                     </Svg>
                   </View>
                   <Text style={styles.findLabel}>COURT NO.</Text>
+                  <View style={styles.findLabelSpacer} />
+                  <Pressable
+                    onPress={copyCourtDebug}
+                    style={styles.findDebugBtn}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy court dropdown debug info"
+                    disabled={!findVenueId}
+                  >
+                    <MaterialCommunityIcons
+                      name="bug-outline"
+                      size={12}
+                      color={findVenueId ? ACCENT : MUTED}
+                    />
+                    <Text
+                      style={[
+                        styles.findDebugBtnText,
+                        !findVenueId && { color: MUTED },
+                      ]}
+                    >
+                      Debug ({groundOptions.length}
+                      {systemCameras.length !== groundOptions.length
+                        ? ` / cams ${systemCameras.length}`
+                        : ""}
+                      )
+                    </Text>
+                  </Pressable>
                 </View>
                 <TextInput
                   ref={findGroundInputRef}
@@ -1391,6 +1808,7 @@ export default function FieldflixRecordingsScreen() {
                   onChangeText={(v) => {
                     setFindGround(v);
                     setFindGroundId(null);
+                    setFindCourtNumber(null);
                     setShowGroundOptions(true);
                   }}
                   style={styles.findInput}
@@ -1411,6 +1829,13 @@ export default function FieldflixRecordingsScreen() {
                         onPress={() => {
                           setFindGround(opt.name);
                           setFindGroundId(opt.id);
+                          // `courtSortKey` is the DB `court_number`.
+                          setFindCourtNumber(
+                            typeof (opt as { courtSortKey?: number })
+                              .courtSortKey === "number"
+                              ? (opt as { courtSortKey: number }).courtSortKey
+                              : null,
+                          );
                           setShowGroundOptions(false);
                           scheduleScrollFilledInputToStart(findGroundInputRef);
                         }}
@@ -1611,15 +2036,18 @@ export default function FieldflixRecordingsScreen() {
                 <View style={styles.findResults}>
                   <Text style={styles.findResultsTitle}>
                     {findMatches.length === 0
-                      ? "No matches in your recordings for those details."
-                      : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"} in your library`}
+                      ? "No matches for those details. Try widening the time or double-check the phone number."
+                      : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"} — tap the one that's yours to add it to My Recordings.`}
                   </Text>
                   {findMatches.map((r: any) => {
+                    const rid = String(r?.id ?? "");
                     const title = r?.turf?.name ?? r?.name ?? "Recording";
                     const when = formatRecordingListWhen(r?.startTime);
                     const court = recordingCourtLabel(r);
+                    const isClaimed = claimedIds.has(rid);
+                    const isClaiming = claimingId === rid;
                     return (
-                      <View key={String(r.id)} style={styles.findResultRow}>
+                      <View key={rid || String(Math.random())} style={styles.findResultRow}>
                         <Text style={styles.findResultName} numberOfLines={2}>
                           {title}
                         </Text>
@@ -1629,6 +2057,41 @@ export default function FieldflixRecordingsScreen() {
                           </Text>
                         ) : null}
                         <Text style={styles.findResultWhen}>{when}</Text>
+                        <Pressable
+                          style={[
+                            styles.findResultClaimBtn,
+                            (isClaimed || isClaiming) &&
+                              styles.findResultClaimBtnDisabled,
+                          ]}
+                          onPress={() => claimMatch(rid)}
+                          disabled={
+                            !rid || isClaimed || isClaiming || claimingId !== null
+                          }
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            isClaimed
+                              ? "Already in My Recordings"
+                              : "Add this recording to My Recordings"
+                          }
+                        >
+                          <MaterialCommunityIcons
+                            name={isClaimed ? "check-circle" : "plus-circle-outline"}
+                            size={16}
+                            color={isClaimed ? "#fff" : ACCENT}
+                          />
+                          <Text
+                            style={[
+                              styles.findResultClaimText,
+                              isClaimed && styles.findResultClaimTextOn,
+                            ]}
+                          >
+                            {isClaimed
+                              ? "Added"
+                              : isClaiming
+                                ? "Adding…"
+                                : "This is my recording"}
+                          </Text>
+                        </Pressable>
                       </View>
                     );
                   })}
@@ -2539,6 +3002,24 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: MUTED,
   },
+  findLabelSpacer: { flex: 1 },
+  findDebugBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.35)",
+    backgroundColor: "rgba(34, 197, 94, 0.08)",
+  },
+  findDebugBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    color: ACCENT,
+  },
   findInput: {
     width: "100%",
     minHeight: 44,
@@ -2683,6 +3164,33 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 13,
     color: MUTED,
+  },
+  findResultClaimBtn: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.5)",
+    backgroundColor: "rgba(34, 197, 94, 0.1)",
+  },
+  findResultClaimBtnDisabled: {
+    backgroundColor: ACCENT,
+    borderColor: ACCENT,
+    opacity: 0.95,
+  },
+  findResultClaimText: {
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    letterSpacing: 0.3,
+    color: ACCENT,
+  },
+  findResultClaimTextOn: {
+    color: "#fff",
   },
   emptyList: {
     fontFamily: FF.regular,

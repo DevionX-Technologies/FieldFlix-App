@@ -1037,9 +1037,64 @@ export type FindAndClaimRecordingPayload = {
   phoneLast10: string;
 };
 
+/**
+ * Legacy combined search + auto-claim. New "Find My Recording" UX uses
+ * `findRecordings` + `claimRecording` so the user explicitly picks the
+ * matching row before it is added to their library. Kept for back-compat.
+ */
 export async function findAndClaimRecording(
   payload: FindAndClaimRecordingPayload,
 ): Promise<any[]> {
   const { data } = await axiosInstance.post('/recording/find-and-claim', payload);
   return coerceToRecordingList(data);
+}
+
+export type FindRecordingsPayload = {
+  /**
+   * Every duplicate turf UUID for the picked venue. The DB has duplicate
+   * turf rows for the same display name; recordings might live on any of
+   * them. The FE collects all aliases from the deduped venue and sends
+   * them as a set — the BE searches across all of them.
+   */
+  turfIds: string[];
+  /**
+   * The court number the user picked from the dropdown (DB-backed; not the
+   * camera id). The BE expands this to every camera with that court_number
+   * at any of `turfIds`.
+   */
+  courtNumber?: number;
+  /** Legacy / fallback when the FE can't resolve a court_number. */
+  cameraId?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  phoneLast10: string;
+};
+
+/**
+ * Search-only: `POST /recording/find`. Returns the list of recordings that
+ * match the venue (and aliases) + court + ±1h time window + phone-last-10
+ * WITHOUT creating any SharedRecording rows. Caller renders the list and
+ * passes the user's pick to `claimRecording`.
+ */
+export async function findRecordings(
+  payload: FindRecordingsPayload,
+): Promise<any[]> {
+  const { data } = await axiosInstance.post('/recording/find', payload);
+  return coerceToRecordingList(data);
+}
+
+/**
+ * Claim a single recording: `POST /recording/claim/:recordingId`.
+ * Idempotent — re-claiming is a no-op. Payment lock stays in place.
+ */
+export async function claimRecording(recordingId: string): Promise<{
+  claimed: boolean;
+  reason: string;
+  recording: any;
+}> {
+  const { data } = await axiosInstance.post(
+    `/recording/claim/${encodeURIComponent(recordingId)}`,
+  );
+  return data as { claimed: boolean; reason: string; recording: any };
 }
