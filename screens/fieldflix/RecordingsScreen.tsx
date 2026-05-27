@@ -403,8 +403,10 @@ export default function FieldflixRecordingsScreen() {
   }, [findVenueId]);
 
   /**
-   * Courts for the chosen turf (`/cameras?turfId=…`). Labels prefer DB `court_number`,
-   * then a number embedded in `camera.name` — never fabricate fake `Court N` indices.
+   * Courts for the chosen turf (`/cameras?turfId=…`).
+   *
+   * - Label from DB `court_number` first; optional Court/Ground …N in camera name — not raw serial digits.
+   * - Dedupe multiple camera rows sharing the same court (`court_number` or same Court/Ground label).
    */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
@@ -421,34 +423,60 @@ export default function FieldflixRecordingsScreen() {
       String(a.id).localeCompare(String(b.id)),
     );
 
-    const decorated = idSorted.map((cam) => {
+    type GroundOpt = Camera & {
+      name: string;
+      courtSortKey: number | null;
+      dedupeKey: string;
+    };
+
+    const rows: GroundOpt[] = idSorted.map((cam) => {
       const rawName = String(cam.name ?? "").trim();
       const looksLikeUuid = UUID_RE.test(rawName);
-      const digitsInName = !looksLikeUuid ? rawName.match(/(\d+)/)?.[1] : null;
+      /** Court index from wording only — avoids confusing install serials (e.g. "CAM-105") with court no. */
+      const courtPhrase =
+        rawName && !looksLikeUuid
+          ? rawName.match(
+              /(?:^|\b)(?:court|ground)\s*[#:]?\s*(\d{1,3})(?:\b|$)/i,
+            )
+          : null;
+      const fromPhrase =
+        courtPhrase?.[1] != null ? Number(courtPhrase[1]) : NaN;
 
       let label: string;
       let sortKey: number | null = null;
+      let dedupeKey: string;
+
       const explicitN = explicitCourtNumberFromCamera(cam);
       if (explicitN != null) {
         sortKey = explicitN;
         label = `Court ${explicitN}`;
-      } else if (digitsInName != null && Number.isFinite(Number(digitsInName))) {
-        sortKey = Number(digitsInName);
-        label = `Court ${sortKey}`;
+        dedupeKey = `db:${explicitN}`;
+      } else if (Number.isFinite(fromPhrase)) {
+        sortKey = fromPhrase;
+        label = `Court ${fromPhrase}`;
+        dedupeKey = `lbl:${fromPhrase}`;
       } else if (rawName && !looksLikeUuid) {
         label = rawName;
+        dedupeKey = `name:${rawName.toLowerCase().replace(/\s+/g, " ").trim()}`;
       } else {
         label = `Camera ${String(cam.id).slice(0, 8)}…`;
+        dedupeKey = `cam:${cam.id}`;
       }
 
-      return {
-        ...cam,
-        name: label,
-        courtSortKey: sortKey,
-      };
+      return { ...cam, name: label, courtSortKey: sortKey, dedupeKey };
     });
 
-    return decorated
+    const merged = new Map<string, GroundOpt>();
+    for (const row of rows) {
+      const prev = merged.get(row.dedupeKey);
+      const pick =
+        prev == null || String(row.id).localeCompare(String(prev.id)) < 0
+          ? row
+          : prev;
+      merged.set(row.dedupeKey, pick);
+    }
+
+    return [...merged.values()]
       .filter((x) => !q || x.name.toLowerCase().includes(q))
       .sort((a, b) => {
         const na = a.courtSortKey;
