@@ -10,12 +10,10 @@ function compactText(v: unknown): string {
 }
 
 /**
- * Ops-mapped physical court index from `/cameras` (`court_number` only).
- * We intentionally ignore `ground_number` for numeric labels — it often disagrees
- * with on-venue numbering (e.g. Botanical 3–6 vs internal 19–22-style values).
+ * Physical court index from `/cameras` — use `court_number` from the venue (DB-backed).
  */
 export function explicitCourtNumberFromCamera(
-  cam: Pick<Camera, 'court_number' | 'ground_number'>,
+  cam: Pick<Camera, 'court_number'>,
 ): number | null {
   const raw = cam.court_number;
   if (raw === undefined || raw === null || String(raw).trim() === '') {
@@ -32,11 +30,11 @@ export function courtDisplayLabelFromCamera(cam: Camera | null | undefined): str
   if (!cam) return null;
   const n = explicitCourtNumberFromCamera(cam);
   if (n != null) return `Court ${n}`;
-  const rawStr =
-    compactText(cam.court_number != null ? String(cam.court_number) : '') ||
-    compactText(cam.ground_number != null ? String(cam.ground_number) : '');
+  const rawStr = compactText(
+    cam.court_number != null ? String(cam.court_number) : '',
+  );
   if (rawStr) {
-    if (/^court\b/i.test(rawStr) || /^ground\b/i.test(rawStr)) return rawStr;
+    if (/^court\b/i.test(rawStr)) return rawStr;
     return `Court ${rawStr}`;
   }
   const camName = compactText(cam.name ?? '');
@@ -48,7 +46,7 @@ export function courtDisplayLabelFromCamera(cam: Camera | null | undefined): str
   return null;
 }
 
-/** Same normalization as RecordingTime (`GroundNumber` / `GroundDescription` from QR). */
+/** QR payload may still use legacy keys (`groundNumber`) — UI always speaks in terms of court. */
 export function normalizeGroundLabelFromQr(
   groundNumber?: string | null,
   groundDescription?: string | null,
@@ -57,8 +55,11 @@ export function normalizeGroundLabelFromQr(
   const rawDesc = String(groundDescription ?? '').trim();
   const source = rawNumber || rawDesc;
   if (!source) return 'Court';
-  const normalized = source.replace(/\s+/g, ' ').trim();
-  if (/^court\b/i.test(normalized) || /^ground\b/i.test(normalized)) {
+  let normalized = source.replace(/\s+/g, ' ').trim();
+  if (/^ground\b/i.test(normalized)) {
+    normalized = normalized.replace(/^ground\b/i, 'Court').replace(/\s+/g, ' ').trim();
+  }
+  if (/^court\b/i.test(normalized)) {
     return normalized;
   }
   return `Court ${normalized}`;

@@ -117,25 +117,22 @@ function isUuidCourtLabel(label: string): boolean {
   return UUID_RE.test(rest);
 }
 
-function recordingGroundLabel(r: any): string {
+function recordingCourtLabel(r: any): string {
   const turf = r?.turf;
   const cam = (r?.camera ?? null) as Camera | null;
   if (cam) {
     const n = explicitCourtNumberFromCamera(cam);
     if (n != null) return `Court ${n}`;
-    const rawStr =
-      compactText(
-        cam.court_number != null ? String(cam.court_number) : "",
-      ) ||
-      compactText(
-        cam.ground_number != null ? String(cam.ground_number) : "",
-      );
+    const rawStr = compactText(
+      cam.court_number != null ? String(cam.court_number) : "",
+    );
     if (rawStr) {
-      if (/^court\b/i.test(rawStr) || /^ground\b/i.test(rawStr)) return rawStr;
+      if (/^court\b/i.test(rawStr)) return rawStr;
       return `Court ${rawStr}`;
     }
   }
   const camName = compactText(r?.camera?.name ?? "");
+  /** Legacy payloads may still send ground* — show as Court in UI only. */
   const fromFields = compactText(
     r?.GroundNumber ??
       turf?.ground_number ??
@@ -144,9 +141,14 @@ function recordingGroundLabel(r: any): string {
       "",
   );
   if (fromFields) {
-    if (/^court\b/i.test(fromFields) || /^ground\b/i.test(fromFields)) {
-      return fromFields;
+    if (/^ground\b/i.test(fromFields)) {
+      const asCourt = fromFields
+        .replace(/^ground\b/i, "Court")
+        .replace(/\s+/g, " ")
+        .trim();
+      return /^court\b/i.test(asCourt) ? asCourt : `Court ${asCourt}`;
     }
+    if (/^court\b/i.test(fromFields)) return fromFields;
     return `Court ${fromFields}`;
   }
   if (camName) {
@@ -156,7 +158,10 @@ function recordingGroundLabel(r: any): string {
   }
   const rawId = compactText(r?.cameraId ?? "");
   if (rawId && !UUID_RE.test(rawId)) {
-    if (/^court\b/i.test(rawId) || /^ground\b/i.test(rawId)) return rawId;
+    if (/^court\b/i.test(rawId)) return rawId;
+    if (/^ground\b/i.test(rawId)) {
+      return rawId.replace(/^ground\b/i, "Court").replace(/\s+/g, " ").trim();
+    }
     return `Court ${rawId}`;
   }
   return "";
@@ -405,8 +410,8 @@ export default function FieldflixRecordingsScreen() {
   /**
    * Courts for the chosen turf (`/cameras?turfId=…`).
    *
-   * - Label from DB `court_number` first; optional Court/Ground …N in camera name — not raw serial digits.
-   * - Dedupe multiple camera rows sharing the same court (`court_number` or same Court/Ground label).
+   * - Label from DB `court_number` first; optional "Court …N" pattern in camera `name` (not generic serial digits).
+   * - Dedupe camera rows sharing the same `court_number` or same parsed court label.
    */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
@@ -436,7 +441,7 @@ export default function FieldflixRecordingsScreen() {
       const courtPhrase =
         rawName && !looksLikeUuid
           ? rawName.match(
-              /(?:^|\b)(?:court|ground)\s*[#:]?\s*(\d{1,3})(?:\b|$)/i,
+              /(?:^|\b)court\s*[#:]?\s*(\d{1,3})(?:\b|$)/i,
             )
           : null;
       const fromPhrase =
@@ -1303,7 +1308,7 @@ export default function FieldflixRecordingsScreen() {
                       <Circle cx={12} cy={12} r={9} stroke={MUTED} strokeWidth={2} />
                     </Svg>
                   </View>
-                  <Text style={styles.findLabel}>GROUND / COURT NO.</Text>
+                  <Text style={styles.findLabel}>COURT NO.</Text>
                 </View>
                 <TextInput
                   ref={findGroundInputRef}
@@ -1545,7 +1550,7 @@ export default function FieldflixRecordingsScreen() {
                   {findMatches.map((r: any) => {
                     const title = r?.turf?.name ?? r?.name ?? "Recording";
                     const when = formatRecordingListWhen(r?.startTime);
-                    const court = recordingGroundLabel(r);
+                    const court = recordingCourtLabel(r);
                     return (
                       <View key={String(r.id)} style={styles.findResultRow}>
                         <Text style={styles.findResultName} numberOfLines={2}>
