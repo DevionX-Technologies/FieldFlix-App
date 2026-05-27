@@ -496,6 +496,29 @@ export async function getPaymentHistory(): Promise<PaymentHistoryRow[]> {
   return Array.isArray(data) ? data : [];
 }
 
+/**
+ * Group-unlock view (`GET /payments/unlocked-recordings`).
+ *
+ * Returns the IDs of recordings visible to the current user (owned OR claimed
+ * via Find My Recording) that any group member has paid to unlock. Used by
+ * the Recordings screen so the lock icon flips to "open" the moment a single
+ * person in the group completes payment — even if it wasn't this user.
+ */
+export async function getUnlockedRecordingIds(): Promise<string[]> {
+  try {
+    const { data } = await axiosInstance.get<{ recording_ids?: unknown }>(
+      '/payments/unlocked-recordings',
+    );
+    const raw = data && typeof data === 'object' ? data.recording_ids : null;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((x) => String(x ?? '').trim())
+      .filter((s) => s.length > 0);
+  } catch {
+    return [];
+  }
+}
+
 export type ActivePlan = {
   active: boolean;
   plan: PlanId | null;

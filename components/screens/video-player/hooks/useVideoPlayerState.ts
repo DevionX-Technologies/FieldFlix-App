@@ -52,6 +52,11 @@ export const useVideoPlayerState = (
   const onPaywall = previewCap?.onPaywall;
   const capSeconds = previewCap?.capSeconds ?? 150;
 
+  /** After purchase / sync, unlock so the cap watcher can idle and overlays can dismiss cleanly. */
+  React.useEffect(() => {
+    if (isPaid) setPaywallTriggered(false);
+  }, [isPaid]);
+
   React.useEffect(() => {
     if (isPaid || !player) return;
     let cancelled = false;

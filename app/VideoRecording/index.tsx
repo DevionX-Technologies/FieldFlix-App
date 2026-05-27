@@ -5,13 +5,13 @@ import VideoPlayer from "@/components/screens/video-player/VideoPlayer";
 import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 interface VideoPlayerScreenParams {
   source?: string;
   filename?: string;
   recordingHighlights?: string;
-  /** When `'1'`, force preview mode regardless of entitlement (used by share-link landings). */
+  /** When `'1'`, opener intended preview UX (Hero without access); effective paywall follows `recordingUnlocked` merge. */
   previewMode?: string;
   /** Originating recording id (highlights / preview flow). */
   recordingId?: string;
@@ -29,7 +29,6 @@ export default function VideoPlayerScreen() {
     source,
     filename,
     recordingHighlights: recordingHighlightsParam,
-    previewMode,
     recordingId: rid,
     soloHighlight: soloParam,
     showVideosList: showVideosParam,
@@ -49,7 +48,6 @@ export default function VideoPlayerScreen() {
       : undefined;
   const [paywallVisible, setPaywallVisible] = useState(false);
 
-  const forcedPreview = previewMode === '1';
   const soloHighlight =
     soloParam === "1" || (Array.isArray(soloParam) && soloParam[0] === "1");
 
@@ -79,7 +77,11 @@ export default function VideoPlayerScreen() {
     recordingId &&
       unlockedRecordingIds.includes(String(recordingId).trim()),
   );
-  const isPaidPlayback = forcedPreview ? false : recordingUnlocked;
+  const isPaidPlayback = recordingUnlocked;
+
+  useEffect(() => {
+    if (recordingUnlocked) setPaywallVisible(false);
+  }, [recordingUnlocked]);
 
   const onPaywall = useCallback(() => {
     setPaywallVisible(true);
@@ -116,7 +118,10 @@ export default function VideoPlayerScreen() {
       />
       <PaywallSheet
         visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
+        onClose={() => {
+          setPaywallVisible(false);
+          void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
+        }}
       />
     </>
   );

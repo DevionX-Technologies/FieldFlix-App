@@ -60,13 +60,12 @@ import { useIsAdminRole } from "@/hooks/useIsAdminRole";
 
 const LOGO = require("@/assets/fieldflix-web/fieldflix_logo.png");
 const CAM_BTN = require("@/assets/fieldflix-web/cam-button.png");
-/** Static promos until the API supplies Coming Soon assets. Slide 1: coming-hero;
- *  slide 2: Line Calls promo (`coming-soon-2-line-calls.png`, kebab-case for Metro).
- *  slide 3 follows. Hyphenated names avoid resolver issues on Android/iOS. */
+/** Static promos until the API supplies Coming Soon assets. Kebab-case paths only (OTA / Metro).
+ *  Slide 1: coming-hero · 2: line-calls · 3: drs-engine */
 const COMING_SOON_CAROUSEL_IMAGES = [
   require("@/assets/images/coming-hero.png"),
   require("@/assets/fieldflix-web/coming-soon/coming-soon-2-line-calls.png"),
-  require("@/assets/fieldflix-web/coming-soon/coming-soon-3.png"),
+  require("@/assets/fieldflix-web/coming-soon/coming-soon-3-drs-engine.png"),
 ] as const;
 const COMING_SOON_CARD_HEIGHT = 158;
 const EXPLICIT_VENUE_IMAGE_BY_NAME: Record<string, ImageSourcePropType> = {
@@ -1074,7 +1073,10 @@ export default function FieldflixHomeScreen() {
                               : index === 1
                                 ? /* Nearer top anchor → less top crop, more bottom crop vs center */
                                   { top: "26%", left: "50%" }
-                                : "center"
+                                : index === 2
+                                  ? /* DRS ENGINE art — bias left so headline stays in frame */
+                                    { left: "32%", top: "50%" }
+                                  : "center"
                           }
                           transition={220}
                           cachePolicy="memory-disk"

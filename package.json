@@ -18,7 +18,9 @@
     "eas:build:all": "eas build --platform all --profile production",
     "eas:update": "eas update --auto",
     "eas:update:production": "eas update --channel production --message \"OTA\"",
-    "eas:update:preview": "eas update --channel preview --message \"OTA preview\""
+    "eas:update:preview": "eas update --channel preview --message \"OTA preview\"",
+    "verify:flickshorts-coming-soon": "node scripts/verify-flickshorts-coming-soon.mjs",
+    "eas:update:production:branch": "node scripts/verify-flickshorts-coming-soon.mjs && eas update --branch production"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

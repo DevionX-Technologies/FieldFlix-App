@@ -1,4 +1,5 @@
 import { FlickReelCell } from "@/components/fieldflix/FlickReelCell";
+import { FlickShortsComingSoonEmpty } from "@/components/fieldflix/FlickShortsComingSoonEmpty";
 import { Paths } from "@/data/paths";
 import {
   commentOnFlickShort,
@@ -248,15 +249,7 @@ export default function FieldflixFlixShortsScreen() {
               <ActivityIndicator color={WEB.greenBright} size="large" />
             </View>
           ) : items.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>
-                No FlickShorts in this filter yet.
-              </Text>
-              <Text style={styles.emptySub}>
-                Admins can publish highlights from the admin dashboard. Approve a
-                short to show it here for everyone.
-              </Text>
-            </View>
+            <FlickShortsComingSoonEmpty />
           ) : (
             <FlatList
               style={styles.list}
@@ -407,12 +400,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-  },
-  emptyText: {
-    fontFamily: FF.semiBold,
-    color: "#fff",
-    fontSize: 16,
-    textAlign: "center",
   },
   emptySub: {
     fontFamily: FF.regular,

@@ -387,17 +387,44 @@ export default function FieldflixRecordingsScreen() {
     [findPickDate],
   );
 
+  /**
+   * Venue dropdown — backs the "VENUES" autocomplete.
+   *
+   * - Every active turf returned by `/turfs` must appear (DB currently has 7).
+   *   We no longer drop rows with empty names; we surface the city or a stub
+   *   instead so admins can still see — and fix — broken entries.
+   * - When a venue is already selected and the input text exactly matches its
+   *   name, treat the query as empty so re-opening the dropdown shows the full
+   *   list (previously it filtered down to just the selected venue).
+   */
   const venueDropdownOptions = useMemo(() => {
     const q = findVenue.trim().toLowerCase();
-    return systemTurfs
-      .filter((x) => x && x.id && (x.name ?? "").toString().trim().length > 0)
-      .filter((x) => !q || String(x.name).toLowerCase().includes(q))
+    const selectedNameLower = findVenueId
+      ? String(
+          systemTurfs.find((t) => t?.id === findVenueId)?.name ?? "",
+        )
+          .toLowerCase()
+          .trim()
+      : "";
+    const effectiveQ = q && q === selectedNameLower ? "" : q;
+
+    const decorated = systemTurfs
+      .filter((x) => x && x.id)
+      .map((x) => {
+        const trimmedName = String(x.name ?? "").trim();
+        const displayName =
+          trimmedName ||
+          String(x.city ?? "").trim() ||
+          `Venue ${String(x.id).slice(0, 8)}`;
+        return { ...x, name: displayName };
+      });
+
+    return decorated
+      .filter((x) => !effectiveQ || x.name.toLowerCase().includes(effectiveQ))
       .sort((a, b) =>
-        String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, {
-          sensitivity: "base",
-        }),
+        a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
       );
-  }, [findVenue, systemTurfs]);
+  }, [findVenue, findVenueId, systemTurfs]);
 
   useEffect(() => {
     if (findVenueId) {
@@ -410,8 +437,11 @@ export default function FieldflixRecordingsScreen() {
   /**
    * Courts for the chosen turf (`/cameras?turfId=…`).
    *
-   * - Label from DB `court_number` first; optional "Court …N" pattern in camera `name` (not generic serial digits).
-   * - Dedupe camera rows sharing the same `court_number` or same parsed court label.
+   * - Source of truth is `Camera.court_number` (the column admins recently populated on every
+   *   camera). Each distinct court_number at the venue produces exactly one dropdown row.
+   * - Fallback to a "Court N" phrase parsed from the camera `name` only when court_number is null.
+   * - NEVER surface raw camera UUIDs, install serials (e.g. CAM-105), or "Camera xxxx…" labels —
+   *   those confused users into picking a camera id when they wanted a court number.
    */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
@@ -424,53 +454,45 @@ export default function FieldflixRecordingsScreen() {
     });
     if (valid.length === 0) return [];
 
-    const idSorted = [...valid].sort((a, b) =>
-      String(a.id).localeCompare(String(b.id)),
-    );
-
     type GroundOpt = Camera & {
       name: string;
-      courtSortKey: number | null;
+      courtSortKey: number;
       dedupeKey: string;
     };
 
-    const rows: GroundOpt[] = idSorted.map((cam) => {
-      const rawName = String(cam.name ?? "").trim();
-      const looksLikeUuid = UUID_RE.test(rawName);
-      /** Court index from wording only — avoids confusing install serials (e.g. "CAM-105") with court no. */
-      const courtPhrase =
-        rawName && !looksLikeUuid
-          ? rawName.match(
-              /(?:^|\b)court\s*[#:]?\s*(\d{1,3})(?:\b|$)/i,
-            )
-          : null;
-      const fromPhrase =
-        courtPhrase?.[1] != null ? Number(courtPhrase[1]) : NaN;
+    const rows: GroundOpt[] = [];
+    for (const cam of valid) {
+      // 1. Authoritative: the `court_number` column on the cameras table.
+      let courtN: number | null = explicitCourtNumberFromCamera(cam);
 
-      let label: string;
-      let sortKey: number | null = null;
-      let dedupeKey: string;
-
-      const explicitN = explicitCourtNumberFromCamera(cam);
-      if (explicitN != null) {
-        sortKey = explicitN;
-        label = `Court ${explicitN}`;
-        dedupeKey = `db:${explicitN}`;
-      } else if (Number.isFinite(fromPhrase)) {
-        sortKey = fromPhrase;
-        label = `Court ${fromPhrase}`;
-        dedupeKey = `lbl:${fromPhrase}`;
-      } else if (rawName && !looksLikeUuid) {
-        label = rawName;
-        dedupeKey = `name:${rawName.toLowerCase().replace(/\s+/g, " ").trim()}`;
-      } else {
-        label = `Camera ${String(cam.id).slice(0, 8)}…`;
-        dedupeKey = `cam:${cam.id}`;
+      // 2. Legacy fallback: only accept a real "Court N" phrase in the camera name.
+      //    We deliberately do NOT match bare digits — those would mislabel install
+      //    serials and camera UUIDs as a court number.
+      if (courtN == null) {
+        const rawName = String(cam.name ?? "").trim();
+        if (rawName && !UUID_RE.test(rawName)) {
+          const m = rawName.match(
+            /(?:^|\b)court\s*[#:]?\s*(\d{1,3})(?:\b|$)/i,
+          );
+          const parsed = m?.[1] != null ? Number(m[1]) : NaN;
+          if (Number.isFinite(parsed)) courtN = parsed;
+        }
       }
 
-      return { ...cam, name: label, courtSortKey: sortKey, dedupeKey };
-    });
+      // 3. No DB court_number and no "Court N" name → skip. The dropdown only ever
+      //    contains rows that map to a real court at the venue.
+      if (courtN == null) continue;
 
+      rows.push({
+        ...cam,
+        name: `Court ${courtN}`,
+        courtSortKey: courtN,
+        dedupeKey: `court:${courtN}`,
+      });
+    }
+
+    // Multiple cameras can sit on the same physical court — collapse to one row.
+    // Pick the lowest camera id so the selection is deterministic.
     const merged = new Map<string, GroundOpt>();
     for (const row of rows) {
       const prev = merged.get(row.dedupeKey);
@@ -483,16 +505,7 @@ export default function FieldflixRecordingsScreen() {
 
     return [...merged.values()]
       .filter((x) => !q || x.name.toLowerCase().includes(q))
-      .sort((a, b) => {
-        const na = a.courtSortKey;
-        const nb = b.courtSortKey;
-        if (na != null && nb != null && na !== nb) return na - nb;
-        if (na != null && nb == null) return -1;
-        if (na == null && nb != null) return 1;
-        return a.name.localeCompare(b.name, undefined, {
-          sensitivity: "base",
-        });
-      });
+      .sort((a, b) => a.courtSortKey - b.courtSortKey);
   }, [findGround, findVenueId, systemCameras]);
 
   const isLocationComplete = !!findVenueId;
@@ -593,38 +606,92 @@ export default function FieldflixRecordingsScreen() {
       };
       const res = await findAndClaimRecording(payload);
       setFindMatches(res);
+      // Reload "My Recordings" + shared list so the just-claimed recording
+      // appears under My Recordings without a manual refresh, and re-sync the
+      // unlock list so the lock icon reflects any payment a group member has
+      // already made for this recording.
       load();
+      refreshUnlockedIds();
     } catch (e) {
       console.warn("Error finding game", e);
       setFindMatches([]);
     }
     setShowVenueOptions(false);
     setShowGroundOptions(false);
-  }, [findVenueId, findGroundId, findPickDate, findStart, findEnd, findPhone, load]);
+  }, [findVenueId, findGroundId, findPickDate, findStart, findEnd, findPhone, load, refreshUnlockedIds]);
 
-  const myRows =
-    my.length > 0
-      ? my.map((s: any, i: number) => {
-          const hid = String(s?.id ?? "");
-          const h =
-            highlightCountFromRecording(s) +
-            (hid ? (shortsPerRecording[hid] ?? 0) : 0);
-          return {
-            id: String(s?.id ?? i),
-            recordingId: s?.id ? String(s.id) : null,
-            title: s?.turf?.name ?? s?.recording_name ?? s?.name ?? "Recording",
-            location: s?.turf?.city ?? s?.turf?.location ?? s?.location ?? "",
-            when: formatRecordingListWhen(s?.startTime),
-            duration: recordingDurationLabel(s),
-            thumbUrl: recordingThumbUrl(s),
-            highlights: h > 0 ? h : null,
-            status: String(s?.status ?? "").toLowerCase(),
-            isReady: recordingIsReady(s),
-            tags: [] as string[],
-            moreTags: 0,
-          };
-        })
-      : [];
+  /**
+   * My Recordings list.
+   *
+   * Includes:
+   *   1. Recordings the user started themselves (`getMyRecordings`).
+   *   2. Recordings claimed via "Find My Recording" — those come back from
+   *      `/recording/shared-with-me` as SharedRecording rows whose inner
+   *      `.recording` is what the user wants to see here.
+   *
+   * Both are merged and de-duplicated by recording id so a single recording
+   * never appears twice (e.g. when a user is both the owner and somehow also
+   * shared with). Lock state is unaffected — `recordingUnlockedPlayback` only
+   * returns true for ids the user has actually paid for, so claimed-but-unpaid
+   * rows stay locked until the user (or someone in their group) buys them.
+   */
+  const myRows = useMemo(() => {
+    const collected: any[] = [];
+    const seen = new Set<string>();
+
+    const pushOnce = (rec: any) => {
+      if (!rec) return;
+      const rid = String(rec?.id ?? "").trim();
+      if (!rid || seen.has(rid)) return;
+      seen.add(rid);
+      collected.push(rec);
+    };
+
+    if (Array.isArray(my)) {
+      for (const r of my) pushOnce(r);
+    }
+    if (Array.isArray(shared)) {
+      // `shared` rows wrap the recording — unwrap so the shape matches `my` rows.
+      for (const s of shared) pushOnce(s?.recording);
+    }
+
+    // Newest first, so a just-claimed recording lands at the top.
+    collected.sort((a, b) => {
+      const ta = new Date(a?.startTime ?? 0).getTime();
+      const tb = new Date(b?.startTime ?? 0).getTime();
+      return tb - ta;
+    });
+
+    return collected.map((s: any, i: number) => {
+      const hid = String(s?.id ?? "");
+      const h =
+        highlightCountFromRecording(s) +
+        (hid ? (shortsPerRecording[hid] ?? 0) : 0);
+      const td = s?.turf ?? s?.turf_detail ?? null;
+      return {
+        id: String(s?.id ?? i),
+        recordingId: s?.id ? String(s.id) : null,
+        title:
+          td?.name ??
+          s?.recording_name ??
+          s?.name ??
+          "Recording",
+        location:
+          td?.city ??
+          td?.location ??
+          s?.location ??
+          "",
+        when: formatRecordingListWhen(s?.startTime),
+        duration: recordingDurationLabel(s),
+        thumbUrl: recordingThumbUrl(s),
+        highlights: h > 0 ? h : null,
+        status: String(s?.status ?? "").toLowerCase(),
+        isReady: recordingIsReady(s),
+        tags: [] as string[],
+        moreTags: 0,
+      };
+    });
+  }, [my, shared, shortsPerRecording]);
 
   const sharedRows = useMemo(() => {
     if (!Array.isArray(shared) || shared.length === 0) return [];
