@@ -22,7 +22,9 @@ import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { FF } from "@/screens/fieldflix/fonts";
 import { RECORDINGS_REC_LOCAL } from "@/screens/fieldflix/recordingsAssets";
-import { explicitCourtNumberFromCamera } from "@/utils/cameraCourtLabel";
+import {
+  explicitCourtNumberFromCamera,
+} from "@/utils/cameraCourtLabel";
 import {
   formatRecordingListWhen,
   highlightCountFromRecording,
@@ -458,6 +460,7 @@ export default function FieldflixRecordingsScreen() {
   const [findEnd, setFindEnd] = useState("");
   const [findPhone, setFindPhone] = useState("");
   const [findMatches, setFindMatches] = useState<any[] | null>(null);
+  const [isFindingGame, setIsFindingGame] = useState(false);
   const [showVenueOptions, setShowVenueOptions] = useState(false);
   const [showGroundOptions, setShowGroundOptions] = useState(false);
   /** When non-null, displays the bottom-sheet listing the people a recording
@@ -602,11 +605,11 @@ export default function FieldflixRecordingsScreen() {
   /**
    * Courts for the chosen turf (`/cameras?turfId=…`).
    *
-   * - Source of truth is `Camera.court_number` (the column admins recently populated on every
-   *   camera). Each distinct court_number at the venue produces exactly one dropdown row.
-   * - Fallback to a "Court N" phrase parsed from the camera `name` only when court_number is null.
-   * - NEVER surface raw camera UUIDs, install serials (e.g. CAM-105), or "Camera xxxx…" labels —
-   *   those confused users into picking a camera id when they wanted a court number.
+   * - Source of truth is `Camera.court_number` from `/cameras` (DB-backed). Each distinct
+   *   court_number at the venue produces exactly one dropdown row.
+   * - If the API omits or nulls `court_number`, the dropdown stays empty (deploy backend with
+   *   the `court_number` column on `Camera` — DB values alone are not enough).
+   * - NEVER surface raw camera UUIDs, install serials (e.g. CAM-105), or "Camera xxxx…" labels.
    */
   const groundOptions = useMemo(() => {
     const q = findGround.trim().toLowerCase();
@@ -632,25 +635,7 @@ export default function FieldflixRecordingsScreen() {
 
     const rows: GroundOpt[] = [];
     for (const cam of valid) {
-      // 1. Authoritative: the `court_number` column on the cameras table.
-      let courtN: number | null = explicitCourtNumberFromCamera(cam);
-
-      // 2. Legacy fallback: only accept a real "Court N" phrase in the camera name.
-      //    We deliberately do NOT match bare digits — those would mislabel install
-      //    serials and camera UUIDs as a court number.
-      if (courtN == null) {
-        const rawName = String(cam.name ?? "").trim();
-        if (rawName && !UUID_RE.test(rawName)) {
-          const m = rawName.match(
-            /(?:^|\b)court\s*[#:]?\s*(\d{1,3})(?:\b|$)/i,
-          );
-          const parsed = m?.[1] != null ? Number(m[1]) : NaN;
-          if (Number.isFinite(parsed)) courtN = parsed;
-        }
-      }
-
-      // 3. No DB court_number and no "Court N" name → skip. The dropdown only ever
-      //    contains rows that map to a real court at the venue.
+      const courtN = explicitCourtNumberFromCamera(cam);
       if (courtN == null) continue;
 
       rows.push({
@@ -786,6 +771,82 @@ export default function FieldflixRecordingsScreen() {
     groundOptions,
   ]);
 
+  /** Copy payload + validation snapshot for the "Find My Game" CTA. */
+  const copyFindDebug = useCallback(async () => {
+    const phoneLast10 = digitsLast10(findPhone.trim());
+    const fd = new Date(findPickDate);
+    const m = String(fd.getMonth() + 1).padStart(2, "0");
+    const d = String(fd.getDate()).padStart(2, "0");
+    const dateStr = `${fd.getFullYear()}-${m}-${d}`;
+    const turfIds = findVenueAliasIds.length > 0
+      ? findVenueAliasIds
+      : findVenueId
+        ? [findVenueId]
+        : [];
+    const payload = {
+      kind: "find-recording.find-button",
+      at: new Date().toISOString(),
+      validating: {
+        hasVenueId: !!findVenueId,
+        hasStartTime: !!findStart.trim(),
+        hasEndTime: !!findEnd.trim(),
+        hasValidPhoneLast10: !!phoneLast10,
+        isFindingGame,
+      },
+      inputs: {
+        findVenue,
+        findVenueId,
+        findVenueAliasIds,
+        findGround,
+        findGroundId,
+        findCourtNumber,
+        findDate: dateStr,
+        findStart: findStart.trim(),
+        findEnd: findEnd.trim(),
+        findPhoneRaw: findPhone,
+        phoneLast10,
+      },
+      requestPayloadPreview: {
+        turfIds,
+        date: dateStr,
+        startTime: findStart.trim(),
+        endTime: findEnd.trim(),
+        phoneLast10: phoneLast10 ?? undefined,
+      },
+      stateSnapshot: {
+        visibleVenueOptions: venueDropdownOptions.length,
+        visibleCourtOptions: groundOptions.length,
+        systemCamerasCount: systemCameras.length,
+        currentMatchesCount: Array.isArray(findMatches) ? findMatches.length : null,
+      },
+    };
+    try {
+      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
+      Alert.alert(
+        "Find debug copied",
+        "Copied current button validation + request payload preview.",
+      );
+    } catch {
+      Alert.alert("Copy failed", "Could not write to the clipboard.");
+    }
+  }, [
+    findPhone,
+    findPickDate,
+    findVenueAliasIds,
+    findVenueId,
+    findStart,
+    findEnd,
+    isFindingGame,
+    findVenue,
+    findGround,
+    findGroundId,
+    findCourtNumber,
+    venueDropdownOptions,
+    groundOptions,
+    systemCameras,
+    findMatches,
+  ]);
+
   const onFindDateChange = (_e: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === "android") setShowFindDatePicker(false);
     if (selected) {
@@ -880,10 +941,40 @@ export default function FieldflixRecordingsScreen() {
    * call `claimRecording` to add it to their library.
    */
   const runFindGame = useCallback(async () => {
+    if (isFindingGame) {
+      console.log("[find-recording] ignored: request already in progress");
+      return;
+    }
     const phoneLast10 = digitsLast10(findPhone.trim());
-    if (!findVenueId || !findStart.trim() || !findEnd.trim() || !phoneLast10) return;
+    const missingFields = {
+      venue: !findVenueId,
+      startTime: !findStart.trim(),
+      endTime: !findEnd.trim(),
+      phoneLast10: !phoneLast10,
+    };
+    if (
+      missingFields.venue ||
+      missingFields.startTime ||
+      missingFields.endTime ||
+      missingFields.phoneLast10
+    ) {
+      console.log("[find-recording] blocked: missing required fields", {
+        missingFields,
+        findVenueId,
+        findVenueAliasIds,
+        findStart,
+        findEnd,
+        findPhone,
+      });
+      Alert.alert(
+        "Missing details",
+        "Please select venue, start time, end time, and enter a valid 10-digit phone number.",
+      );
+      return;
+    }
     setClaimedIds(new Set());
     setClaimingId(null);
+    setIsFindingGame(true);
     try {
       const fd = new Date(findPickDate);
       const m = String(fd.getMonth() + 1).padStart(2, "0");
@@ -891,18 +982,20 @@ export default function FieldflixRecordingsScreen() {
       const dateStr = `${fd.getFullYear()}-${m}-${d}`;
       const turfIds =
         findVenueAliasIds.length > 0 ? findVenueAliasIds : [findVenueId];
+      console.log("[find-recording] request:start", {
+        turfIds,
+        findVenueId,
+        findVenueAliasIds,
+        findGroundId,
+        findCourtNumber,
+        dateStr,
+        findStart,
+        findEnd,
+        phoneLast10,
+      });
 
       const matches = await findRecordings({
         turfIds,
-        courtNumber:
-          typeof findCourtNumber === "number" ? findCourtNumber : undefined,
-        // Pass cameraId only as a legacy fallback for venues where the
-        // court_number column is still NULL — backend prefers courtNumber
-        // when both are present.
-        cameraId:
-          findCourtNumber == null && findGroundId
-            ? findGroundId
-            : undefined,
         date: dateStr,
         startTime: findStart.trim(),
         endTime: findEnd.trim(),
@@ -917,14 +1010,28 @@ export default function FieldflixRecordingsScreen() {
         if (!rid || merged.has(rid)) continue;
         merged.set(rid, rec);
       }
+      console.log("[find-recording] request:success", {
+        rawMatchesCount: Array.isArray(matches) ? matches.length : 0,
+        dedupedMatchesCount: merged.size,
+      });
       setFindMatches([...merged.values()]);
     } catch (e) {
       console.warn("Error finding game", e);
+      console.log("[find-recording] request:failed", {
+        error: e instanceof Error ? e.message : String(e),
+      });
       setFindMatches([]);
+      Alert.alert(
+        "Couldn't find recordings",
+        "Request failed. Tap Debug next to venue/court and share logs if this continues.",
+      );
+    } finally {
+      setIsFindingGame(false);
     }
     setShowVenueOptions(false);
     setShowGroundOptions(false);
   }, [
+    isFindingGame,
     findVenueId,
     findVenueAliasIds,
     findGroundId,
@@ -2027,9 +2134,29 @@ export default function FieldflixRecordingsScreen() {
                 </View>
               </View>
 
-              <Pressable style={styles.findCta} onPress={runFindGame}>
+              <Pressable
+                style={[styles.findCta, isFindingGame && styles.findCtaDisabled]}
+                onPress={runFindGame}
+                disabled={isFindingGame}
+              >
                 <PlayIcon color="#fff" size={18} />
-                <Text style={styles.findCtaText}>Find My Game</Text>
+                <Text style={styles.findCtaText}>
+                  {isFindingGame ? "Finding..." : "Find My Game"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={copyFindDebug}
+                style={styles.findCtaDebugBtn}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Copy find button debug info"
+              >
+                <MaterialCommunityIcons
+                  name="bug-outline"
+                  size={12}
+                  color={ACCENT}
+                />
+                <Text style={styles.findDebugBtnText}>Debug Find</Text>
               </Pressable>
 
               {findMatches !== null ? (
@@ -3121,6 +3248,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 14,
     elevation: 7,
+  },
+  findCtaDisabled: {
+    opacity: 0.7,
+  },
+  findCtaDebugBtn: {
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    marginBottom: 2,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.35)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "rgba(34,197,94,0.08)",
   },
   findCtaText: {
     fontFamily: FF.bold,

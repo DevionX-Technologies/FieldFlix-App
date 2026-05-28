@@ -24,11 +24,30 @@ export function explicitCourtNumberFromCamera(
 }
 
 /**
+ * Court index when API sends legacy `ground_number` but not `court_number`.
+ * Find-recording dropdowns must not infer court from camera names like "Camera 3".
+ */
+export function resolveCourtNumberFromCamera(
+  cam: Pick<Camera, 'court_number' | 'ground_number'>,
+): number | null {
+  const fromDb = explicitCourtNumberFromCamera(cam);
+  if (fromDb != null) return fromDb;
+
+  const gn = cam.ground_number;
+  if (gn !== undefined && gn !== null && String(gn).trim() !== '') {
+    const n = Number(String(gn).trim());
+    if (Number.isFinite(n)) return n;
+  }
+
+  return null;
+}
+
+/**
  * Human-readable court line for QR / venue UI (`Court N` or description), when we have camera metadata.
  */
 export function courtDisplayLabelFromCamera(cam: Camera | null | undefined): string | null {
   if (!cam) return null;
-  const n = explicitCourtNumberFromCamera(cam);
+  const n = resolveCourtNumberFromCamera(cam);
   if (n != null) return `Court ${n}`;
   const rawStr = compactText(
     cam.court_number != null ? String(cam.court_number) : '',
@@ -39,8 +58,6 @@ export function courtDisplayLabelFromCamera(cam: Camera | null | undefined): str
   }
   const camName = compactText(cam.name ?? '');
   if (camName && !UUID_RE.test(camName)) {
-    const m = camName.match(/(\d+)/);
-    if (m) return `Court ${m[1]}`;
     return camName;
   }
   return null;

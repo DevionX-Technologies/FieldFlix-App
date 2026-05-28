@@ -34,7 +34,9 @@ import { useEntitlement } from '@/lib/fieldflix-entitlement';
 import { mergeServerUnlockedRecordingIds } from '@/lib/unlockedRecordingSync';
 import { appendLocalPaymentHistory } from '@/lib/paymentHistoryLocal';
 import { presentEventNotification } from '@/utils/presentEventNotification';
+import { ShareProgressModal } from '@/components/ui/ShareProgressModal';
 import { shareHighlightClipMp4 } from '@/utils/recordingPlaybackShare';
+import type { ShareHighlightProgressUpdate } from '@/utils/shareHighlightClip';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
 import { BG } from '@/screens/fieldflix/bundledBackgrounds';
 import { FF } from '@/screens/fieldflix/fonts';
@@ -264,6 +266,42 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   const [checkoutQuote, setCheckoutQuote] = useState<PlanOrderResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [shareProgressVisible, setShareProgressVisible] = useState(false);
+  const [shareProgress, setShareProgress] = useState<{
+    title: string;
+    message: string;
+    progress: number | null;
+  }>({
+    title: 'Preparing highlight',
+    message: 'Getting your MP4 ready to share…',
+    progress: null,
+  });
+
+  const onShareHighlightMp4 = useCallback((highlightId: string) => {
+    const hid = String(highlightId ?? '').trim();
+    if (!hid) return;
+    setShareProgress({
+      title: 'Preparing highlight',
+      message: 'Getting your MP4 ready to share…',
+      progress: null,
+    });
+    setShareProgressVisible(true);
+    const onProgress = (update: ShareHighlightProgressUpdate) => {
+      setShareProgress({
+        title:
+          update.stage === 'preparing'
+            ? 'Preparing highlight'
+            : update.stage === 'downloading'
+              ? 'Downloading video'
+              : 'Almost ready',
+        message: update.message,
+        progress: update.progress,
+      });
+    };
+    void shareHighlightClipMp4(hid, onProgress).finally(() => {
+      setShareProgressVisible(false);
+    });
+  }, []);
 
   const load = useCallback(async () => {
     if (!recordingId) {
@@ -1012,9 +1050,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   hasAccess={hasRecordingAccess}
                   flickSavedLocally={isSavedLocally}
                   engageBusy={engageBusy}
-                  onShareHighlight={() =>
-                    void shareHighlightClipMp4(String(h.id ?? ''))
-                  }
+                  onShareHighlight={() => onShareHighlightMp4(String(h.id ?? ''))}
                   onPress={() => void onHighlightPress(h)}
                   onToggleLike={() => void onToggleHighlightLike(h.id)}
                   onToggleSave={() => void onToggleHighlightSave(h.id)}
@@ -1182,6 +1218,13 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             </Pressable>
           </Pressable>
         </Modal>
+
+        <ShareProgressModal
+          visible={shareProgressVisible}
+          title={shareProgress.title}
+          message={shareProgress.message}
+          progress={shareProgress.progress}
+        />
 
         <FieldflixBottomNav active="recordings" />
       </View>

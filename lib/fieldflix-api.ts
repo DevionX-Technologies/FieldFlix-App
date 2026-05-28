@@ -1057,14 +1057,6 @@ export type FindRecordingsPayload = {
    * them as a set — the BE searches across all of them.
    */
   turfIds: string[];
-  /**
-   * The court number the user picked from the dropdown (DB-backed; not the
-   * camera id). The BE expands this to every camera with that court_number
-   * at any of `turfIds`.
-   */
-  courtNumber?: number;
-  /** Legacy / fallback when the FE can't resolve a court_number. */
-  cameraId?: string;
   date: string;
   startTime: string;
   endTime: string;
@@ -1073,7 +1065,7 @@ export type FindRecordingsPayload = {
 
 /**
  * Search-only: `POST /recording/find`. Returns the list of recordings that
- * match the venue (and aliases) + court + ±1h time window + phone-last-10
+ * match the venue (and aliases) + ±1h time window + phone-last-10
  * WITHOUT creating any SharedRecording rows. Caller renders the list and
  * passes the user's pick to `claimRecording`.
  */

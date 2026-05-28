@@ -91,6 +91,7 @@ export default function MainRecordingScreen() {
 
   const [turfDetails, setTurfDetails] = useState<Record<string, unknown>>({});
   const [highlightButtonCount, setHighlightButtonCount] = useState(0);
+  const [storedVenue, setStoredVenue] = useState({ name: '', location: '' });
 
   const totalSeconds = useMemo(() => {
     const resume = routeParamFirst(Resume);
@@ -110,9 +111,14 @@ export default function MainRecordingScreen() {
   }, [Resume, remainingSeconds, plannedDurationSec, ChoosenTimeInMinutes]);
 
   const td = turfDetails as { data?: { name?: string }; name?: string };
-  const venueName = td?.data?.name ?? td?.name ?? Name?.toString() ?? 'TGS Sports Arena';
+  const venueName =
+    td?.data?.name ??
+    td?.name ??
+    routeParamFirst(Name) ??
+    (storedVenue.name || 'TGS Sports Arena');
   const venueAddress =
-    GroundLocation?.toString() || 'Andheri West, Mumbai';
+    routeParamFirst(GroundLocation) ??
+    (storedVenue.location || 'Andheri West, Mumbai');
 
   const courtDisplayLabel = useMemo(() => {
     const raw = routeParamFirst(courtLabel)?.trim();
@@ -143,6 +149,19 @@ export default function MainRecordingScreen() {
   );
 
   useEffect(() => {
+    void (async () => {
+      const [name, location] = await Promise.all([
+        SecureStore.getItemAsync(TIME_TURF_NAME),
+        SecureStore.getItemAsync(TIME_GROUNDLOCATION),
+      ]);
+      setStoredVenue({
+        name: name?.trim() ?? '',
+        location: location?.trim() ?? '',
+      });
+    })();
+  }, []);
+
+  useEffect(() => {
     const fetchData = async () => {
       const tid = routeParamFirst(turfId);
       if (!tid) return;
@@ -155,6 +174,13 @@ export default function MainRecordingScreen() {
     };
     void fetchData();
   }, [turfId]);
+
+  /** Persist venue labels as soon as we know them (before timer reports `isRunning`). */
+  useEffect(() => {
+    if (!venueName && !venueAddress) return;
+    void SecureStore.setItemAsync(TIME_TURF_NAME, venueName);
+    void SecureStore.setItemAsync(TIME_GROUNDLOCATION, venueAddress);
+  }, [venueName, venueAddress]);
 
   useEffect(() => {
     if (!isRunning || !activeRecordingSessionId) {
@@ -201,10 +227,13 @@ export default function MainRecordingScreen() {
 
   /** Persist routing context so Splash / resume can reopen this exact session. */
   useEffect(() => {
-    if (!isRunning || !activeRecordingSessionId) return;
+    const shouldPersist =
+      routeParamFirst(Resume) === '1' ||
+      (isRunning && Boolean(activeRecordingSessionId));
+    if (!shouldPersist) return;
     const record = {
-      Name: routeParamFirst(Name) ?? '',
-      GroundLocation: routeParamFirst(GroundLocation) ?? '',
+      Name: venueName,
+      GroundLocation: venueAddress,
       turfId: routeParamFirst(turfId) ?? '',
       cameraId: routeParamFirst(cameraId) ?? '',
       courtLabel: routeParamFirst(courtLabel) ?? '',
@@ -221,8 +250,9 @@ export default function MainRecordingScreen() {
   }, [
     isRunning,
     activeRecordingSessionId,
-    Name,
-    GroundLocation,
+    venueName,
+    venueAddress,
+    Resume,
     turfId,
     cameraId,
     courtLabel,

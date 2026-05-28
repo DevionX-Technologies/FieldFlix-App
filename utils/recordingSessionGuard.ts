@@ -2,6 +2,8 @@ import {
   RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
   RECORDING_KEY,
   RECORDING_QR_CAMERA_ID,
+  TIME_GROUNDLOCATION,
+  TIME_TURF_NAME,
   TURF_ID,
 } from '@/data/constants';
 import * as SecureStore from 'expo-secure-store';
@@ -73,5 +75,12 @@ export async function buildRecordingActiveResumeSearchParams(): Promise<Record<
 
   if (turf && !out.turfId) out.turfId = turf;
   if (camera && !out.cameraId) out.cameraId = camera;
+
+  const storedName = (await SecureStore.getItemAsync(TIME_TURF_NAME))?.trim() ?? '';
+  const storedLocation =
+    (await SecureStore.getItemAsync(TIME_GROUNDLOCATION))?.trim() ?? '';
+  if (storedName && !out.Name) out.Name = storedName;
+  if (storedLocation && !out.GroundLocation) out.GroundLocation = storedLocation;
+
   return out;
 }

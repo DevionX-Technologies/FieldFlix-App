@@ -125,14 +125,21 @@ export default function RootLayout() {
   }, [pathname]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') return;
+    const appStateRef = { current: AppState.currentState };
+    const sub = AppState.addEventListener('change', (nextState) => {
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      // Only resume recording when returning from background — not on cold start
+      // (avoids double navigation / splash flash after Splash already routed).
+      if (nextState !== 'active') return;
+      if (prev === 'active' || prev == null) return;
+
       void (async () => {
         try {
           const token = await SecureStore.getItemAsync('token');
           if (!token) return;
           if (!pathname || isPublicRoutePath(pathname)) return;
-          if (pathname === '/recording-active') return;
+          if (pathname === Paths.recordingActive) return;
           if (!(await hasPersistedRecordingSession())) return;
           const params = await buildRecordingActiveResumeSearchParams();
           if (!params) return;

@@ -3,7 +3,10 @@
  */
 import { createShareLink } from '@/lib/fieldflix-api';
 import { buildHighlightsAppLink } from '@/utils/highlightsAppLink';
-import { shareHighlightAsMp4File } from '@/utils/shareHighlightClip';
+import {
+  shareHighlightAsMp4File,
+  type ShareHighlightProgressUpdate,
+} from '@/utils/shareHighlightClip';
 import { Alert, Share } from 'react-native';
 
 export async function shareFullMatchRecording(
@@ -37,14 +40,17 @@ export async function shareFullMatchRecording(
   }
 }
 
-export async function shareHighlightClipMp4(highlightId: string): Promise<void> {
+export async function shareHighlightClipMp4(
+  highlightId: string,
+  onProgress?: (update: ShareHighlightProgressUpdate) => void,
+): Promise<void> {
   const clipId = String(highlightId).trim();
   if (!clipId || clipId === 'main-video') {
     Alert.alert('Share unavailable', 'This clip cannot be shared.');
     return;
   }
   try {
-    const result = await shareHighlightAsMp4File(clipId);
+    const result = await shareHighlightAsMp4File(clipId, onProgress);
     if (!result.ok) {
       Alert.alert('Could not share', result.message);
     }

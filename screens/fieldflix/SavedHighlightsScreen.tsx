@@ -9,7 +9,11 @@ import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader
 import { FF } from "@/screens/fieldflix/fonts";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
-import { shareHighlightAsMp4File } from "@/utils/shareHighlightClip";
+import { ShareProgressModal } from "@/components/ui/ShareProgressModal";
+import {
+  shareHighlightAsMp4File,
+  type ShareHighlightProgressUpdate,
+} from "@/utils/shareHighlightClip";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -41,6 +45,12 @@ export default function SavedHighlightsScreen() {
   const [items, setItems] = useState<SavedRecordingHighlightSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [unlockedRecordingIds, setUnlockedRecordingIds] = useState<string[]>([]);
+  const [shareProgressVisible, setShareProgressVisible] = useState(false);
+  const [shareProgress, setShareProgress] = useState({
+    title: 'Preparing highlight',
+    message: 'Getting your MP4 ready to share…',
+    progress: null as number | null,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,9 +81,31 @@ export default function SavedHighlightsScreen() {
         );
         return;
       }
-      const result = await shareHighlightAsMp4File(highlightId);
-      if (!result.ok) {
-        Alert.alert('Share', result.message);
+      setShareProgress({
+        title: 'Preparing highlight',
+        message: 'Getting your MP4 ready to share…',
+        progress: null,
+      });
+      setShareProgressVisible(true);
+      const onProgress = (update: ShareHighlightProgressUpdate) => {
+        setShareProgress({
+          title:
+            update.stage === 'preparing'
+              ? 'Preparing highlight'
+              : update.stage === 'downloading'
+                ? 'Downloading video'
+                : 'Almost ready',
+          message: update.message,
+          progress: update.progress,
+        });
+      };
+      try {
+        const result = await shareHighlightAsMp4File(highlightId, onProgress);
+        if (!result.ok) {
+          Alert.alert('Share', result.message);
+        }
+      } finally {
+        setShareProgressVisible(false);
       }
     },
     [unlockedRecordingIds],
@@ -197,6 +229,13 @@ export default function SavedHighlightsScreen() {
             )}
           />
         )}
+
+        <ShareProgressModal
+          visible={shareProgressVisible}
+          title={shareProgress.title}
+          message={shareProgress.message}
+          progress={shareProgress.progress}
+        />
 
         <FieldflixBottomNav active="recordings" />
       </View>

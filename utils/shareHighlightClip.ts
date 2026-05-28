@@ -46,8 +46,18 @@ function signedUrlForLog(url: string): string {
   }
 }
 
+export type ShareHighlightProgressStage = 'preparing' | 'downloading' | 'sharing';
+
+export type ShareHighlightProgressUpdate = {
+  stage: ShareHighlightProgressStage;
+  /** 0–1 overall; `null` while server prepares export (unknown duration). */
+  progress: number | null;
+  message: string;
+};
+
 export async function shareHighlightAsMp4File(
   highlightId: string,
+  onProgress?: (update: ShareHighlightProgressUpdate) => void,
 ): Promise<ShareHighlightAsMp4Result> {
   const { debug, log } = createLogger();
   const hid = String(highlightId ?? '').trim();
@@ -57,6 +67,12 @@ export async function shareHighlightAsMp4File(
     log('invalid_highlight_id');
     return { ok: false, message: 'Missing highlight id.', debug };
   }
+
+  onProgress?.({
+    stage: 'preparing',
+    progress: null,
+    message: 'Preparing your highlight MP4 on our servers…',
+  });
 
   let res: Awaited<ReturnType<typeof processRecordingHighlightForShare>>;
   try {
@@ -135,25 +151,51 @@ export async function shareHighlightAsMp4File(
   const fileUri = `${base}fieldflicks_highlight_${hid}.mp4`;
   log('download_start', { fileUri, signedUrl: signedUrlForLog(res.signedUrl) });
 
-  let downloadResult: Awaited<ReturnType<typeof FileSystem.downloadAsync>>;
-  try {
-    downloadResult = await FileSystem.downloadAsync(res.signedUrl, fileUri);
-  } catch (e) {
-    log('download_threw', { error: String(e) });
-    return {
-      ok: false,
-      message: 'Download failed. Check your connection and try again.',
-      debug,
-    };
-  }
-
-  log('download_finished', {
-    status: downloadResult.status,
-    uri: downloadResult.uri,
-    mimeType: downloadResult.mimeType ?? null,
+  onProgress?.({
+    stage: 'downloading',
+    progress: 0,
+    message: 'Downloading video to your device…',
   });
 
-  if (downloadResult.status !== 200) {
+  let downloadUri: string | null = null;
+  try {
+    const existing = await FileSystem.getInfoAsync(fileUri);
+    if (existing.exists) {
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+    }
+
+    const downloadResumable = FileSystem.createDownloadResumable(
+      res.signedUrl,
+      fileUri,
+      {},
+      ({ totalBytesExpectedToWrite, totalBytesWritten }) => {
+        if (totalBytesExpectedToWrite > 0) {
+          const ratio = totalBytesWritten / totalBytesExpectedToWrite;
+          onProgress?.({
+            stage: 'downloading',
+            progress: ratio,
+            message: 'Downloading video to your device…',
+          });
+        }
+      },
+    );
+    const downloadResult = await downloadResumable.downloadAsync();
+    if (!downloadResult?.uri || downloadResult.status !== 200) {
+      log('download_failed', { status: downloadResult?.status ?? null });
+      return {
+        ok: false,
+        message: 'Download failed. Check your connection and try again.',
+        debug,
+      };
+    }
+    downloadUri = downloadResult.uri;
+    log('download_finished', {
+      status: downloadResult.status,
+      uri: downloadResult.uri,
+      mimeType: downloadResult.mimeType ?? null,
+    });
+  } catch (e) {
+    log('download_threw', { error: String(e) });
     return {
       ok: false,
       message: 'Download failed. Check your connection and try again.',
@@ -175,8 +217,14 @@ export async function shareHighlightAsMp4File(
     return { ok: false, message: 'Sharing is not available on this device.', debug };
   }
 
+  onProgress?.({
+    stage: 'sharing',
+    progress: 1,
+    message: 'Opening share options…',
+  });
+
   try {
-    await Sharing.shareAsync(downloadResult.uri, {
+    await Sharing.shareAsync(downloadUri, {
       mimeType: 'video/mp4',
       dialogTitle: 'Share highlight',
     });
@@ -184,7 +232,7 @@ export async function shareHighlightAsMp4File(
   } catch (e) {
     log('share_async_failed', { error: String(e) });
     try {
-      await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
+      await FileSystem.deleteAsync(downloadUri, { idempotent: true });
     } catch {
       /* ignore */
     }
@@ -196,7 +244,7 @@ export async function shareHighlightAsMp4File(
   }
 
   try {
-    await FileSystem.deleteAsync(downloadResult.uri, { idempotent: true });
+    await FileSystem.deleteAsync(downloadUri, { idempotent: true });
     log('temp_file_deleted');
   } catch (e) {
     log('temp_file_delete_failed', { error: String(e) });

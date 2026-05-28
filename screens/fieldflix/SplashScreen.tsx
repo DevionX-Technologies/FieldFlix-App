@@ -45,7 +45,6 @@ export default function FieldflixSplashScreen() {
       true
     );
 
-    // One premium sweep after logo reveal (less looped feel).
     sheenProgress.value = withSequence(
       withDelay(
         560,
@@ -57,34 +56,38 @@ export default function FieldflixSplashScreen() {
       withTiming(0, { duration: 0 })
     );
 
-    const t = setTimeout(() => {
-      void (async () => {
-        try {
-          const token = await SecureStore.getItemAsync("token");
-          // Defensive: clear any stack from a previous app run / deep link.
-          router.dismissAll?.();
-          if (token && (await hasPersistedRecordingSession())) {
-            const resumeParams =
-              await buildRecordingActiveResumeSearchParams();
-            if (resumeParams) {
-              router.replace({
-                pathname: Paths.recordingActive,
-                params: resumeParams,
-              });
-              return;
-            }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await SecureStore.getItemAsync("token");
+        const resumeActive =
+          Boolean(token) && (await hasPersistedRecordingSession());
+        const holdMs = resumeActive ? 400 : 2500;
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+        if (cancelled) return;
+
+        if (resumeActive) {
+          const resumeParams = await buildRecordingActiveResumeSearchParams();
+          if (resumeParams) {
+            router.replace({
+              pathname: Paths.recordingActive,
+              params: resumeParams,
+            });
+            return;
           }
-          router.replace(token ? Paths.home : Paths.login);
-        } catch {
-          // Never let startup routing crash the app; fail-safe to login.
-          router.dismissAll?.();
-          router.replace(Paths.login);
         }
-      })();
-    }, 2500);
+
+        router.dismissAll?.();
+        router.replace(token ? Paths.home : Paths.login);
+      } catch {
+        if (cancelled) return;
+        router.dismissAll?.();
+        router.replace(Paths.login);
+      }
+    })();
 
     return () => {
-      clearTimeout(t);
+      cancelled = true;
       cancelAnimation(revealProgress);
       cancelAnimation(ambientPulse);
       cancelAnimation(sheenProgress);
