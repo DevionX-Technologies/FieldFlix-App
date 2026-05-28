@@ -23,7 +23,8 @@ export const BASE_URL = normalizeApiBaseUrl(
 );
 
 /** Display + mailto for Contact Support (“Or contact us directly”). */
-export const FIELDFLIX_SUPPORT_EMAIL = "admin@fieldflix.com";
+export const FIELDFLIX_SUPPORT_EMAIL =
+  process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? "admin@fieldflicks.com";
 
 export const GOOGLE_WEB_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ??

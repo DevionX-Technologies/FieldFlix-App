@@ -10,6 +10,7 @@ import {
   getTurfsPage,
   getCameras,
   findRecordings,
+  getRecordingPlayback,
   claimRecording,
   type Camera,
 } from "@/lib/fieldflix-api";
@@ -34,6 +35,7 @@ import {
 } from "@/utils/recordingDisplay";
 import { buildHighlightsAppLink } from "@/utils/highlightsAppLink";
 import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
+import { presentEventNotification } from "@/utils/presentEventNotification";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -41,12 +43,15 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import * as Clipboard from "expo-clipboard";
+import { ResizeMode, type AVPlaybackStatus, Video } from "expo-av";
 import type { ComponentProps, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
   BackHandler,
+  Easing,
   Image,
   InteractionManager,
   KeyboardAvoidingView,
@@ -170,6 +175,171 @@ function recordingCourtLabel(r: any): string {
     return `Court ${rawId}`;
   }
   return "";
+}
+
+const FIND_PREVIEW_MAX_SEC = 90;
+
+function estimateRecordingDurationSec(rec: any): number | null {
+  const start = rec?.startTime ? new Date(rec.startTime).getTime() : NaN;
+  const end = rec?.endTime ? new Date(rec.endTime).getTime() : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  return Math.max(1, Math.floor((end - start) / 1000));
+}
+
+function FindMatchPreviewPlayer({
+  recordingId,
+  recording,
+}: {
+  recordingId: string;
+  recording: any;
+}) {
+  const fallbackUrl = String(
+    recording?.mux_media_url ?? recording?.mux_public_url ?? "",
+  ).trim();
+  const estimatedDuration = estimateRecordingDurationSec(recording);
+  const [uri, setUri] = useState(fallbackUrl);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [previewLimitSec, setPreviewLimitSec] = useState<number>(
+    estimatedDuration != null
+      ? Math.min(FIND_PREVIEW_MAX_SEC, estimatedDuration)
+      : FIND_PREVIEW_MAX_SEC,
+  );
+  const videoRef = useRef<Video | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    setUri(fallbackUrl);
+    setPreviewLimitSec(
+      estimatedDuration != null
+        ? Math.min(FIND_PREVIEW_MAX_SEC, estimatedDuration)
+        : FIND_PREVIEW_MAX_SEC,
+    );
+    (async () => {
+      try {
+        const playback = await getRecordingPlayback(recordingId);
+        if (cancelled) return;
+        const resolved = String(
+          playback?.signed_url ?? playback?.mux_public_url ?? fallbackUrl,
+        ).trim();
+        if (!resolved) {
+          setLoadError("Preview unavailable");
+          setLoading(false);
+          return;
+        }
+        setUri(resolved);
+        setLoading(false);
+      } catch (e) {
+        if (cancelled) return;
+        setLoadError(e instanceof Error ? e.message : "Preview unavailable");
+        setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [recordingId, fallbackUrl, estimatedDuration]);
+
+  const onPlaybackStatusUpdate = useCallback(
+    (status: AVPlaybackStatus) => {
+      if (!status.isLoaded) return;
+      const durationSec = Number.isFinite(status.durationMillis)
+        ? (status.durationMillis ?? 0) / 1000
+        : 0;
+      if (durationSec > 0) {
+        const capped = Math.min(FIND_PREVIEW_MAX_SEC, durationSec);
+        if (Math.abs(capped - previewLimitSec) > 0.25) {
+          setPreviewLimitSec(capped);
+        }
+      }
+      const capMs = previewLimitSec * 1000;
+      if (status.positionMillis >= capMs && status.isPlaying) {
+        videoRef.current
+          ?.setStatusAsync({ shouldPlay: false, positionMillis: capMs })
+          .catch(() => null);
+      }
+    },
+    [previewLimitSec],
+  );
+
+  if (!uri) {
+    return (
+      <View style={styles.findPreviewUnavailable}>
+        <Text style={styles.findPreviewUnavailableText}>
+          Preview unavailable for this recording.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.findPreviewWrap}>
+      <Video
+        ref={videoRef}
+        source={{ uri }}
+        style={styles.findPreviewVideo}
+        useNativeControls
+        resizeMode={ResizeMode.CONTAIN}
+        shouldPlay={false}
+        isLooping={false}
+        onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+      />
+      {loading ? (
+        <View style={styles.findPreviewLoading}>
+          <ActivityIndicator color={ACCENT} />
+          <Text style={styles.findPreviewLoadingText}>Loading preview...</Text>
+        </View>
+      ) : null}
+      {!loading && loadError ? (
+        <Text style={styles.findPreviewHint}>
+          Preview fallback used ({loadError}).
+        </Text>
+      ) : null}
+      <Text style={styles.findPreviewHint}>
+        Preview capped to {Math.max(1, Math.round(previewLimitSec))}s. If the
+        recording is shorter, full video is shown.
+      </Text>
+    </View>
+  );
+}
+
+function FindSearchingIndicator() {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const opacity = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.55, 1],
+  });
+
+  return (
+    <Animated.View style={[styles.findSearchingWrap, { opacity }]}>
+      <ActivityIndicator color={ACCENT} />
+      <Text style={styles.findSearchingText}>Searching for your video...</Text>
+    </Animated.View>
+  );
 }
 
 function recordingArenaLabel(r: any): string {
@@ -469,6 +639,10 @@ export default function FieldflixRecordingsScreen() {
     | { label: string; people: { name: string; phone: string | null }[] }
     | null
   >(null);
+  const [claimSuccessModal, setClaimSuccessModal] = useState<{
+    title: string;
+    when: string;
+  } | null>(null);
   /** Native time-picker visibility — independent for start vs end so the
    *  user can re-open one without dismissing the other on iOS modal sheet. */
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -512,6 +686,31 @@ export default function FieldflixRecordingsScreen() {
     () => findPickDate.toDateString(),
     [findPickDate],
   );
+
+  const resetFindForm = useCallback(() => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    setFindVenue("");
+    setFindVenueId(null);
+    setFindVenueAliasIds([]);
+    setFindGround("");
+    setFindGroundId(null);
+    setFindCourtNumber(null);
+    setFindPickDate(d);
+    setFindStart("");
+    setFindEnd("");
+    setFindPhone("");
+    setFindMatches(null);
+    setShowVenueOptions(false);
+    setShowGroundOptions(false);
+    setIsFindingGame(false);
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "find") {
+      resetFindForm();
+    }
+  }, [tab, resetFindForm]);
 
   /**
    * Venue dropdown — backs the "VENUES" autocomplete.
@@ -670,183 +869,6 @@ export default function FieldflixRecordingsScreen() {
     findEnd.trim().length > 0;
   const isVerifyComplete = digitsLast10(findPhone.trim()) != null;
 
-  /**
-   * Copy-to-clipboard for the "Debug" button next to the VENUE dropdown.
-   *
-   * Bundles the raw paginated `/turfs` response, the post-dedupe stats, and
-   * the venue list currently being rendered. If the BE returned duplicate
-   * names with distinct IDs (typical when `leftJoinAndSelect` fans out rows
-   * and the paginate wrapper doesn't fully fold them), `duplicateNameGroups`
-   * will list exactly which IDs collided.
-   */
-  const copyVenueDebug = useCallback(async () => {
-    const payload = {
-      kind: "find-recording.venue-dropdown",
-      at: new Date().toISOString(),
-      fetch: turfsFetchDiag,
-      systemTurfsCount: systemTurfs.length,
-      systemTurfs: systemTurfs.map((t: any) => ({
-        id: t?.id,
-        name: t?.name,
-        city: t?.city,
-        is_active: t?.is_active,
-        aliasIds: t?.aliasIds,
-      })),
-      currentFilterText: findVenue,
-      selectedVenueId: findVenueId,
-      selectedVenueAliasIds: findVenueAliasIds,
-      visibleDropdownCount: venueDropdownOptions.length,
-      visibleDropdown: venueDropdownOptions.map((t: any) => ({
-        id: t?.id,
-        name: t?.name,
-        aliasIds: t?.aliasIds,
-      })),
-    };
-    try {
-      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
-      Alert.alert(
-        "Venue debug copied",
-        `Raw rows: ${turfsFetchDiag?.rawCount ?? "?"} · After id-dedupe: ${turfsFetchDiag?.afterIdDedupeCount ?? "?"} · After name-dedupe: ${turfsFetchDiag?.finalCount ?? "?"} · Dropdown shown: ${venueDropdownOptions.length}`,
-      );
-    } catch {
-      Alert.alert("Copy failed", "Could not write to the clipboard.");
-    }
-  }, [
-    turfsFetchDiag,
-    systemTurfs,
-    findVenue,
-    findVenueId,
-    venueDropdownOptions,
-    findVenueAliasIds,
-  ]);
-
-  /**
-   * Copy-to-clipboard for the "Debug" button next to the COURT NO. dropdown.
-   *
-   * Dumps the raw `/cameras?turfId=…` response, every camera the FE sees for
-   * the venue (with `court_number`, `turfId`, `name`), and the processed
-   * dropdown rows. Lets us see whether a missing court is "BE didn't return
-   * a court_number for that camera" vs "FE filtered it out".
-   */
-  const copyCourtDebug = useCallback(async () => {
-    const payload = {
-      kind: "find-recording.court-dropdown",
-      at: new Date().toISOString(),
-      selectedVenueId: findVenueId,
-      selectedVenueAliasIds: findVenueAliasIds,
-      systemCamerasCount: systemCameras.length,
-      systemCameras: systemCameras.map((c) => ({
-        id: c?.id,
-        name: c?.name,
-        turfId: c?.turfId,
-        court_number: c?.court_number,
-        ground_number: c?.ground_number,
-      })),
-      rawCamerasResponse: camerasFetchDiag,
-      currentFilterText: findGround,
-      selectedGroundId: findGroundId,
-      visibleDropdownCount: groundOptions.length,
-      visibleDropdown: groundOptions.map((g: any) => ({
-        id: g?.id,
-        label: g?.name,
-        court_number: g?.court_number,
-      })),
-    };
-    try {
-      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
-      Alert.alert(
-        "Court debug copied",
-        `Cameras for venue: ${systemCameras.length} · Dropdown shown: ${groundOptions.length}`,
-      );
-    } catch {
-      Alert.alert("Copy failed", "Could not write to the clipboard.");
-    }
-  }, [
-    findVenueId,
-    findVenueAliasIds,
-    systemCameras,
-    camerasFetchDiag,
-    findGround,
-    findGroundId,
-    groundOptions,
-  ]);
-
-  /** Copy payload + validation snapshot for the "Find My Game" CTA. */
-  const copyFindDebug = useCallback(async () => {
-    const phoneLast10 = digitsLast10(findPhone.trim());
-    const fd = new Date(findPickDate);
-    const m = String(fd.getMonth() + 1).padStart(2, "0");
-    const d = String(fd.getDate()).padStart(2, "0");
-    const dateStr = `${fd.getFullYear()}-${m}-${d}`;
-    const turfIds = findVenueAliasIds.length > 0
-      ? findVenueAliasIds
-      : findVenueId
-        ? [findVenueId]
-        : [];
-    const payload = {
-      kind: "find-recording.find-button",
-      at: new Date().toISOString(),
-      validating: {
-        hasVenueId: !!findVenueId,
-        hasStartTime: !!findStart.trim(),
-        hasEndTime: !!findEnd.trim(),
-        hasValidPhoneLast10: !!phoneLast10,
-        isFindingGame,
-      },
-      inputs: {
-        findVenue,
-        findVenueId,
-        findVenueAliasIds,
-        findGround,
-        findGroundId,
-        findCourtNumber,
-        findDate: dateStr,
-        findStart: findStart.trim(),
-        findEnd: findEnd.trim(),
-        findPhoneRaw: findPhone,
-        phoneLast10,
-      },
-      requestPayloadPreview: {
-        turfIds,
-        date: dateStr,
-        startTime: findStart.trim(),
-        endTime: findEnd.trim(),
-        phoneLast10: phoneLast10 ?? undefined,
-      },
-      stateSnapshot: {
-        visibleVenueOptions: venueDropdownOptions.length,
-        visibleCourtOptions: groundOptions.length,
-        systemCamerasCount: systemCameras.length,
-        currentMatchesCount: Array.isArray(findMatches) ? findMatches.length : null,
-      },
-    };
-    try {
-      await Clipboard.setStringAsync(JSON.stringify(payload, null, 2));
-      Alert.alert(
-        "Find debug copied",
-        "Copied current button validation + request payload preview.",
-      );
-    } catch {
-      Alert.alert("Copy failed", "Could not write to the clipboard.");
-    }
-  }, [
-    findPhone,
-    findPickDate,
-    findVenueAliasIds,
-    findVenueId,
-    findStart,
-    findEnd,
-    isFindingGame,
-    findVenue,
-    findGround,
-    findGroundId,
-    findCourtNumber,
-    venueDropdownOptions,
-    groundOptions,
-    systemCameras,
-    findMatches,
-  ]);
-
   const onFindDateChange = (_e: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === "android") setShowFindDatePicker(false);
     if (selected) {
@@ -974,6 +996,7 @@ export default function FieldflixRecordingsScreen() {
     }
     setClaimedIds(new Set());
     setClaimingId(null);
+    setFindMatches(null);
     setIsFindingGame(true);
     try {
       const fd = new Date(findPickDate);
@@ -1053,19 +1076,36 @@ export default function FieldflixRecordingsScreen() {
       if (!recordingId || claimedIds.has(recordingId) || claimingId) return;
       setClaimingId(recordingId);
       try {
-        await claimRecording(recordingId);
+        const claimResult = await claimRecording(recordingId);
         setClaimedIds((prev) => {
           const next = new Set(prev);
           next.add(recordingId);
           return next;
         });
-        load();
+        await load();
         refreshUnlockedIds();
+        const rec = claimResult?.recording;
+        const title =
+          rec?.turf?.name ??
+          rec?.turf_detail?.name ??
+          rec?.recording_name ??
+          "Recording";
+        const when = formatRecordingListWhen(rec?.startTime);
+        setClaimSuccessModal({
+          title: String(title),
+          when,
+        });
+        void presentEventNotification({
+          title: "Added to My Recordings",
+          body: `${title}${when ? ` · ${when}` : ""}`,
+          notificationType: "LOCAL_RECORDING_CLAIMED",
+          data: { recording_id: recordingId },
+        }).catch(() => null);
       } catch (e) {
         console.warn("Error claiming recording", e);
         Alert.alert(
           "Couldn't add to My Recordings",
-          "Please try again. If this keeps happening, check the Debug button.",
+          "Please try again in a moment.",
         );
       } finally {
         setClaimingId(null);
@@ -1073,6 +1113,19 @@ export default function FieldflixRecordingsScreen() {
     },
     [claimedIds, claimingId, load, refreshUnlockedIds],
   );
+
+  const alreadyInLibraryIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const rec of my) {
+      const rid = String(rec?.id ?? "").trim();
+      if (rid) ids.add(rid);
+    }
+    for (const row of shared) {
+      const rid = String(row?.recording?.id ?? "").trim();
+      if (rid) ids.add(rid);
+    }
+    return ids;
+  }, [my, shared]);
 
   /**
    * My Recordings list.
@@ -1725,28 +1778,6 @@ export default function FieldflixRecordingsScreen() {
                 <View style={styles.findLabelRow}>
                   <MapPinIcon color={MUTED} size={14} />
                   <Text style={styles.findLabel}>VENUES</Text>
-                  <View style={styles.findLabelSpacer} />
-                  <Pressable
-                    onPress={copyVenueDebug}
-                    style={styles.findDebugBtn}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Copy venue dropdown debug info"
-                  >
-                    <MaterialCommunityIcons
-                      name="bug-outline"
-                      size={12}
-                      color={ACCENT}
-                    />
-                    <Text style={styles.findDebugBtnText}>
-                      Debug ({turfsFetchDiag?.finalCount ?? systemTurfs.length}
-                      {turfsFetchDiag &&
-                      turfsFetchDiag.rawCount !== turfsFetchDiag.finalCount
-                        ? ` / raw ${turfsFetchDiag.rawCount}`
-                        : ""}
-                      )
-                    </Text>
-                  </Pressable>
                 </View>
 
                 <TextInput
@@ -1873,33 +1904,6 @@ export default function FieldflixRecordingsScreen() {
                     </Svg>
                   </View>
                   <Text style={styles.findLabel}>COURT NO.</Text>
-                  <View style={styles.findLabelSpacer} />
-                  <Pressable
-                    onPress={copyCourtDebug}
-                    style={styles.findDebugBtn}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Copy court dropdown debug info"
-                    disabled={!findVenueId}
-                  >
-                    <MaterialCommunityIcons
-                      name="bug-outline"
-                      size={12}
-                      color={findVenueId ? ACCENT : MUTED}
-                    />
-                    <Text
-                      style={[
-                        styles.findDebugBtnText,
-                        !findVenueId && { color: MUTED },
-                      ]}
-                    >
-                      Debug ({groundOptions.length}
-                      {systemCameras.length !== groundOptions.length
-                        ? ` / cams ${systemCameras.length}`
-                        : ""}
-                      )
-                    </Text>
-                  </Pressable>
                 </View>
                 <TextInput
                   ref={findGroundInputRef}
@@ -2132,6 +2136,9 @@ export default function FieldflixRecordingsScreen() {
                     style={styles.phoneInput}
                   />
                 </View>
+                <Text style={styles.phoneHintText}>
+                  We match exactly on this number's last 10 digits.
+                </Text>
               </View>
 
               <Pressable
@@ -2144,20 +2151,7 @@ export default function FieldflixRecordingsScreen() {
                   {isFindingGame ? "Finding..." : "Find My Game"}
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={copyFindDebug}
-                style={styles.findCtaDebugBtn}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Copy find button debug info"
-              >
-                <MaterialCommunityIcons
-                  name="bug-outline"
-                  size={12}
-                  color={ACCENT}
-                />
-                <Text style={styles.findDebugBtnText}>Debug Find</Text>
-              </Pressable>
+              {isFindingGame ? <FindSearchingIndicator /> : null}
 
               {findMatches !== null ? (
                 <View style={styles.findResults}>
@@ -2170,20 +2164,18 @@ export default function FieldflixRecordingsScreen() {
                     const rid = String(r?.id ?? "");
                     const title = r?.turf?.name ?? r?.name ?? "Recording";
                     const when = formatRecordingListWhen(r?.startTime);
-                    const court = recordingCourtLabel(r);
-                    const isClaimed = claimedIds.has(rid);
+                    const isClaimed =
+                      claimedIds.has(rid) || alreadyInLibraryIds.has(rid);
                     const isClaiming = claimingId === rid;
                     return (
                       <View key={rid || String(Math.random())} style={styles.findResultRow}>
                         <Text style={styles.findResultName} numberOfLines={2}>
                           {title}
                         </Text>
-                        {court ? (
-                          <Text style={styles.findResultCourt} numberOfLines={1}>
-                            {court}
-                          </Text>
-                        ) : null}
                         <Text style={styles.findResultWhen}>{when}</Text>
+                        {rid ? (
+                          <FindMatchPreviewPlayer recordingId={rid} recording={r} />
+                        ) : null}
                         <Pressable
                           style={[
                             styles.findResultClaimBtn,
@@ -2290,6 +2282,53 @@ export default function FieldflixRecordingsScreen() {
                   ))}
                 </View>
               )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={claimSuccessModal !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setClaimSuccessModal(null)}
+        >
+          <Pressable
+            style={styles.claimSuccessModalRoot}
+            onPress={() => setClaimSuccessModal(null)}
+          >
+            <Pressable
+              style={styles.claimSuccessModalCard}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.claimSuccessIconWrap}>
+                <MaterialCommunityIcons
+                  name="check-decagram"
+                  size={28}
+                  color={ACCENT}
+                />
+              </View>
+              <Text style={styles.claimSuccessTitle}>Added to My Recordings</Text>
+              <Text style={styles.claimSuccessSubtitle} numberOfLines={2}>
+                {claimSuccessModal?.title ?? "Recording"}
+                {claimSuccessModal?.when ? `\n${claimSuccessModal.when}` : ""}
+              </Text>
+              <Pressable
+                style={styles.claimSuccessPrimaryBtn}
+                onPress={() => {
+                  setClaimSuccessModal(null);
+                  setTab("my");
+                }}
+              >
+                <Text style={styles.claimSuccessPrimaryBtnText}>
+                  Go to My Recordings
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.claimSuccessSecondaryBtn}
+                onPress={() => setClaimSuccessModal(null)}
+              >
+                <Text style={styles.claimSuccessSecondaryBtnText}>Stay Here</Text>
+              </Pressable>
             </Pressable>
           </Pressable>
         </Modal>
@@ -2909,6 +2948,79 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontStyle: "italic",
   },
+  claimSuccessModalRoot: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.58)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 22,
+  },
+  claimSuccessModalCard: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.28)",
+    backgroundColor: "rgba(2,6,23,0.98)",
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    alignItems: "center",
+  },
+  claimSuccessIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.42)",
+    backgroundColor: "rgba(34,197,94,0.1)",
+    marginBottom: 12,
+  },
+  claimSuccessTitle: {
+    fontFamily: FF.bold,
+    fontSize: 18,
+    color: "#fff",
+    textAlign: "center",
+  },
+  claimSuccessSubtitle: {
+    marginTop: 8,
+    fontFamily: FF.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "rgba(255,255,255,0.78)",
+    textAlign: "center",
+  },
+  claimSuccessPrimaryBtn: {
+    marginTop: 16,
+    width: "100%",
+    borderRadius: 999,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ACCENT,
+  },
+  claimSuccessPrimaryBtnText: {
+    fontFamily: FF.bold,
+    fontSize: 14,
+    color: "#fff",
+  },
+  claimSuccessSecondaryBtn: {
+    marginTop: 8,
+    width: "100%",
+    borderRadius: 999,
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.35)",
+    backgroundColor: "rgba(15,23,42,0.85)",
+  },
+  claimSuccessSecondaryBtnText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.86)",
+  },
   sharedFab: {
     width: 44,
     height: 44,
@@ -3129,24 +3241,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     color: MUTED,
   },
-  findLabelSpacer: { flex: 1 },
-  findDebugBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.35)",
-    backgroundColor: "rgba(34, 197, 94, 0.08)",
-  },
-  findDebugBtnText: {
-    fontFamily: FF.semiBold,
-    fontSize: 10,
-    letterSpacing: 0.4,
-    color: ACCENT,
-  },
   findInput: {
     width: "100%",
     minHeight: 44,
@@ -3252,20 +3346,6 @@ const styles = StyleSheet.create({
   findCtaDisabled: {
     opacity: 0.7,
   },
-  findCtaDebugBtn: {
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-    marginBottom: 2,
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.35)",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: "rgba(34,197,94,0.08)",
-  },
   findCtaText: {
     fontFamily: FF.bold,
     fontSize: 16,
@@ -3308,6 +3388,58 @@ const styles = StyleSheet.create({
     fontFamily: FF.regular,
     fontSize: 13,
     color: MUTED,
+  },
+  findPreviewWrap: {
+    marginTop: 8,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.22)",
+    backgroundColor: "rgba(2,6,23,0.8)",
+  },
+  findPreviewVideo: {
+    width: "100%",
+    height: 190,
+    backgroundColor: "#000",
+  },
+  findPreviewLoading: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(2,6,23,0.72)",
+  },
+  findPreviewLoadingText: {
+    color: "#fff",
+    fontFamily: FF.medium,
+    fontSize: 11,
+  },
+  findPreviewHint: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: "rgba(255,255,255,0.75)",
+    fontFamily: FF.regular,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  findPreviewUnavailable: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(148,163,184,0.24)",
+    backgroundColor: "rgba(2,6,23,0.7)",
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  findPreviewUnavailableText: {
+    color: "rgba(255,255,255,0.72)",
+    fontFamily: FF.regular,
+    fontSize: 12,
   },
   findResultClaimBtn: {
     marginTop: 10,
@@ -3394,5 +3526,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#fff",
     paddingVertical: 0,
+  },
+  phoneHintText: {
+    marginTop: 8,
+    fontFamily: FF.regular,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.58)",
+  },
+  findSearchingWrap: {
+    marginTop: 10,
+    alignSelf: "center",
+    width: "100%",
+    maxWidth: 370,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.24)",
+    backgroundColor: "rgba(8,20,15,0.82)",
+    minHeight: 42,
+    paddingHorizontal: 12,
+  },
+  findSearchingText: {
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.9)",
   },
 });
