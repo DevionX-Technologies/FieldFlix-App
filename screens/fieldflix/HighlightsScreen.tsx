@@ -1,11 +1,10 @@
-import { BASE_URL, RAZORPAY_KEY_ID } from '@/data/constants';
+import { RAZORPAY_KEY_ID } from '@/data/constants';
 import { Paths } from '@/data/paths';
 import {
   createRecordingPaymentOrder,
   embedToHighlightDto,
   createShareLink,
   getFieldflixApiErrorMessage,
-  getFieldflixApiErrorDebug,
   getPublicFlickShorts,
   getRecordingById,
   getRecordingHighlights,
@@ -26,9 +25,11 @@ import {
   readUnlockedRecordingIds,
 } from '@/utils/unlockedRecordingsStorage';
 import {
-  SPORT_PLAN_BASE_INR,
-  sportPricingGstAmount,
-  sportPricingTotalAfterGst,
+  HALF_HOUR_SEC,
+  formatPlannedDurationLabel,
+  recordingUnlockBaseInr,
+  sportPricingGstFromBase,
+  sportPricingTotalFromBase,
 } from '@/utils/sportPlanPricing';
 import { useEntitlement } from '@/lib/fieldflix-entitlement';
 import { mergeServerUnlockedRecordingIds } from '@/lib/unlockedRecordingSync';
@@ -45,9 +46,11 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import {
   formatRecordingListWhen,
   homeSportPlanFromRecording,
+  playbackUnavailableAlert,
   recordingDurationLabel,
   recordingIsReady,
   recordingPlaybackUrl,
+  parsePlannedDurationSecFromMetadata,
   recordingSportUi,
   recordingThumbUrl,
 } from '@/utils/recordingDisplay';
@@ -76,37 +79,6 @@ import { FieldflixScreenHeader } from './FieldflixScreenHeader';
 const ACCENT = '#22C55E';
 const BG_COLOR = '#020617';
 const MUTED = 'rgba(255,255,255,0.62)';
-const ALERT_DEBUG_MAX = 3600;
-
-function formatPlaybackBlockedMessage(
-  apiDebug: string | null,
-  recording: any | null,
-  playback: RecordingPlayback | null,
-): string {
-  const parts: string[] = [];
-  if (apiDebug?.trim()) {
-    parts.push('— API errors —\n' + apiDebug.trim());
-  }
-  parts.push(
-    '— Last loaded recording fields —\n' +
-    [
-      `API base: ${BASE_URL}`,
-      `status: ${recording?.status ?? 'null'}`,
-      `mux_asset_id: ${recording?.mux_asset_id ?? 'null'}`,
-      `mux_playback_id: ${recording?.mux_playback_id ?? 'null'}`,
-      `mux_media_url: ${recording?.mux_media_url ? 'set' : 'null'}`,
-      `mux_public_url: ${recording?.mux_public_url ? 'set' : 'null'}`,
-      `GET /playback playback_id: ${playback?.playback_id ?? 'null'}`,
-      `GET /playback signed_url: ${playback?.signed_url ? 'set' : 'null'}`,
-      `GET /playback signed_token: ${playback?.signed_token ? 'set' : 'null'}`,
-    ].join('\n'),
-  );
-  const full = parts.join('\n\n');
-  return full.length > ALERT_DEBUG_MAX
-    ? full.slice(0, ALERT_DEBUG_MAX) + '…'
-    : full;
-}
-
 type Props = {
   /** When set, overrides the route param. Used by the shared-media flow. */
   forcedRecordingId?: string;
@@ -259,7 +231,6 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
   /** FlickShort rows use local ids (`flick-…`); bookmark state is mirrored here after open. */
   const [flickLocalSavedIds, setFlickLocalSavedIds] = useState<string[]>([]);
   /** Set when any Highlights fetch throws — shown in "can't play" alerts instead of a generic Mux message. */
-  const [apiDebug, setApiDebug] = useState<string | null>(null);
   const [showUnlockSheet, setShowUnlockSheet] = useState(false);
   const [paymentSuccessVisible, setPaymentSuccessVisible] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
@@ -309,25 +280,20 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       return;
     }
     setLoading(true);
-    const debugLines: string[] = [];
     let rec: any = null;
     let hs: UiHighlight[] = [];
     let pb: RecordingPlayback | null = null;
     try {
       try {
         rec = await getRecordingById(recordingId);
-      } catch (e) {
-        debugLines.push(
-          `getRecordingById:\n${getFieldflixApiErrorDebug(e)}`,
-        );
+      } catch {
+        /* recording detail optional until ready */
       }
       try {
         const apiRows = await getRecordingHighlights(recordingId);
         hs = apiRows.map(toUiHighlight);
-      } catch (e) {
-        debugLines.push(
-          `getRecordingHighlights:\n${getFieldflixApiErrorDebug(e)}`,
-        );
+      } catch {
+        /* highlights list may be empty while processing */
       }
       if (
         rec &&
@@ -393,27 +359,21 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
             hs.push(h);
           }
         }
-      } catch (e) {
-        debugLines.push(
-          `getPublicFlickShorts:\n${getFieldflixApiErrorDebug(e)}`,
-        );
+      } catch {
+        /* flick shorts optional */
       }
       try {
         pb = await getRecordingPlayback(recordingId);
-      } catch (e) {
-        debugLines.push(
-          `getRecordingPlayback:\n${getFieldflixApiErrorDebug(e)}`,
-        );
+      } catch {
+        /* playback URL not ready until Mux finishes */
       }
       setRecording(rec);
       setHighlights(hs);
       setPlayback(pb);
-      setApiDebug(debugLines.length ? debugLines.join('\n\n') : null);
-    } catch (e) {
+    } catch {
       setRecording(null);
       setHighlights([]);
       setPlayback(null);
-      setApiDebug(getFieldflixApiErrorDebug(e));
     } finally {
       setLoading(false);
     }
@@ -529,10 +489,28 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     if (!recording) return 'pickleball';
     return homeSportPlanFromRecording(recording);
   }, [recording]);
-  const basePrice = SPORT_PLAN_BASE_INR[sportPlan];
-  const totalAmount = sportPricingTotalAfterGst(sportPlan);
-  const gstAmount = sportPricingGstAmount(sportPlan);
+  const plannedDurationSec = useMemo(() => {
+    return (
+      parsePlannedDurationSecFromMetadata(recording?.metadata) ?? HALF_HOUR_SEC
+    );
+  }, [recording?.metadata]);
+  const basePrice = useMemo(
+    () => recordingUnlockBaseInr(sportPlan, plannedDurationSec),
+    [sportPlan, plannedDurationSec],
+  );
+  const totalAmount = useMemo(
+    () => sportPricingTotalFromBase(basePrice),
+    [basePrice],
+  );
+  const gstAmount = useMemo(
+    () => sportPricingGstFromBase(basePrice),
+    [basePrice],
+  );
   const isFreeSportUnlock = totalAmount === 0;
+  const plannedDurationLabel = useMemo(
+    () => formatPlannedDurationLabel(plannedDurationSec),
+    [plannedDurationSec],
+  );
   /** Per-recording purchases only (`RECORDING_ACCESS`); sport-wide MEDIA plans do not unlock other videos. */
   const hasRecordingAccess = unlockedRecordings.includes(recordingId);
   const displayTotal =
@@ -758,10 +736,8 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
       return;
     }
     if (!heroPlaybackUrl) {
-      Alert.alert(
-        'No playback URL',
-        formatPlaybackBlockedMessage(apiDebug, recording, playback),
-      );
+      const { title, message } = playbackUnavailableAlert(recording);
+      Alert.alert(title, message);
       return;
     }
     router.push({
@@ -780,19 +756,15 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     previewOnly,
     heroPlaybackUrl,
     recording,
-    playback,
     router,
-    apiDebug,
     openUnlockSheet,
   ]);
 
   const onPreviewHero = useCallback(() => {
     if (!recordingId) return;
     if (!heroPlaybackUrl) {
-      Alert.alert(
-        'No playback URL (preview)',
-        formatPlaybackBlockedMessage(apiDebug, recording, playback),
-      );
+      const { title, message } = playbackUnavailableAlert(recording);
+      Alert.alert(title, message);
       return;
     }
     router.push({
@@ -805,7 +777,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
         previewMode: '1',
       },
     });
-  }, [recordingId, heroPlaybackUrl, recording, playback, router, apiDebug]);
+  }, [recordingId, heroPlaybackUrl, recording, router]);
 
   const onShareHero = useCallback(async () => {
     if (!recordingId) return;
@@ -1131,7 +1103,8 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                 </Text>
               </View>
               <Text style={styles.sheetSub}>
-                Full playback for this recording only • incl. highlights
+                Session length {plannedDurationLabel} (selected at recording start)
+                • full playback for this recording only • incl. highlights
               </Text>
               {quoteError ? (
                 <Text style={[styles.sheetSub, { color: '#fca5a5', marginTop: 8 }]}>

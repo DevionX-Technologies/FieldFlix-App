@@ -14,7 +14,10 @@ import {
   TURF_ID,
 } from "@/data/constants";
 import { Paths } from "@/data/paths";
-import { FIELD_FLIX_SESSION_SPORT_METADATA_KEY } from "@/utils/recordingDisplay";
+import {
+  FIELD_FLIX_PLANNED_DURATION_SEC_METADATA_KEY,
+  FIELD_FLIX_SESSION_SPORT_METADATA_KEY,
+} from "@/utils/recordingDisplay";
 import { logRecordingFlowDebug } from "@/utils/recordingFlowDebug";
 import { presentEventNotification } from "@/utils/presentEventNotification";
 import type { HomeSportKey } from "@/utils/turfSports";
@@ -65,6 +68,10 @@ function remainingSecondsFromEndMs(endMs: number): number {
   return Math.max(0, Math.floor((endMs - Date.now()) / 1000));
 }
 
+type RecordingStatusApi = {
+  status?: string | null;
+};
+
 export function useCountdown(
   initialSeconds: number,
   turfId: string,
@@ -103,6 +110,37 @@ export function useCountdown(
   });
 
   const navigation = useRouter();
+
+  const clearLocalRecordingSession = useCallback(async () => {
+    await Promise.all([
+      SecureStore.deleteItemAsync("end_time"),
+      SecureStore.deleteItemAsync(RECORDING_KEY),
+      SecureStore.deleteItemAsync(TIME_LEFT_KEY),
+      SecureStore.deleteItemAsync(TIME_TURF_NAME),
+      SecureStore.deleteItemAsync(TIME_GROUNDLOCATION),
+      SecureStore.deleteItemAsync(RECORDING_CAMERA_ID),
+      SecureStore.deleteItemAsync(TURF_ID),
+      SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID),
+      SecureStore.deleteItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY),
+      SecureStore.deleteItemAsync(RECORDING_TIMER_PAUSED),
+      SecureStore.deleteItemAsync(RECORDING_PAUSE_REMAINING_SEC),
+    ]);
+  }, []);
+
+  const verifyServerRecordingInProgress = useCallback(
+    async (recordingId: string): Promise<boolean> => {
+      try {
+        const resp = await axiosInstance.get<RecordingStatusApi>(
+          `/recording/${recordingId}/status`,
+        );
+        const status = String(resp.data?.status ?? "").toLowerCase();
+        return status === "in_progress";
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
 
   // Helper function to show custom modal
   const showModal = (
@@ -214,6 +252,18 @@ export function useCountdown(
       };
 
       if (activeLocal) {
+        const serverStillActive = await verifyServerRecordingInProgress(
+          recRowIdHydrate,
+        );
+        if (!serverStillActive) {
+          logRecordingFlowDebug("recording_resume_rejected", {
+            reason: "server_not_in_progress",
+            recordingId: recRowIdHydrate,
+          });
+          await clearLocalRecordingSession();
+          goIdle();
+          return;
+        }
         recordingIdRef.current = recRowIdHydrate;
         setActiveRecordingSessionId(recRowIdHydrate);
         setTimeLeft(hydrateRemaining);
@@ -231,7 +281,13 @@ export function useCountdown(
     return () => {
       cancelled = true;
     };
-  }, [initialSeconds, turfId, cameraId]);
+  }, [
+    initialSeconds,
+    turfId,
+    cameraId,
+    clearLocalRecordingSession,
+    verifyServerRecordingInProgress,
+  ]);
 
   useEffect(() => {
     timeLeftRef.current = timeLeft;
@@ -281,10 +337,16 @@ export function useCountdown(
       const actualCameraId = camTrim || FALLBACK_CAMERA;
       const usedDefaultCameraFallback = !camTrim;
 
-      const meta =
-        sessionSport === "pickleball" || sessionSport === "padel" || sessionSport === "cricket"
-          ? { [FIELD_FLIX_SESSION_SPORT_METADATA_KEY]: sessionSport }
-          : {};
+      const meta: Record<string, string | number> = {
+        [FIELD_FLIX_PLANNED_DURATION_SEC_METADATA_KEY]: initialSeconds,
+      };
+      if (
+        sessionSport === "pickleball" ||
+        sessionSport === "padel" ||
+        sessionSport === "cricket"
+      ) {
+        meta[FIELD_FLIX_SESSION_SPORT_METADATA_KEY] = sessionSport;
+      }
 
       const payload = {
         userId: uid,
@@ -394,7 +456,7 @@ export function useCountdown(
         showModal(
           "error",
           "Camera unavailable",
-          "Due to technical issues, the camera is currently unavailable for recording. Please try again later or contact support.",
+          "Camera is currently inactive, so recording was not started. Please try again in some time.",
         );
       } else {
         const msg = axios.isAxiosError(err)
@@ -411,9 +473,32 @@ export function useCountdown(
 
   const restoreTimer = async () => {
     const cameraID = await SecureStore.getItemAsync(RECORDING_CAMERA_ID);
+    const recordingId = cameraID?.trim() ?? "";
 
-    recordingIdRef.current = cameraID ?? undefined;
-    setActiveRecordingSessionId(cameraID ?? null);
+    if (!recordingId) {
+      setIsRunning(false);
+      setIsPaused(false);
+      return;
+    }
+
+    const serverStillActive = await verifyServerRecordingInProgress(recordingId);
+    if (!serverStillActive) {
+      logRecordingFlowDebug("recording_restore_rejected", {
+        reason: "server_not_in_progress",
+        recordingId,
+      });
+      await clearLocalRecordingSession();
+      recordingIdRef.current = undefined;
+      setActiveRecordingSessionId(null);
+      setTimeLeft(initialSeconds);
+      timeLeftRef.current = initialSeconds;
+      setIsRunning(false);
+      setIsPaused(false);
+      return;
+    }
+
+    recordingIdRef.current = recordingId;
+    setActiveRecordingSessionId(recordingId);
     const paused = (await SecureStore.getItemAsync(RECORDING_TIMER_PAUSED)) === "1";
     const pauseRemStr =
       (await SecureStore.getItemAsync(RECORDING_PAUSE_REMAINING_SEC))?.trim() ?? "";
@@ -530,16 +615,39 @@ export function useCountdown(
       }, 5200);
     } catch (err: any) {
       console.error("❌ stop() error:", err.response?.data || err.message);
-      showModal(
-        "error",
-        "Stop failed",
-        err.response?.data?.message || err.message
-      );
+      const lowerMsg = String(
+        err?.response?.data?.message ?? err?.message ?? "",
+      ).toLowerCase();
+      const notInProgress =
+        lowerMsg.includes("not in progress") || lowerMsg.includes("not found");
+      if (notInProgress) {
+        await clearLocalRecordingSession();
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = undefined;
+        }
+        setIsRunning(false);
+        setIsPaused(false);
+        setActiveRecordingSessionId(null);
+        recordingIdRef.current = undefined;
+        setTimeLeft(initialSeconds);
+        showModal(
+          "info",
+          "Session already closed",
+          "This recording was not active on the server. Local session has been reset.",
+        );
+      } else {
+        showModal(
+          "error",
+          "Stop failed",
+          err.response?.data?.message || err.message
+        );
+      }
     } finally {
       isStoppingRef.current = false;
       setLoading(false);
     }
-  }, [initialSeconds, navigation]);
+  }, [initialSeconds, navigation, clearLocalRecordingSession]);
   //   useEffect(() => {
   //   if (!isRunning) return;
 
@@ -694,17 +802,7 @@ export function useCountdown(
   }, [stop]);
 
   const emptyALLlocalStorage = async () => {
-    await SecureStore.deleteItemAsync("end_time");
-    await SecureStore.deleteItemAsync(RECORDING_KEY);
-    await SecureStore.deleteItemAsync(TIME_LEFT_KEY);
-    await SecureStore.deleteItemAsync(TIME_TURF_NAME);
-    await SecureStore.deleteItemAsync(TIME_GROUNDLOCATION);
-    await SecureStore.deleteItemAsync(RECORDING_CAMERA_ID);
-    await SecureStore.deleteItemAsync(TURF_ID);
-    await SecureStore.deleteItemAsync(RECORDING_QR_CAMERA_ID);
-    await SecureStore.deleteItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY);
-    await SecureStore.deleteItemAsync(RECORDING_TIMER_PAUSED);
-    await SecureStore.deleteItemAsync(RECORDING_PAUSE_REMAINING_SEC);
+    await clearLocalRecordingSession();
   };
 
   return {

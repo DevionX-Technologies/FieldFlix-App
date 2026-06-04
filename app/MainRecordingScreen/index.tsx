@@ -92,6 +92,7 @@ export default function MainRecordingScreen() {
   const [turfDetails, setTurfDetails] = useState<Record<string, unknown>>({});
   const [highlightButtonCount, setHighlightButtonCount] = useState(0);
   const [storedVenue, setStoredVenue] = useState({ name: '', location: '' });
+  const [storedCourtLabel, setStoredCourtLabel] = useState('');
 
   const totalSeconds = useMemo(() => {
     const resume = routeParamFirst(Resume);
@@ -123,8 +124,9 @@ export default function MainRecordingScreen() {
   const courtDisplayLabel = useMemo(() => {
     const raw = routeParamFirst(courtLabel)?.trim();
     if (raw) return raw;
+    if (storedCourtLabel.trim()) return storedCourtLabel.trim();
     return 'Court';
-  }, [courtLabel]);
+  }, [courtLabel, storedCourtLabel]);
 
   const {
     timeLeft,
@@ -150,14 +152,23 @@ export default function MainRecordingScreen() {
 
   useEffect(() => {
     void (async () => {
-      const [name, location] = await Promise.all([
+      const [name, location, routeParamsRaw] = await Promise.all([
         SecureStore.getItemAsync(TIME_TURF_NAME),
         SecureStore.getItemAsync(TIME_GROUNDLOCATION),
+        SecureStore.getItemAsync(RECORDING_ACTIVE_ROUTE_PARAMS_KEY),
       ]);
       setStoredVenue({
         name: name?.trim() ?? '',
         location: location?.trim() ?? '',
       });
+      try {
+        if (!routeParamsRaw?.trim()) return;
+        const parsed = JSON.parse(routeParamsRaw) as Record<string, unknown>;
+        const fromDisk = String(parsed?.courtLabel ?? '').trim();
+        if (fromDisk) setStoredCourtLabel(fromDisk);
+      } catch {
+        /* ignore bad persisted payload */
+      }
     })();
   }, []);
 
@@ -236,7 +247,8 @@ export default function MainRecordingScreen() {
       GroundLocation: venueAddress,
       turfId: routeParamFirst(turfId) ?? '',
       cameraId: routeParamFirst(cameraId) ?? '',
-      courtLabel: routeParamFirst(courtLabel) ?? '',
+      courtLabel:
+        routeParamFirst(courtLabel)?.trim() || courtDisplayLabel.trim() || '',
       ChoosenTimeInMinutes: routeParamFirst(ChoosenTimeInMinutes) ?? '',
       plannedDurationSec: routeParamFirst(plannedDurationSec) ?? '',
       sessionSport: routeParamFirst(sessionSport) ?? '',
@@ -260,6 +272,7 @@ export default function MainRecordingScreen() {
     plannedDurationSec,
     sessionSport,
     remainingSeconds,
+    courtDisplayLabel,
   ]);
 
   useEffect(() => {
@@ -345,13 +358,15 @@ export default function MainRecordingScreen() {
                 </View>
 
                 <View style={styles.timerRow}>
-                  <Pressable
-                    style={styles.step}
-                    onPress={() => void adjustRemaining(-stepAdjustSec)}
-                    disabled={!isRunning}
-                  >
-                    <Text style={styles.stepTxt}>−</Text>
-                  </Pressable>
+                  {!isRunning ? (
+                    <Pressable
+                      style={styles.step}
+                      onPress={() => void adjustRemaining(-stepAdjustSec)}
+                      accessibilityLabel="Decrease remaining time"
+                    >
+                      <Text style={styles.stepTxt}>−</Text>
+                    </Pressable>
+                  ) : null}
 
                   <View style={styles.dialWrap}>
                     <Svg width={DIAL_SIZE} height={DIAL_SIZE} viewBox="0 0 180 180">
@@ -387,13 +402,15 @@ export default function MainRecordingScreen() {
                     </View>
                   </View>
 
-                  <Pressable
-                    style={styles.step}
-                    onPress={() => void adjustRemaining(stepAdjustSec)}
-                    disabled={!isRunning}
-                  >
-                    <Text style={styles.stepTxt}>+</Text>
-                  </Pressable>
+                  {!isRunning ? (
+                    <Pressable
+                      style={styles.step}
+                      onPress={() => void adjustRemaining(stepAdjustSec)}
+                      accessibilityLabel="Increase remaining time"
+                    >
+                      <Text style={styles.stepTxt}>+</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
 
                 {isRunning && highlightButtonCount > 0 ? (

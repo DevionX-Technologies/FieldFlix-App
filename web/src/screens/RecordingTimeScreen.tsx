@@ -21,15 +21,12 @@ function parseQr(raw: string | undefined): QrParsed | null {
   }
 }
 
-/** Web flow has no authenticated `/cameras` fetch — derive from QR `GroundNumber`. */
+/** Web flow has no authenticated `/cameras` fetch — use safe unmapped fallback. */
 function courtLabelFromQr(p: QrParsed | null): string {
   const rawNum = String(p?.GroundNumber ?? '').trim()
-  const rawDesc = String(p?.GroundDescription ?? '').trim()
-  const source = rawNum || rawDesc
-  if (!source) return 'Court 1'
-  const normalized = source.replace(/\s+/g, ' ').trim()
-  if (/^court\b/i.test(normalized) || /^ground\b/i.test(normalized)) return normalized
-  return `Court ${normalized}`
+  const n = Number(rawNum)
+  if (Number.isFinite(n) && n > 0) return `Court ${n}`
+  return 'Court 0'
 }
 
 const ACCENT = '#4ade80'

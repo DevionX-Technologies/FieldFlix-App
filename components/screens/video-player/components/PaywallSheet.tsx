@@ -1,19 +1,23 @@
-import { Paths } from '@/data/paths';
 import { FF } from '@/screens/fieldflix/fonts';
-import { sportPricingTotalAfterGst } from '@/utils/sportPlanPricing';
+import {
+  HALF_HOUR_SEC,
+  sportPricingTotalFromBase,
+  recordingUnlockBaseInr,
+} from '@/utils/sportPlanPricing';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
 import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 const ACCENT = '#22c55e';
 
-/** Same maths as Highlights unlock sheet + Premium (18% GST included in paid totals). */
+/** 30-min session starting prices (incl. 18% GST). */
 const PAYWALL_PRICE_HINT =
-  `Cricket free · Pickleball ₹${sportPricingTotalAfterGst('pickleball')} · Padel ₹${sportPricingTotalAfterGst(
-    'padel',
-  )} (all incl. GST)`;
+  `From 30 min (incl. GST): Cricket free · Pickleball ₹${sportPricingTotalFromBase(
+    recordingUnlockBaseInr('pickleball', HALF_HOUR_SEC),
+  )} · Padel ₹${sportPricingTotalFromBase(
+    recordingUnlockBaseInr('padel', HALF_HOUR_SEC),
+  )} · +50% of hourly rate per extra 30 min`;
 
 type Props = {
   visible: boolean;
@@ -23,15 +27,12 @@ type Props = {
 };
 
 /**
- * Shown when a free user crosses the 2.5-minute preview cap. Hides the active video
- * behind a blurred / dimmed overlay and routes the user to the premium plan screen.
+ * Legacy preview-ended sheet. Prefer `RecordingUnlockSheet` for per-recording checkout.
+ * `onUpgradePress` is required — we no longer route to the Premium plans screen.
  */
 export function PaywallSheet({ visible, onClose, onUpgradePress, message }: Props) {
-  const router = useRouter();
-
   const handleUpgrade = () => {
     onUpgradePress?.();
-    router.push(Paths.profilePremium);
   };
 
   return (
@@ -50,7 +51,7 @@ export function PaywallSheet({ visible, onClose, onUpgradePress, message }: Prop
           <Text style={styles.title}>Preview ended</Text>
           <Text style={styles.body}>
             {message ??
-              "You've watched the free preview. Unlock full match playback with a sport plan (Cricket, Pickleball, or Padel)."}
+              "You've watched the free preview. Unlock full match playback — price is based on the session length you selected when recording started (30-minute steps, plus GST)."}
           </Text>
           <Text style={styles.priceHint}>{PAYWALL_PRICE_HINT}</Text>
           <Pressable
@@ -65,7 +66,7 @@ export function PaywallSheet({ visible, onClose, onUpgradePress, message }: Prop
               end={{ x: 1, y: 0 }}
               style={StyleSheet.absoluteFill}
             />
-            <Text style={styles.ctaText}>View plans</Text>
+            <Text style={styles.ctaText}>Unlock recording</Text>
           </Pressable>
           <Pressable onPress={onClose} hitSlop={10} style={styles.close}>
             <Text style={styles.closeText}>Not now</Text>

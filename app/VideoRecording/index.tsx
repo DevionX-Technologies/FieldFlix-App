@@ -1,5 +1,5 @@
 
-import { PaywallSheet } from "@/components/screens/video-player/components/PaywallSheet";
+import { RecordingUnlockSheet } from "@/components/recording/RecordingUnlockSheet";
 import { RecordingHighlight } from "@/components/screens/video-player/type";
 import VideoPlayer from "@/components/screens/video-player/VideoPlayer";
 import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
@@ -46,7 +46,7 @@ export default function VideoPlayerScreen() {
     typeof highlightShareIdRaw === "string" && highlightShareIdRaw.trim()
       ? highlightShareIdRaw.trim()
       : undefined;
-  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [unlockSheetVisible, setUnlockSheetVisible] = useState(false);
 
   const soloHighlight =
     soloParam === "1" || (Array.isArray(soloParam) && soloParam[0] === "1");
@@ -80,11 +80,16 @@ export default function VideoPlayerScreen() {
   const isPaidPlayback = recordingUnlocked;
 
   useEffect(() => {
-    if (recordingUnlocked) setPaywallVisible(false);
+    if (recordingUnlocked) setUnlockSheetVisible(false);
   }, [recordingUnlocked]);
 
   const onPaywall = useCallback(() => {
-    setPaywallVisible(true);
+    if (!recordingId) return;
+    setUnlockSheetVisible(true);
+  }, [recordingId]);
+
+  const refreshUnlocked = useCallback(() => {
+    void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
   }, []);
 
   let recordingHighlights: RecordingHighlight[] = [];
@@ -116,13 +121,14 @@ export default function VideoPlayerScreen() {
         showVideosListBelow={showVideosListBelow}
         allowShareClips={allowShareClips}
       />
-      <PaywallSheet
-        visible={paywallVisible}
-        onClose={() => {
-          setPaywallVisible(false);
-          void mergeServerUnlockedRecordingIds().then(setUnlockedRecordingIds);
-        }}
-      />
+      {recordingId ? (
+        <RecordingUnlockSheet
+          visible={unlockSheetVisible}
+          recordingId={String(recordingId)}
+          onClose={() => setUnlockSheetVisible(false)}
+          onUnlocked={refreshUnlocked}
+        />
+      ) : null}
     </>
   );
 }

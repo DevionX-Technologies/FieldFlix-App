@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './recordingActiveScreen.css'
 
@@ -19,8 +19,6 @@ function formatHMS(totalSeconds: number) {
   return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
-const STEP_SEC = 5 * 60
-
 /** Recording in progress — countdown, progress ring, Pause / Finish. */
 export default function RecordingActiveScreen() {
   const navigate = useNavigate()
@@ -31,7 +29,7 @@ export default function RecordingActiveScreen() {
   const scanned = state?.scanned?.trim() || ''
   const venueName = state?.venueName?.trim() || 'TGS Sports Arena'
   const venueAddress = state?.venueAddress?.trim() || 'Andheri West, Mumbai'
-  const courtLabel = state?.courtLabel?.trim() || 'Court 1'
+  const courtLabel = state?.courtLabel?.trim() || 'Court 0'
 
   const [remainingSec, setRemainingSec] = useState(planned)
   const [paused, setPaused] = useState(false)
@@ -50,10 +48,6 @@ export default function RecordingActiveScreen() {
   }, [planned, remainingSec])
 
   const displayTime = useMemo(() => formatHMS(remainingSec), [remainingSec])
-
-  const bump = useCallback((delta: number) => {
-    setRemainingSec((r) => Math.min(planned, Math.max(0, r + delta)))
-  }, [planned])
 
   const onFinish = () => {
     navigate('/recordings', {
@@ -97,10 +91,6 @@ export default function RecordingActiveScreen() {
           </div>
 
           <div className="ra-timer-row">
-            <button type="button" className="ra-step" onClick={() => bump(-STEP_SEC)} aria-label="Decrease remaining time">
-              <span>−</span>
-            </button>
-
             <div className="ra-dial-wrap">
               <svg className="ra-dial-svg" viewBox="0 0 180 180" aria-hidden>
                 <circle className="ra-dial-track" cx="90" cy="90" r="78" fill="none" strokeWidth="10" />
@@ -125,10 +115,6 @@ export default function RecordingActiveScreen() {
                 </div>
               </div>
             </div>
-
-            <button type="button" className="ra-step" onClick={() => bump(STEP_SEC)} aria-label="Increase remaining time">
-              <span>+</span>
-            </button>
           </div>
 
           <div className="ra-actions">

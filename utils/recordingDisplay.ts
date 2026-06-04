@@ -56,6 +56,50 @@ export function highlightCountFromRecording(
  * persist the status update (stale instance, signature mismatch, etc.). The list
  * UIs use this so the user can play an asset whose Mux dashboard says "Ready".
  */
+/** User-facing copy when Watch / Preview is tapped but playback URL is not ready. */
+export function playbackUnavailableAlert(recording: {
+  status?: string | null;
+} | null | undefined): { title: string; message: string } {
+  const status = String(recording?.status ?? '').toLowerCase();
+
+  if (status === 'in_progress') {
+    return {
+      title: 'Still recording',
+      message:
+        'This session is still active on the court camera. You can watch the full video once recording ends and processing is complete.',
+    };
+  }
+
+  if (status === 'processing') {
+    return {
+      title: 'Video is processing',
+      message:
+        'Your match video is being prepared. This usually takes a few minutes — check back shortly or pull down to refresh.',
+    };
+  }
+
+  if (status === 'failed') {
+    return {
+      title: 'Video unavailable',
+      message:
+        'We could not prepare this recording. Please try again later or contact support if the issue continues.',
+    };
+  }
+
+  if (status === 'cancelled') {
+    return {
+      title: 'Recording cancelled',
+      message: 'This session was cancelled before a playable video was created.',
+    };
+  }
+
+  return {
+    title: 'Not ready to play yet',
+    message:
+      'Playback is not available right now. Please wait a few minutes and try again.',
+  };
+}
+
 export function recordingIsReady(
   rec:
     | {
@@ -108,6 +152,10 @@ export function sportLabelFromTurf(
 export const FIELD_FLIX_SESSION_SPORT_METADATA_KEY =
   'fieldflix_session_sport' as const;
 
+/** Timer length selected before start — used for unlock pricing (not actual stop time). */
+export const FIELD_FLIX_PLANNED_DURATION_SEC_METADATA_KEY =
+  'fieldflix_planned_duration_sec' as const;
+
 function homeSportToLabel(key: HomeSportKey): string {
   if (key === 'pickleball') return 'Pickleball';
   if (key === 'padel') return 'Padel';
@@ -125,6 +173,19 @@ export function parseFieldflixSessionSportFromMetadata(
   if (raw !== 'pickleball' && raw !== 'padel' && raw !== 'cricket')
     return null;
   return raw;
+}
+
+/** Planned session length in seconds (30-min steps from recording setup). */
+export function parsePlannedDurationSecFromMetadata(
+  metadata: unknown,
+): number | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const raw = (metadata as Record<string, unknown>)[
+    FIELD_FLIX_PLANNED_DURATION_SEC_METADATA_KEY
+  ];
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 30 * 60) return null;
+  return Math.floor(n);
 }
 
 /**

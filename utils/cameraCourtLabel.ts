@@ -2,6 +2,7 @@ import type { Camera } from '@/lib/fieldflix-api';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UNMAPPED_CAMERA_COURT_NUMBER = 0;
 
 function compactText(v: unknown): string {
   return String(v ?? '')
@@ -24,21 +25,14 @@ export function explicitCourtNumberFromCamera(
 }
 
 /**
- * Court index when API sends legacy `ground_number` but not `court_number`.
- * Find-recording dropdowns must not infer court from camera names like "Camera 3".
+ * Court index from canonical DB mapping only (`court_number`).
+ * We intentionally ignore legacy `ground_number` because it can be stale/misleading.
  */
 export function resolveCourtNumberFromCamera(
-  cam: Pick<Camera, 'court_number' | 'ground_number'>,
+  cam: Pick<Camera, 'court_number'>,
 ): number | null {
   const fromDb = explicitCourtNumberFromCamera(cam);
   if (fromDb != null) return fromDb;
-
-  const gn = cam.ground_number;
-  if (gn !== undefined && gn !== null && String(gn).trim() !== '') {
-    const n = Number(String(gn).trim());
-    if (Number.isFinite(n)) return n;
-  }
-
   return null;
 }
 
@@ -90,10 +84,13 @@ export function resolveCourtLabelForRecordingSession(
   qrGroundDescription?: string | null,
 ): string {
   const id = String(cameraId ?? '').trim();
-  if (id && cameras.length > 0) {
+  if (id) {
     const cam = cameras.find((c) => String(c.id) === id);
-    const fromCam = courtDisplayLabelFromCamera(cam ?? null);
-    if (fromCam) return fromCam;
+    if (!cam) return `Court ${UNMAPPED_CAMERA_COURT_NUMBER}`;
+    const n = resolveCourtNumberFromCamera(cam);
+    if (n != null) return `Court ${n}`;
+    // Frontend-only marker for unmapped camera ids (no court_number in DB).
+    return `Court ${UNMAPPED_CAMERA_COURT_NUMBER}`;
   }
   return normalizeGroundLabelFromQr(qrGroundNumber, qrGroundDescription);
 }

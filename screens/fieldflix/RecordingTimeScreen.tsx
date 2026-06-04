@@ -1,4 +1,5 @@
 import { Paths } from '@/data/paths';
+import { RECORDING_ACTIVE_ROUTE_PARAMS_KEY } from '@/data/constants';
 import { FF } from '@/screens/fieldflix/fonts';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { WebShell } from '@/screens/fieldflix/WebShell';
@@ -10,6 +11,7 @@ import {
 import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
 import { fieldflixHomeSportsFromSupported, type HomeSportKey } from '@/utils/turfSports';
 import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { getCameras, type Camera } from '@/lib/fieldflix-api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -274,6 +276,15 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
         scanned: scanned.slice(0, 200),
         ...(metaSport ? { sessionSport: metaSport } : {}),
       };
+      // Persist resume payload before navigation so cold-kill restore keeps court label.
+      void SecureStore.setItemAsync(
+        RECORDING_ACTIVE_ROUTE_PARAMS_KEY,
+        JSON.stringify({
+          ...nextParams,
+          remainingSeconds: String(durationSec),
+          Resume: '1',
+        }),
+      );
       logRecordingFlowDebug('navigate_recording_active', { pathname: Paths.recordingActive, params: nextParams });
       router.push({
         pathname: Paths.recordingActive,

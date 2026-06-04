@@ -13,7 +13,10 @@ import { FF } from "@/screens/fieldflix/fonts";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import {
   GST_RATE,
-  SPORT_PLAN_BASE_INR,
+  HALF_HOUR_SEC,
+  recordingUnlockBaseInr,
+  SPORT_HOURLY_RATE_INR,
+  sportPricingTotalFromBase,
 } from "@/utils/sportPlanPricing";
 import axios from "axios";
 import { LinearGradient } from "expo-linear-gradient";
@@ -96,29 +99,29 @@ const PLAN_ORDER: {
     id: "cricket",
     name: "Cricket Plan",
     sub: "(Sport Access)",
-    basePrice: SPORT_PLAN_BASE_INR.cricket,
+    basePrice: 0,
     img: RASTER.planFree,
   },
   {
     id: "pickleball",
     name: "Pickleball Plan",
     sub: "(Sport Access)",
-    basePrice: SPORT_PLAN_BASE_INR.pickleball,
+    basePrice: recordingUnlockBaseInr('pickleball', HALF_HOUR_SEC),
     img: RASTER.planPro,
   },
   {
     id: "padel",
     name: "Padel Plan",
     sub: "(Sport Access)",
-    basePrice: SPORT_PLAN_BASE_INR.padel,
+    basePrice: recordingUnlockBaseInr('padel', HALF_HOUR_SEC),
     img: RASTER.planPrem,
   },
 ];
 
 const PLAN_BASE_PRICE: Record<PlanId, number> = {
-  cricket: SPORT_PLAN_BASE_INR.cricket,
-  pickleball: SPORT_PLAN_BASE_INR.pickleball,
-  padel: SPORT_PLAN_BASE_INR.padel,
+  cricket: 0,
+  pickleball: recordingUnlockBaseInr('pickleball', HALF_HOUR_SEC),
+  padel: recordingUnlockBaseInr('padel', HALF_HOUR_SEC),
   pro: 0,
   premium: 0,
   free: 0,
@@ -137,7 +140,11 @@ function planPriceHeadline(p: { basePrice: number; id: PlanId }): string {
 
 function planPriceSubline(p: { basePrice: number; id: PlanId }): string {
   if (p.basePrice === 0) return "No payment — tap to activate";
-  return `Base ₹${p.basePrice} + 18% GST`;
+  const hourly =
+    p.id === 'pickleball' || p.id === 'padel'
+      ? SPORT_HOURLY_RATE_INR[p.id]
+      : 0;
+  return `30 min session · +₹${hourly / 2} per extra 30 min · 18% GST on total`;
 }
 
 /**
