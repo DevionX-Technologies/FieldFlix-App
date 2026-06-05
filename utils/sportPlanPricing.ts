@@ -2,8 +2,9 @@
  * Recording unlock pricing — hourly rate, billed in 30-minute blocks.
  * Must stay aligned with `FieldFlix-Backend-clean/src/utils/recording-pricing.ts`.
  *
- * • First 30 min = full hourly rate (base price for minimum session).
- * • Each additional 30 min adds 50% of the hourly rate.
+ * • Minimum session is 30 min; each block is billed at the half-hourly rate.
+ * • Pickleball ₹100 / Padel ₹125 / Cricket ₹150 per 30 min (cricket unlock free for now).
+ * • Hourly reference rates: ₹200 / ₹250 / ₹300.
  * • Amount is based on the timer selected at session start (not early stop).
  * • GST 18% is applied on top of the pre-tax base.
  */
@@ -19,11 +20,11 @@ export const SPORT_HOURLY_RATE_INR = {
 
 export type SportPlanPricingId = keyof typeof SPORT_HOURLY_RATE_INR;
 
-/** @deprecated Use SPORT_HOURLY_RATE_INR — kept for imports that expect “base” at 30 min. */
+/** Pre-GST price for one 30-min block (cricket unlock free for now). */
 export const SPORT_PLAN_BASE_INR = {
   cricket: 0,
-  pickleball: SPORT_HOURLY_RATE_INR.pickleball,
-  padel: SPORT_HOURLY_RATE_INR.padel,
+  pickleball: SPORT_HOURLY_RATE_INR.pickleball / 2,
+  padel: SPORT_HOURLY_RATE_INR.padel / 2,
 } as const;
 
 export const HALF_HOUR_SEC = 30 * 60;
@@ -40,10 +41,9 @@ export function recordingUnlockBaseInr(
   plannedDurationSec: number,
 ): number {
   if (plan === 'cricket') return 0;
-  const hourly = SPORT_HOURLY_RATE_INR[plan];
+  const halfHourRate = SPORT_HOURLY_RATE_INR[plan] / 2;
   const blocks = halfHourBlocksFromDuration(plannedDurationSec);
-  const incrementPerHalfHour = hourly / 2;
-  return Math.round(hourly + (blocks - 1) * incrementPerHalfHour);
+  return Math.round(blocks * halfHourRate);
 }
 
 export function sportPricingTotalFromBase(baseInr: number): number {

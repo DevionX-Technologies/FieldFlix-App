@@ -1,4 +1,5 @@
 import { Paths } from "@/data/paths";
+import { highlightCountFromRecording } from "@/utils/recordingDisplay";
 import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import {
   getFieldflixApiErrorMessage,
@@ -46,7 +47,7 @@ type ProfileVM = {
   avatarUrl: string | null;
   plan: string;
   sessions: number;
-  flickshorts: number;
+  highlights: number;
   shared: number;
   about: string[];
   loading: boolean;
@@ -78,7 +79,7 @@ export default function FieldflixProfileScreen() {
     avatarUrl: null,
     plan: "Player",
     sessions: 0,
-    flickshorts: 0,
+    highlights: 0,
     shared: 0,
     about: [],
     loading: true,
@@ -103,6 +104,7 @@ export default function FieldflixProfileScreen() {
 
     let user: FieldflixUser | null = null;
     let myCount = 0;
+    let highlightsCount = 0;
     let sharedCount = 0;
     try {
       const [u, my, sh] = await Promise.all([
@@ -111,7 +113,17 @@ export default function FieldflixProfileScreen() {
         getSharedWithMe().catch(() => [] as unknown[]),
       ]);
       user = u;
-      myCount = Array.isArray(my) ? my.length : 0;
+      if (Array.isArray(my)) {
+        myCount = my.length;
+        highlightsCount = my.reduce(
+          (sum, rec) =>
+            sum +
+            highlightCountFromRecording(
+              rec as { recordingHighlights?: unknown[] },
+            ),
+          0,
+        );
+      }
       sharedCount = Array.isArray(sh) ? sh.length : 0;
     } catch (e) {
       console.warn(
@@ -129,7 +141,7 @@ export default function FieldflixProfileScreen() {
       avatarUrl: user?.profile_image_path ?? null,
       plan: "Player",
       sessions: myCount,
-      flickshorts: 0,
+      highlights: highlightsCount,
       shared: sharedCount,
       about: [],
       loading: false,
@@ -350,9 +362,9 @@ export default function FieldflixProfileScreen() {
               </View>
               <View style={styles.stat}>
                 <Text style={[styles.statVal, { color: PG }]}>
-                  {vm.flickshorts}
+                  {vm.highlights}
                 </Text>
-                <Text style={styles.statLbl}>Flickshorts</Text>
+                <Text style={styles.statLbl}>Highlights</Text>
               </View>
               <View style={styles.stat}>
                 <Text style={styles.statVal}>{vm.shared}</Text>
