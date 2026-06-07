@@ -18,15 +18,11 @@ export default function ScanQrScreen() {
   const [torchSupported, setTorchSupported] = useState(true)
   const navigatedRef = useRef(false)
 
-  // Preview: after 5s go to recording screen even if no QR was decoded (remove when done testing).
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (navigatedRef.current) return
-      navigatedRef.current = true
-      navigate('/recording-time', { replace: true })
-    }, 5000)
-    return () => window.clearTimeout(t)
-  }, [navigate])
+  // NOTE: Removed the 5-second "preview" auto-navigate that used to land on
+  // /recording-time with no scanned state. That was the cause of the spurious
+  // "Court 0" the user kept seeing — the resolver had nothing to read, so the
+  // hardcoded fallback fired. The real scan loop in the next useEffect handles
+  // navigation once jsQR decodes a payload from the live camera frame.
 
   useEffect(() => {
     let cancelled = false

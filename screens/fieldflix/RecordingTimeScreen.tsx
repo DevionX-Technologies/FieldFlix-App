@@ -6,6 +6,7 @@ import { WebShell } from '@/screens/fieldflix/WebShell';
 import axiosInstance from '@/utils/axiosInstance';
 import { logRecordingFlowDebug } from '@/utils/recordingFlowDebug';
 import {
+  courtDisplayLabelFromCamera,
   resolveCourtLabelForRecordingSession,
 } from '@/utils/cameraCourtLabel';
 import { hasPersistedRecordingSession } from '@/utils/recordingSessionGuard';
@@ -13,7 +14,7 @@ import { fieldflixHomeSportsFromSupported, type HomeSportKey } from '@/utils/tur
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
-import { getCameras, type Camera } from '@/lib/fieldflix-api';
+import { getCameras, getCameraById, type Camera } from '@/lib/fieldflix-api';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -87,6 +88,18 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
   const cameraIdTrim = String(params.cameraId ?? '').trim();
 
   const [venueCameras, setVenueCameras] = useState<Camera[]>([]);
+  /**
+   * Authoritative court label fetched by hitting `GET /cameras/:cameraId`
+   * directly. The QR's `cameraId` is the only field we can fully trust — a
+   * batch of printed QRs encode a `turfId` that points at an empty duplicate
+   * turf row, so `getCameras(turfId)` returns [] for those venues and we'd
+   * never resolve the court via that path. Looking up the camera by id
+   * sidesteps the bad turfId completely.
+   *
+   * Stays `null` until the lookup either succeeds or fails. When non-null,
+   * it takes precedence over every other label source.
+   */
+  const [cameraByIdLabel, setCameraByIdLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!turfIdTrim) {
@@ -106,21 +119,55 @@ export default function RecordingTimeScreen({ params }: { params: RecordingTimeP
     };
   }, [turfIdTrim]);
 
-  const groundLabel = useMemo(
-    () =>
-      resolveCourtLabelForRecordingSession(
-        venueCameras,
-        cameraIdTrim,
-        params.GroundNumber,
-        params.GroundDescription,
-      ),
-    [
+  // DB-first court resolution via the camera's own UUID — independent of the
+  // QR's (potentially wrong) turfId.
+  useEffect(() => {
+    if (!cameraIdTrim) {
+      setCameraByIdLabel(null);
+      return;
+    }
+    let cancelled = false;
+    void getCameraById(cameraIdTrim)
+      .then((cam) => {
+        if (cancelled) return;
+        const label = courtDisplayLabelFromCamera(cam);
+        setCameraByIdLabel(label);
+      })
+      .catch(() => {
+        if (!cancelled) setCameraByIdLabel(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cameraIdTrim]);
+
+  /**
+   * Court label — resolution order:
+   *   1. `GET /cameras/:cameraId` → its `court_number` from DB (authoritative).
+   *   2. `getCameras(turfId)` and find the matching camera (legacy path).
+   *   3. The QR's own `GroundNumber` field (printed into the PNG).
+   *   4. Literal `'Court 0'` — DIAGNOSTIC. Only fires when EVERY DB lookup
+   *      came up empty AND the QR carried no `GroundNumber`. Seeing this in
+   *      the UI means admin has not populated `court_number` for the camera
+   *      this QR points at.
+   */
+  const groundLabel = useMemo(() => {
+    if (cameraByIdLabel) return cameraByIdLabel;
+    const fromVenueCams = resolveCourtLabelForRecordingSession(
       venueCameras,
       cameraIdTrim,
       params.GroundNumber,
       params.GroundDescription,
-    ],
-  );
+    );
+    if (fromVenueCams && fromVenueCams !== 'Court') return fromVenueCams;
+    return 'Court 0';
+  }, [
+    cameraByIdLabel,
+    venueCameras,
+    cameraIdTrim,
+    params.GroundNumber,
+    params.GroundDescription,
+  ]);
   /** Kept for `/recording-active` params only (not shown under the venue title). */
   const scanned =
     [params.GroundDescription, params.turfId, params.cameraId].filter(Boolean).join(' · ') || '';

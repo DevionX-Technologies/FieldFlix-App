@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import './recordingTimeScreen.css'
 
@@ -9,6 +9,9 @@ type QrParsed = {
   GroundDescription?: string | null
   Name?: string | null
   GroundLocation?: string | null
+  /** Set by `/qr/.../scan` — the camera the QR belongs to in the DB. */
+  cameraId?: string | null
+  turfId?: string | null
 }
 
 function parseQr(raw: string | undefined): QrParsed | null {
@@ -21,12 +24,50 @@ function parseQr(raw: string | undefined): QrParsed | null {
   }
 }
 
-/** Web flow has no authenticated `/cameras` fetch — use safe unmapped fallback. */
-function courtLabelFromQr(p: QrParsed | null): string {
+/**
+ * Web "Court N" resolver — resolution order:
+ *   1. DB `court_number` on the camera the QR points at (public GET /cameras/:id).
+ *      This is the authoritative answer — exactly what the venue admin populated.
+ *   2. QR's own `GroundNumber` field (the value baked into the printed PNG).
+ *   3. Literal `'Court 0'` — DIAGNOSTIC. Seeing this means BOTH the DB lookup
+ *      and the QR's `GroundNumber` came up empty, so either the camera has no
+ *      `court_number` set in the DB yet OR the QR didn't decode at all.
+ */
+function fallbackLabelFromQr(p: QrParsed | null): string {
   const rawNum = String(p?.GroundNumber ?? '').trim()
   const n = Number(rawNum)
   if (Number.isFinite(n) && n > 0) return `Court ${n}`
   return 'Court 0'
+}
+
+/**
+ * API base URL for the public camera lookup. Falls back to the production host
+ * when no Vite env var is set so deployed previews resolve correctly.
+ */
+const API_BASE_URL =
+  (typeof import.meta !== 'undefined' &&
+    (import.meta as ImportMeta & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL) ||
+  'https://api.devionx.com'
+
+async function fetchCourtLabelFromDb(
+  cameraId: string | null | undefined,
+): Promise<string | null> {
+  const id = String(cameraId ?? '').trim()
+  if (!id) return null
+  try {
+    const res = await fetch(`${API_BASE_URL}/cameras/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) return null
+    const cam = (await res.json()) as { court_number?: number | string | null }
+    const raw = cam?.court_number
+    if (raw === undefined || raw === null || String(raw).trim() === '') return null
+    const parsed = Number(String(raw).trim())
+    return Number.isFinite(parsed) && parsed > 0 ? `Court ${parsed}` : null
+  } catch {
+    return null
+  }
 }
 
 const ACCENT = '#4ade80'
@@ -70,7 +111,40 @@ export default function RecordingTimeScreen() {
     String(parsedQr?.GroundLocation ?? '').trim() ||
     'Andheri West, Mumbai'
 
-  const courtLabel = useMemo(() => courtLabelFromQr(parsedQr), [parsedQr])
+  /**
+   * Court label is resolved in two stages:
+   *
+   *   1. Synchronous initial render uses `fallbackLabelFromQr(parsedQr)` so the
+   *      screen doesn't flash empty. Prefers QR's `GroundNumber`; bottoms out
+   *      at the diagnostic literal `'Court 0'`.
+   *   2. As soon as we have a `cameraId`, we ask the backend for the canonical
+   *      `court_number` (`GET /cameras/:id`) and overwrite the label if found.
+   *      If the DB has nothing, we keep the fallback.
+   *
+   * Net effect: seeing "Court 0" in the UI means BOTH the camera in the DB
+   * has no `court_number` AND the QR's `GroundNumber` was empty. Anything
+   * other than "Court 0" came from the DB or, failing that, the QR.
+   */
+  const [courtLabel, setCourtLabel] = useState<string>(() =>
+    fallbackLabelFromQr(parsedQr),
+  )
+
+  useEffect(() => {
+    setCourtLabel(fallbackLabelFromQr(parsedQr))
+  }, [parsedQr])
+
+  useEffect(() => {
+    let cancelled = false
+    const cameraId = parsedQr?.cameraId
+    if (!cameraId) return
+    void fetchCourtLabelFromDb(cameraId).then((dbLabel) => {
+      if (cancelled) return
+      if (dbLabel) setCourtLabel(dbLabel)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [parsedQr?.cameraId])
 
   const [durationSec, setDurationSec] = useState(60 * 60)
   const [activePreset, setActivePreset] = useState<string>('60')

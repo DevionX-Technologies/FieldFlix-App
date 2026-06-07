@@ -1011,6 +1011,32 @@ function normalizeCameraRow(raw: Record<string, unknown>): Camera {
   };
 }
 
+/**
+ * Look up a single camera by its UUID via the (now public) `GET /cameras/:id`.
+ *
+ * Used by the QR-scan resolver as the authoritative path: scan a QR, take its
+ * `cameraId`, ask the backend "what's the court_number for this camera?" —
+ * no dependency on the QR's `turfId` field being correct. Necessary because
+ * a chunk of printed QRs encode a `turfId` that points at an empty duplicate
+ * turf row; the cameraId itself is always right.
+ *
+ * Returns null on any failure so callers can cleanly fall back to the QR's
+ * embedded `GroundNumber`.
+ */
+export async function getCameraById(cameraId: string): Promise<Camera | null> {
+  const id = String(cameraId ?? '').trim();
+  if (!id) return null;
+  try {
+    const { data } = await axiosInstance.get(
+      `/cameras/${encodeURIComponent(id)}`,
+    );
+    if (!data || typeof data !== 'object') return null;
+    return normalizeCameraRow(data as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
 export async function getCameras(turfId?: string): Promise<Camera[]> {
   /** Match Find My Game expectations: most venues fit in one page. */
   const params = turfId
