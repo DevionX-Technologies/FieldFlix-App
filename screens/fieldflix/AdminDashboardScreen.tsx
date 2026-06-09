@@ -4,6 +4,9 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { useIsAdminRole } from '@/hooks/useIsAdminRole';
+import { AdminCouponsTab } from '@/screens/fieldflix/admin/AdminCouponsTab';
+import { AdminLeaderboardTab } from '@/screens/fieldflix/admin/AdminLeaderboardTab';
+import { AdminPointsTab } from '@/screens/fieldflix/admin/AdminPointsTab';
 import {
   addAdminByPhone,
   approveFlickShort,
@@ -39,7 +42,13 @@ import {
   View,
 } from 'react-native';
 
-type AdminTab = 'overview' | 'studio' | 'queue';
+type AdminTab =
+  | 'overview'
+  | 'studio'
+  | 'queue'
+  | 'points'
+  | 'leaderboard'
+  | 'coupons';
 
 function muxPoster(playbackId: string, timeSec = 1): string {
   const t = Math.max(0, Math.floor(timeSec));
@@ -432,6 +441,9 @@ export default function AdminDashboardScreen() {
     { id: 'overview', label: 'Overview' },
     { id: 'studio', label: 'Studio' },
     { id: 'queue', label: 'Queue' },
+    { id: 'points', label: 'Points' },
+    { id: 'leaderboard', label: 'Leaderboard' },
+    { id: 'coupons', label: 'Coupons' },
   ];
 
   if (authLoading || (!authLoading && !isAdmin)) {
@@ -454,7 +466,12 @@ export default function AdminDashboardScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      <View style={styles.tabBar}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabBarScroll}
+        style={styles.tabBar}
+      >
         {tabLabels.map(({ id, label }) => (
           <Pressable
             key={id}
@@ -464,7 +481,7 @@ export default function AdminDashboardScreen() {
             <Text style={[styles.tabTxt, tab === id && styles.tabTxtActive]}>{label}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -872,6 +889,10 @@ export default function AdminDashboardScreen() {
           </SectionCard>
         ) : null}
 
+        {tab === 'points' ? <AdminPointsTab /> : null}
+        {tab === 'leaderboard' ? <AdminLeaderboardTab /> : null}
+        {tab === 'coupons' ? <AdminCouponsTab /> : null}
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -965,14 +986,18 @@ const styles = StyleSheet.create({
     color: WEB.white,
   },
   tabBar: {
-    flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(0,0,0,0.25)',
+    flexGrow: 0,
+  },
+  tabBarScroll: {
+    flexDirection: 'row',
+    paddingHorizontal: 4,
   },
   tabItem: {
-    flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 18,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',

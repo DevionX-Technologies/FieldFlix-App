@@ -440,12 +440,19 @@ export async function createPlanOrder(plan: PlanId): Promise<PlanOrderResponse> 
 
 /**
  * Razorpay order for unlocking one recording's full playback (`POST /payments/:recordingId/create-payment`).
+ *
+ * `couponCode` (optional) makes the backend re-preview the discount, apply it,
+ * and stash the assignment id on the payment row's metadata so verify can
+ * redeem on success. Tampering with the request body can't grant an
+ * arbitrary discount — backend never trusts a client-supplied price.
  */
 export async function createRecordingPaymentOrder(
   recordingId: string,
+  opts?: { couponCode?: string | null },
 ): Promise<PlanOrderResponse> {
   const { data } = await axiosInstance.post<PlanOrderResponse>(
     `/payments/${encodeURIComponent(recordingId)}/create-payment`,
+    opts?.couponCode ? { couponCode: opts.couponCode } : {},
   );
   return data as PlanOrderResponse;
 }
@@ -660,6 +667,255 @@ export async function toggleRecordingHighlightSave(highlightId: string): Promise
     {},
   );
   return data;
+}
+
+/**
+ * Submit one of YOUR highlights as a candidate FlickShort.
+ * Body fields are optional — the screen prompts for a title.
+ * The returned short is unapproved until an admin OKs it.
+ */
+export type SubmitHighlightAsFlickShortBody = {
+  title: string;
+  topText?: string;
+  bottomText?: string;
+  preRollSec?: number;
+};
+
+export async function submitHighlightAsFlickShort(
+  highlightId: string,
+  body: SubmitHighlightAsFlickShortBody,
+): Promise<{ id: string; approved: boolean }> {
+  const { data } = await axiosInstance.post(
+    `/flick-shorts/from-highlight/${encodeURIComponent(highlightId)}`,
+    body,
+  );
+  return data as { id: string; approved: boolean };
+}
+
+/** Points domain — totals, breakdown, recent activity log. */
+export type PointEventTypeStr =
+  | 'recording_create'
+  | 'recording_share'
+  | 'recording_receive'
+  | 'payment_complete'
+  | 'flickshort_approved';
+
+export type PointsMeResponse = {
+  totalPoints: number;
+  perEvent: Array<{
+    eventType: PointEventTypeStr;
+    points: number;
+    count: number;
+  }>;
+};
+
+export async function getMyPoints(): Promise<PointsMeResponse> {
+  const { data } = await axiosInstance.get<PointsMeResponse>('/points/me');
+  return data;
+}
+
+export type PointEventRow = {
+  id: string;
+  eventType: PointEventTypeStr;
+  points: number;
+  refId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export async function getMyPointsEvents(limit = 30): Promise<PointEventRow[]> {
+  const { data } = await axiosInstance.get<PointEventRow[]>('/points/me/events', {
+    params: { limit },
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+export type PointConfigRow = {
+  eventType: PointEventTypeStr;
+  label: string;
+  points: number;
+  enabled: boolean;
+};
+
+export async function getPointConfigs(): Promise<PointConfigRow[]> {
+  const { data } = await axiosInstance.get<PointConfigRow[]>('/points/configs');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updatePointConfig(
+  eventType: PointEventTypeStr,
+  patch: { points?: number; label?: string; enabled?: boolean },
+): Promise<PointConfigRow> {
+  const { data } = await axiosInstance.patch<PointConfigRow>(
+    `/points/configs/${encodeURIComponent(eventType)}`,
+    patch,
+  );
+  return data;
+}
+
+export type LeaderboardPeriod = 'weekly' | 'monthly' | 'all';
+
+export type LeaderboardRow = {
+  rank: number;
+  userId: string;
+  name: string | null;
+  profileImagePath: string | null;
+  points: number;
+};
+
+export type LeaderboardResponse = {
+  period: LeaderboardPeriod;
+  periodStart: string | null;
+  periodEnd: string | null;
+  rows: LeaderboardRow[];
+};
+
+export async function getLeaderboard(
+  period: LeaderboardPeriod = 'weekly',
+  limit = 50,
+): Promise<LeaderboardResponse> {
+  const { data } = await axiosInstance.get<LeaderboardResponse>(
+    '/points/leaderboard',
+    { params: { period, limit } },
+  );
+  return data;
+}
+
+/** Coupons domain — user-facing helpers + admin CRUD. */
+export type MyCouponRow = {
+  assignmentId: string;
+  couponId: string;
+  code: string;
+  label: string;
+  discountPercent: number;
+  remainingRecordings: number;
+  startsAt: string | null;
+  expiresAt: string | null;
+  source: string;
+};
+
+export async function getMyCoupons(): Promise<MyCouponRow[]> {
+  const { data } = await axiosInstance.get<MyCouponRow[]>('/coupons/me');
+  return Array.isArray(data) ? data : [];
+}
+
+export type CouponPreview = {
+  couponId: string;
+  assignmentId: string;
+  code: string;
+  label: string;
+  discountPercent: number;
+  discountedPriceInr: number;
+} | null;
+
+export async function previewCoupon(
+  code: string,
+  basePriceInr: number,
+): Promise<CouponPreview> {
+  try {
+    const { data } = await axiosInstance.post<CouponPreview>(
+      '/coupons/me/preview',
+      { code, basePriceInr },
+    );
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export type AdminCoupon = {
+  id: string;
+  code: string;
+  label: string;
+  discountPercent: number;
+  maxRecordings: number;
+  startsAt: string | null;
+  expiresAt: string | null;
+  enabled: boolean;
+  createdAt: string;
+};
+
+export async function adminListCoupons(): Promise<AdminCoupon[]> {
+  const { data } = await axiosInstance.get<AdminCoupon[]>('/coupons');
+  return Array.isArray(data) ? data : [];
+}
+
+export async function adminCreateCoupon(body: {
+  code: string;
+  label: string;
+  discountPercent: number;
+  maxRecordings: number;
+  startsAt?: string;
+  expiresAt?: string;
+  enabled?: boolean;
+}): Promise<AdminCoupon> {
+  const { data } = await axiosInstance.post<AdminCoupon>('/coupons', body);
+  return data;
+}
+
+export async function adminUpdateCoupon(
+  id: string,
+  body: Partial<AdminCoupon>,
+): Promise<AdminCoupon> {
+  const { data } = await axiosInstance.patch<AdminCoupon>(
+    `/coupons/${encodeURIComponent(id)}`,
+    body,
+  );
+  return data;
+}
+
+export async function adminDeleteCoupon(id: string): Promise<void> {
+  await axiosInstance.delete(`/coupons/${encodeURIComponent(id)}`);
+}
+
+export async function adminAssignCoupon(
+  couponId: string,
+  userId: string,
+  note?: string,
+): Promise<{ id: string }> {
+  const { data } = await axiosInstance.post<{ id: string }>(
+    `/coupons/${encodeURIComponent(couponId)}/assign`,
+    { userId, note },
+  );
+  return data;
+}
+
+export async function adminListRedemptions(limit = 50): Promise<unknown[]> {
+  const { data } = await axiosInstance.get<unknown[]>(
+    '/coupons/redemptions/list',
+    { params: { limit } },
+  );
+  return Array.isArray(data) ? data : [];
+}
+
+export async function adminListAutoRules(): Promise<
+  Array<{
+    id: string;
+    period: 'weekly' | 'monthly';
+    rank: number;
+    couponId: string;
+    enabled: boolean;
+  }>
+> {
+  const { data } = await axiosInstance.get('/coupons/auto-rules/list');
+  return Array.isArray(data) ? (data as any[]) : [];
+}
+
+export async function adminUpsertAutoRule(body: {
+  period: 'weekly' | 'monthly';
+  rank: number;
+  couponId: string;
+  enabled?: boolean;
+}): Promise<{ id: string }> {
+  const { data } = await axiosInstance.post<{ id: string }>(
+    '/coupons/auto-rules',
+    body,
+  );
+  return data;
+}
+
+export async function adminDeleteAutoRule(id: string): Promise<void> {
+  await axiosInstance.delete(`/coupons/auto-rules/${encodeURIComponent(id)}`);
 }
 
 export type SavedRecordingHighlightSummary = {

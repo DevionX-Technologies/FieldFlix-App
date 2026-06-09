@@ -18,6 +18,8 @@ export const Paths = {
   /** Admin dashboard (phone allowlist; see `data/adminConfig.ts`). */
   admin: '/admin',
   recordings: '/recordings',
+  /** Public leaderboard — weekly / monthly / all-time toggle. */
+  leaderboard: '/leaderboard',
   /**
    * Expo Router file route is `app/highlights/[id]/index.tsx` — the pathname must
    * include the dynamic segment, e.g. `router.push({ pathname: Paths.highlights, params: { id } })`.

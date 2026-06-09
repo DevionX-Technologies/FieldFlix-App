@@ -3,12 +3,18 @@ import { highlightCountFromRecording } from "@/utils/recordingDisplay";
 import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import {
   getFieldflixApiErrorMessage,
+  getMyCoupons,
+  getMyPoints,
+  getMyPointsEvents,
   getMyProfile,
   getMyRecordings,
   getSharedWithMe,
   patchUser,
   uploadProfilePicture,
   type FieldflixUser,
+  type MyCouponRow,
+  type PointEventRow,
+  type PointsMeResponse,
 } from "@/lib/fieldflix-api";
 import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { WebShell } from "@/screens/fieldflix/WebShell";
@@ -53,6 +59,28 @@ type ProfileVM = {
   loading: boolean;
 };
 
+/**
+ * Maps the backend's PointEventType enum to a friendly sentence for the
+ * activity-log modal. Falls through to the raw key so a future event type
+ * still renders something readable.
+ */
+function humanizeEventType(eventType: string): string {
+  switch (eventType) {
+    case "recording_create":
+      return "Started a session recording";
+    case "recording_share":
+      return "Shared a recording";
+    case "recording_receive":
+      return "Received a shared recording";
+    case "payment_complete":
+      return "Completed a payment";
+    case "flickshort_approved":
+      return "Highlight approved for FlickShorts";
+    default:
+      return eventType.replace(/_/g, " ");
+  }
+}
+
 function initialsFromName(name: string | null | undefined): string {
   if (!name) return "FF";
   const parts = name.trim().split(/\s+/).slice(0, 2);
@@ -93,6 +121,14 @@ export default function FieldflixProfileScreen() {
   const [uploading, setUploading] = useState(false);
   const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  /** Gamification — total points + recent timeline.
+   *  Fetched alongside the rest of the profile data on focus / mount. */
+  const [points, setPoints] = useState<PointsMeResponse | null>(null);
+  const [pointsModalVisible, setPointsModalVisible] = useState(false);
+  const [pointsEvents, setPointsEvents] = useState<PointEventRow[]>([]);
+  const [pointsEventsLoading, setPointsEventsLoading] = useState(false);
+  /** Active coupons the user can apply at recording-unlock checkout. */
+  const [coupons, setCoupons] = useState<MyCouponRow[]>([]);
 
   const load = useCallback(async () => {
     const token = await SecureStore.getItemAsync("token");
@@ -107,12 +143,18 @@ export default function FieldflixProfileScreen() {
     let highlightsCount = 0;
     let sharedCount = 0;
     try {
-      const [u, my, sh] = await Promise.all([
+      const [u, my, sh, pts, cps] = await Promise.all([
         getMyProfile(token),
         getMyRecordings().catch(() => [] as unknown[]),
         getSharedWithMe().catch(() => [] as unknown[]),
+        getMyPoints().catch(
+          () => ({ totalPoints: 0, perEvent: [] }) as PointsMeResponse,
+        ),
+        getMyCoupons().catch(() => [] as MyCouponRow[]),
       ]);
       user = u;
+      setPoints(pts);
+      setCoupons(Array.isArray(cps) ? cps : []);
       if (Array.isArray(my)) {
         myCount = my.length;
         highlightsCount = my.reduce(
@@ -151,6 +193,20 @@ export default function FieldflixProfileScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Open the activity log modal and lazy-load the most recent 30 events. */
+  const openPointsModal = useCallback(async () => {
+    setPointsModalVisible(true);
+    setPointsEventsLoading(true);
+    try {
+      const rows = await getMyPointsEvents(30);
+      setPointsEvents(rows);
+    } catch {
+      setPointsEvents([]);
+    } finally {
+      setPointsEventsLoading(false);
+    }
+  }, []);
 
   const performLogout = async () => {
     try {
@@ -349,8 +405,25 @@ export default function FieldflixProfileScreen() {
                 <Text style={styles.email} numberOfLines={1}>
                   {vm.email || "—"}
                 </Text>
-                <View style={styles.pill}>
-                  <Text style={styles.pillText}>{vm.plan}</Text>
+                <View style={styles.pillRow}>
+                  <View style={styles.pill}>
+                    <Text style={styles.pillText}>{vm.plan}</Text>
+                  </View>
+                  <Pressable
+                    onPress={openPointsModal}
+                    style={styles.pointsPill}
+                    accessibilityRole="button"
+                    accessibilityLabel="View points activity"
+                  >
+                    <MaterialCommunityIcons
+                      name="lightning-bolt"
+                      size={12}
+                      color="#fde68a"
+                    />
+                    <Text style={styles.pointsPillText}>
+                      {points?.totalPoints ?? 0} pts
+                    </Text>
+                  </Pressable>
                 </View>
               </View>
             </View>
@@ -372,6 +445,44 @@ export default function FieldflixProfileScreen() {
               </View>
             </View>
           </LinearGradient>
+
+          {coupons.length > 0 ? (
+            <View style={styles.section}>
+              <View style={styles.personalHead}>
+                <View style={styles.personalHeadTitle}>
+                  <View style={styles.personalAccent} />
+                  <Text style={styles.sectionTitle}>My coupons</Text>
+                </View>
+              </View>
+              <View style={{ marginTop: 12, gap: 10 }}>
+                {coupons.map((c) => (
+                  <View key={c.assignmentId} style={styles.couponCard}>
+                    <View style={styles.couponBadge}>
+                      <Text style={styles.couponBadgeText}>
+                        {c.discountPercent}%
+                      </Text>
+                      <Text style={styles.couponBadgeSub}>OFF</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.couponCardCode}>{c.code}</Text>
+                      <Text style={styles.couponCardLabel} numberOfLines={2}>
+                        {c.label}
+                      </Text>
+                      <Text style={styles.couponCardMeta}>
+                        {c.remainingRecordings} use
+                        {c.remainingRecordings === 1 ? "" : "s"} left
+                        {c.expiresAt
+                          ? ` · expires ${new Date(
+                              c.expiresAt,
+                            ).toLocaleDateString()}`
+                          : ""}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.section}>
             <View style={styles.personalHead}>
@@ -612,6 +723,77 @@ export default function FieldflixProfileScreen() {
           </Pressable>
         </ScrollView>
       </View>
+      <Modal
+        transparent
+        animationType="fade"
+        visible={pointsModalVisible}
+        onRequestClose={() => setPointsModalVisible(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.pointsModalCard}>
+            <View style={styles.pointsModalHeader}>
+              <MaterialCommunityIcons
+                name="lightning-bolt"
+                size={18}
+                color="#fde68a"
+              />
+              <Text style={styles.pointsModalTitle}>
+                {points?.totalPoints ?? 0} points
+              </Text>
+              <Pressable
+                onPress={() => setPointsModalVisible(false)}
+                hitSlop={10}
+                style={{ padding: 4 }}
+              >
+                <MaterialCommunityIcons name="close" size={18} color={MUTED} />
+              </Pressable>
+            </View>
+            <Text style={styles.pointsModalSubhead}>
+              Recent activity (newest first)
+            </Text>
+            <ScrollView style={styles.pointsModalScroll}>
+              {pointsEventsLoading ? (
+                <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                  <ActivityIndicator color={PG} />
+                </View>
+              ) : pointsEvents.length === 0 ? (
+                <Text style={styles.pointsEmptyText}>
+                  No points yet. Start a session, share a recording, or get a
+                  highlight approved as a FlickShort to earn.
+                </Text>
+              ) : (
+                pointsEvents.map((ev) => (
+                  <View key={ev.id} style={styles.pointsEventRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pointsEventLabel}>
+                        {humanizeEventType(ev.eventType)}
+                      </Text>
+                      <Text style={styles.pointsEventDate}>
+                        {new Date(ev.createdAt).toLocaleString()}
+                      </Text>
+                    </View>
+                    <Text style={styles.pointsEventDelta}>+{ev.points}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            <Pressable
+              style={styles.leaderboardCta}
+              onPress={() => {
+                setPointsModalVisible(false);
+                router.push(Paths.leaderboard);
+              }}
+            >
+              <MaterialCommunityIcons
+                name="trophy-outline"
+                size={16}
+                color="#04130d"
+              />
+              <Text style={styles.leaderboardCtaText}>View leaderboard</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
       <Modal
         transparent
         animationType="fade"
@@ -915,7 +1097,6 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   pill: {
-    marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
@@ -929,6 +1110,159 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     color: PG,
     textTransform: "uppercase",
+  },
+  pillRow: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  pointsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "rgba(120, 80, 0, 0.45)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(253, 230, 138, 0.4)",
+  },
+  pointsPillText: {
+    fontFamily: FF.bold,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: "#fde68a",
+    textTransform: "uppercase",
+  },
+  pointsModalCard: {
+    width: "90%",
+    maxWidth: 380,
+    maxHeight: "75%",
+    backgroundColor: "#0f172a",
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  pointsModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  pointsModalTitle: {
+    flex: 1,
+    color: "#fff",
+    fontFamily: FF.bold,
+    fontSize: 18,
+  },
+  pointsModalSubhead: {
+    color: MUTED,
+    fontSize: 12,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  pointsModalScroll: {
+    marginTop: 4,
+  },
+  pointsEventRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 11,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  pointsEventLabel: {
+    color: "#e5e7eb",
+    fontSize: 13,
+    fontFamily: FF.semiBold,
+  },
+  pointsEventDate: {
+    color: MUTED,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  pointsEventDelta: {
+    color: "#86efac",
+    fontFamily: FF.bold,
+    fontSize: 14,
+    marginLeft: 12,
+  },
+  pointsEmptyText: {
+    color: MUTED,
+    fontSize: 13,
+    lineHeight: 19,
+    paddingVertical: 22,
+    paddingHorizontal: 10,
+    textAlign: "center",
+  },
+  leaderboardCta: {
+    marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: PG,
+  },
+  leaderboardCtaText: {
+    color: "#04130d",
+    fontFamily: FF.bold,
+    fontSize: 13,
+    letterSpacing: 0.4,
+  },
+  couponCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 14,
+    backgroundColor: "rgba(15,23,42,0.55)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.25)",
+  },
+  couponBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 14,
+    backgroundColor: "rgba(34, 197, 94, 0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(34, 197, 94, 0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  couponBadgeText: {
+    color: PG,
+    fontFamily: FF.bold,
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  couponBadgeSub: {
+    color: PG,
+    fontFamily: FF.bold,
+    fontSize: 10,
+    letterSpacing: 1.3,
+  },
+  couponCardCode: {
+    color: "#fff",
+    fontFamily: FF.bold,
+    fontSize: 14,
+    letterSpacing: 1.2,
+  },
+  couponCardLabel: {
+    color: "rgba(255,255,255,0.78)",
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  couponCardMeta: {
+    color: MUTED,
+    fontFamily: FF.regular,
+    fontSize: 11,
+    marginTop: 4,
   },
   stats: {
     marginTop: 28,

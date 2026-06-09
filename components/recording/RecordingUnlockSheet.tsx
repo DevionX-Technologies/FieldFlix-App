@@ -3,6 +3,8 @@ import {
   createRecordingPaymentOrder,
   getFieldflixApiErrorMessage,
   getRecordingById,
+  previewCoupon,
+  type CouponPreview,
   type PlanOrderResponse,
   verifyRazorpayPayment,
 } from '@/lib/fieldflix-api';
@@ -30,11 +32,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
@@ -72,6 +76,17 @@ export function RecordingUnlockSheet({
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [paymentSuccessVisible, setPaymentSuccessVisible] = useState(false);
+
+  /**
+   * Coupon UI — collapsed by default. Becomes "applied" when a preview comes
+   * back successfully. We re-preview on every sheet open so the user can't
+   * lock in an expired discount by leaving the modal up.
+   */
+  const [couponOpen, setCouponOpen] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [couponPreview, setCouponPreview] = useState<CouponPreview>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const sportLabel = useMemo(() => {
     if (!recording) return 'Pickleball';
@@ -113,6 +128,10 @@ export function RecordingUnlockSheet({
       ? Number(checkoutQuote.base_amount)
       : basePrice;
   const displayGst = Math.max(0, displayTotal - displayBase);
+  /** Final amount the user will pay after any applied coupon. */
+  const displayDiscountedTotal =
+    couponPreview != null ? couponPreview.discountedPriceInr : displayTotal;
+  const displayDiscountInr = Math.max(0, displayTotal - displayDiscountedTotal);
   const isQuoteFree =
     checkoutQuote != null
       ? Number(checkoutQuote.amount) <= 0 || checkoutQuote.status === 'completed'
@@ -167,6 +186,54 @@ export function RecordingUnlockSheet({
     };
   }, [visible, recordingId]);
 
+  // Reset coupon UI every time the sheet opens / recording changes.
+  useEffect(() => {
+    setCouponOpen(false);
+    setCouponInput('');
+    setCouponPreview(null);
+    setCouponError(null);
+    setCouponBusy(false);
+  }, [visible, recordingId]);
+
+  /**
+   * Best base price to preview the coupon against. We use the latest quote
+   * (which already includes GST) so the discounted total matches the bill
+   * shown above the CTA. Falls back to the locally-computed `totalAmount`
+   * when the quote is still loading.
+   */
+  const previewBasePriceInr = useMemo(() => {
+    const fromQuote = checkoutQuote != null ? Number(checkoutQuote.amount) : NaN;
+    if (Number.isFinite(fromQuote) && fromQuote > 0) return Math.round(fromQuote);
+    return Math.round(totalAmount ?? 0);
+  }, [checkoutQuote, totalAmount]);
+
+  const applyCoupon = useCallback(async () => {
+    const code = couponInput.trim();
+    if (!code || couponBusy) return;
+    setCouponBusy(true);
+    setCouponError(null);
+    try {
+      const res = await previewCoupon(code, previewBasePriceInr);
+      if (!res) {
+        setCouponPreview(null);
+        setCouponError('Invalid or expired code.');
+      } else {
+        setCouponPreview(res);
+      }
+    } catch {
+      setCouponPreview(null);
+      setCouponError("Could not check that code. Try again.");
+    } finally {
+      setCouponBusy(false);
+    }
+  }, [couponInput, couponBusy, previewBasePriceInr]);
+
+  const removeCoupon = useCallback(() => {
+    setCouponPreview(null);
+    setCouponError(null);
+    setCouponInput('');
+  }, []);
+
   const closeSheet = useCallback(() => {
     if (checkoutBusy) return;
     onClose();
@@ -181,7 +248,9 @@ export function RecordingUnlockSheet({
     }
     setCheckoutBusy(true);
     try {
-      const order = await createRecordingPaymentOrder(recordingId);
+      const order = await createRecordingPaymentOrder(recordingId, {
+        couponCode: couponPreview?.code ?? null,
+      });
       const orderAmount = Number(order.amount);
 
       if (orderAmount === 0 || order.status === 'completed') {
@@ -313,6 +382,7 @@ export function RecordingUnlockSheet({
     sportLabel,
     onClose,
     onUnlocked,
+    couponPreview,
   ]);
 
   return (
@@ -331,15 +401,20 @@ export function RecordingUnlockSheet({
             <Text style={styles.title}>Recording + Highlights</Text>
             <View style={styles.planRow}>
               <Text style={styles.planName}>{sportLabel} video unlock</Text>
-              <Text style={styles.price}>
-                {quoteLoading
-                  ? '…'
-                  : quoteError
-                    ? '—'
-                    : isQuoteFree
-                      ? 'Free'
-                      : `₹${displayTotal}`}
-              </Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                {couponPreview ? (
+                  <Text style={styles.priceStrike}>₹{displayTotal}</Text>
+                ) : null}
+                <Text style={styles.price}>
+                  {quoteLoading
+                    ? '…'
+                    : quoteError
+                      ? '—'
+                      : isQuoteFree
+                        ? 'Free'
+                        : `₹${displayDiscountedTotal}`}
+                </Text>
+              </View>
             </View>
             <Text style={styles.sub}>
               Session length {plannedDurationLabel} (selected at recording start)
@@ -361,13 +436,88 @@ export function RecordingUnlockSheet({
                   {quoteLoading ? '…' : `₹${displayGst}`}
                 </Text>
               </View>
+              {couponPreview ? (
+                <View style={styles.billRow}>
+                  <Text style={[styles.billText, { color: ACCENT }]}>
+                    Coupon {couponPreview.code} (
+                    {couponPreview.discountPercent}%)
+                  </Text>
+                  <Text style={[styles.billText, { color: ACCENT }]}>
+                    −₹{displayDiscountInr}
+                  </Text>
+                </View>
+              ) : null}
               <View style={[styles.billRow, styles.billTotal]}>
                 <Text style={styles.totalText}>Total</Text>
                 <Text style={styles.totalText}>
-                  {quoteLoading ? '…' : `₹${displayTotal}`}
+                  {quoteLoading ? '…' : `₹${displayDiscountedTotal}`}
                 </Text>
               </View>
             </View>
+
+            {/* Coupon picker — collapsed by default; expands to an input row. */}
+            <View style={styles.couponBox}>
+              {!couponOpen && !couponPreview ? (
+                <Pressable
+                  onPress={() => setCouponOpen(true)}
+                  style={styles.couponToggle}
+                >
+                  <Ionicons name="pricetag-outline" size={14} color={ACCENT} />
+                  <Text style={styles.couponToggleText}>
+                    Have a coupon code?
+                  </Text>
+                </Pressable>
+              ) : couponPreview ? (
+                <View style={styles.couponApplied}>
+                  <Ionicons name="checkmark-circle" size={16} color={ACCENT} />
+                  <Text style={styles.couponAppliedText} numberOfLines={1}>
+                    {couponPreview.code} applied · saved ₹{displayDiscountInr}
+                  </Text>
+                  <Pressable
+                    onPress={removeCoupon}
+                    hitSlop={10}
+                    style={styles.couponRemoveBtn}
+                  >
+                    <Text style={styles.couponRemoveText}>Remove</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={styles.couponInputRow}>
+                  <TextInput
+                    value={couponInput}
+                    onChangeText={(v) => {
+                      setCouponInput(v.toUpperCase());
+                      setCouponError(null);
+                    }}
+                    placeholder="ENTER CODE"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    style={styles.couponInput}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                    maxLength={30}
+                    editable={!couponBusy}
+                  />
+                  <Pressable
+                    style={[
+                      styles.couponApplyBtn,
+                      (couponBusy || !couponInput.trim()) && { opacity: 0.55 },
+                    ]}
+                    disabled={couponBusy || !couponInput.trim()}
+                    onPress={() => void applyCoupon()}
+                  >
+                    {couponBusy ? (
+                      <ActivityIndicator size="small" color="#04130d" />
+                    ) : (
+                      <Text style={styles.couponApplyText}>Apply</Text>
+                    )}
+                  </Pressable>
+                </View>
+              )}
+              {couponError ? (
+                <Text style={styles.couponError}>{couponError}</Text>
+              ) : null}
+            </View>
+
             <Pressable
               style={[
                 styles.cta,
@@ -547,6 +697,99 @@ const styles = StyleSheet.create({
     color: '#03210e',
     fontFamily: FF.bold,
     fontSize: 16,
+  },
+  priceStrike: {
+    fontFamily: FF.semiBold,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.45)',
+    textDecorationLine: 'line-through',
+  },
+  couponBox: {
+    marginTop: 14,
+  },
+  couponToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.25)',
+  },
+  couponToggleText: {
+    color: ACCENT,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+  },
+  couponInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  couponInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    color: '#fff',
+    fontFamily: FF.semiBold,
+    letterSpacing: 1.5,
+    fontSize: 13,
+  },
+  couponApplyBtn: {
+    backgroundColor: ACCENT,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    justifyContent: 'center',
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  couponApplyText: {
+    color: '#04130d',
+    fontFamily: FF.bold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+  },
+  couponApplied: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(34, 197, 94, 0.14)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+  },
+  couponAppliedText: {
+    color: ACCENT,
+    fontFamily: FF.semiBold,
+    fontSize: 13,
+    flex: 1,
+    letterSpacing: 0.3,
+  },
+  couponRemoveBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  couponRemoveText: {
+    color: ACCENT,
+    fontFamily: FF.bold,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  couponError: {
+    color: '#fda4af',
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    marginTop: 6,
+    marginLeft: 4,
   },
   foot: {
     marginTop: 10,

@@ -20,6 +20,7 @@ import {
 import { RecordingHighlight } from "../type";
 import { formatDate, getStatusColor } from "../utils/formatters";
 import { getThumbnailUrl } from "../utils/thumbnailUtils";
+import { SubmitToFlickShortSheet } from "./SubmitToFlickShortSheet";
 
 interface HighlightCardProps {
   highlight: RecordingHighlight;
@@ -51,6 +52,8 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
     message: '',
     showCloseButton: true
   });
+  /** "Submit to FlickShorts" sheet, opened from the 3-dot menu on this card. */
+  const [submitSheetOpen, setSubmitSheetOpen] = useState(false);
 
   const showCustomAlert = (type: 'info' | 'success' | 'error' | 'loading', title: string, message: string, showCloseButton = true) => {
     setModalContent({ type, title, message, showCloseButton });
@@ -236,6 +239,27 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
                   {isMainVideo ? "ORIGINAL" : highlight.status.toUpperCase()}
                 </Text>
               </View>
+              {/* 3-dot menu — only on real, playable highlights owned by the
+                  viewer. Hidden for the "original recording" row and for any
+                  card that's already a FlickShort. */}
+              {!isMainVideo && !isFlickShort && canPlay ? (
+                <Pressable
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    setSubmitSheetOpen(true);
+                  }}
+                  hitSlop={10}
+                  style={styles.moreBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="More options for this highlight"
+                >
+                  <Ionicons
+                    name="ellipsis-horizontal"
+                    size={18}
+                    color="#cbd5e1"
+                  />
+                </Pressable>
+              ) : null}
             </HStack>
 
             <Text 
@@ -356,6 +380,14 @@ export const HighlightCard: React.FC<HighlightCardProps> = ({
         </HStack>
       </Pressable>
     </Card>
+      <SubmitToFlickShortSheet
+        visible={submitSheetOpen}
+        onClose={() => setSubmitSheetOpen(false)}
+        highlightId={hid && hid !== 'main-video' ? hid : null}
+        defaultTitle={
+          mainVideoTitle ? `${mainVideoTitle} – Highlight #${index + 1}` : ''
+        }
+      />
     </>
   );
 };
@@ -484,6 +516,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  moreBtn: {
+    marginLeft: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   statusText: {
     fontSize: 10,
