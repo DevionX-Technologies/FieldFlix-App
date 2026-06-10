@@ -2,9 +2,11 @@ import { RAZORPAY_KEY_ID } from '@/data/constants';
 import {
   createRecordingPaymentOrder,
   getFieldflixApiErrorMessage,
+  getMyCoupons,
   getRecordingById,
   previewCoupon,
   type CouponPreview,
+  type MyCouponRow,
   type PlanOrderResponse,
   verifyRazorpayPayment,
 } from '@/lib/fieldflix-api';
@@ -87,6 +89,10 @@ export function RecordingUnlockSheet({
   const [couponPreview, setCouponPreview] = useState<CouponPreview>(null);
   const [couponBusy, setCouponBusy] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  /** Active coupons the user holds (from /coupons/me) — render as tappable
+   *  cards above the "have a code?" toggle so the user doesn't have to
+   *  remember the literal code. */
+  const [myCoupons, setMyCoupons] = useState<MyCouponRow[]>([]);
 
   const sportLabel = useMemo(() => {
     if (!recording) return 'Pickleball';
@@ -128,10 +134,25 @@ export function RecordingUnlockSheet({
       ? Number(checkoutQuote.base_amount)
       : basePrice;
   const displayGst = Math.max(0, displayTotal - displayBase);
-  /** Final amount the user will pay after any applied coupon. */
+  /**
+   * Coupon math (matches backend exactly):
+   *   - `previewCoupon` is called against `basePrice` (pre-GST), so
+   *     `couponPreview.discountedPriceInr` IS the discounted base.
+   *   - We recompute GST on top: GST = base * 0.18 (rounded same way as
+   *     sportPricingTotalFromBase).
+   *   - Discount displayed on the bill is the pre-GST drop.
+   */
+  const displayDiscountedBase =
+    couponPreview != null ? couponPreview.discountedPriceInr : displayBase;
   const displayDiscountedTotal =
-    couponPreview != null ? couponPreview.discountedPriceInr : displayTotal;
-  const displayDiscountInr = Math.max(0, displayTotal - displayDiscountedTotal);
+    couponPreview != null
+      ? sportPricingTotalFromBase(displayDiscountedBase)
+      : displayTotal;
+  const displayDiscountedGst = Math.max(
+    0,
+    displayDiscountedTotal - displayDiscountedBase,
+  );
+  const displayDiscountInr = Math.max(0, displayBase - displayDiscountedBase);
   const isQuoteFree =
     checkoutQuote != null
       ? Number(checkoutQuote.amount) <= 0 || checkoutQuote.status === 'completed'
@@ -195,17 +216,37 @@ export function RecordingUnlockSheet({
     setCouponBusy(false);
   }, [visible, recordingId]);
 
+  // Load the user's active coupons every time the sheet opens. Best effort;
+  // an empty list just hides the picker section.
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    void getMyCoupons()
+      .then((rows) => {
+        if (!cancelled) setMyCoupons(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setMyCoupons([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
   /**
-   * Best base price to preview the coupon against. We use the latest quote
-   * (which already includes GST) so the discounted total matches the bill
-   * shown above the CTA. Falls back to the locally-computed `totalAmount`
-   * when the quote is still loading.
+   * Base price (pre-GST) the coupon is previewed against. Matches the
+   * backend's semantics — discount applies to base; GST is recomputed on the
+   * discounted base. Falls back to the locally-computed `basePrice` when
+   * the server quote hasn't returned yet.
    */
   const previewBasePriceInr = useMemo(() => {
-    const fromQuote = checkoutQuote != null ? Number(checkoutQuote.amount) : NaN;
+    const fromQuote =
+      checkoutQuote != null && checkoutQuote.base_amount != null
+        ? Number(checkoutQuote.base_amount)
+        : NaN;
     if (Number.isFinite(fromQuote) && fromQuote > 0) return Math.round(fromQuote);
-    return Math.round(totalAmount ?? 0);
-  }, [checkoutQuote, totalAmount]);
+    return Math.round(basePrice ?? 0);
+  }, [checkoutQuote, basePrice]);
 
   const applyCoupon = useCallback(async () => {
     const code = couponInput.trim();
@@ -227,6 +268,35 @@ export function RecordingUnlockSheet({
       setCouponBusy(false);
     }
   }, [couponInput, couponBusy, previewBasePriceInr]);
+
+  /**
+   * Tappable handler for the "Your coupons" picker — instantly previews the
+   * coupon for this user without making them type the code. Reuses the same
+   * `previewCoupon` path so backend dedupe/validity checks still run.
+   */
+  const applyCouponCard = useCallback(
+    async (coupon: MyCouponRow) => {
+      if (couponBusy) return;
+      setCouponBusy(true);
+      setCouponError(null);
+      setCouponInput(coupon.code);
+      try {
+        const res = await previewCoupon(coupon.code, previewBasePriceInr);
+        if (!res) {
+          setCouponPreview(null);
+          setCouponError('That coupon can no longer be applied.');
+        } else {
+          setCouponPreview(res);
+        }
+      } catch {
+        setCouponPreview(null);
+        setCouponError('Could not apply coupon. Try again.');
+      } finally {
+        setCouponBusy(false);
+      }
+    },
+    [couponBusy, previewBasePriceInr],
+  );
 
   const removeCoupon = useCallback(() => {
     setCouponPreview(null);
@@ -430,23 +500,36 @@ export function RecordingUnlockSheet({
                   {quoteLoading ? '…' : `₹${displayBase}`}
                 </Text>
               </View>
-              <View style={styles.billRow}>
-                <Text style={styles.billText}>GST (18%)</Text>
-                <Text style={styles.billText}>
-                  {quoteLoading ? '…' : `₹${displayGst}`}
-                </Text>
-              </View>
               {couponPreview ? (
+                <>
+                  <View style={styles.billRow}>
+                    <Text style={[styles.billText, { color: ACCENT }]}>
+                      Coupon {couponPreview.code} (
+                      {couponPreview.discountPercent}% off base)
+                    </Text>
+                    <Text style={[styles.billText, { color: ACCENT }]}>
+                      −₹{displayDiscountInr}
+                    </Text>
+                  </View>
+                  <View style={styles.billRow}>
+                    <Text style={styles.billText}>Discounted base</Text>
+                    <Text style={styles.billText}>
+                      ₹{displayDiscountedBase}
+                    </Text>
+                  </View>
+                  <View style={styles.billRow}>
+                    <Text style={styles.billText}>GST (18%)</Text>
+                    <Text style={styles.billText}>₹{displayDiscountedGst}</Text>
+                  </View>
+                </>
+              ) : (
                 <View style={styles.billRow}>
-                  <Text style={[styles.billText, { color: ACCENT }]}>
-                    Coupon {couponPreview.code} (
-                    {couponPreview.discountPercent}%)
-                  </Text>
-                  <Text style={[styles.billText, { color: ACCENT }]}>
-                    −₹{displayDiscountInr}
+                  <Text style={styles.billText}>GST (18%)</Text>
+                  <Text style={styles.billText}>
+                    {quoteLoading ? '…' : `₹${displayGst}`}
                   </Text>
                 </View>
-              ) : null}
+              )}
               <View style={[styles.billRow, styles.billTotal]}>
                 <Text style={styles.totalText}>Total</Text>
                 <Text style={styles.totalText}>
@@ -454,6 +537,50 @@ export function RecordingUnlockSheet({
                 </Text>
               </View>
             </View>
+
+            {/* "Your coupons" tappable picker — shown when the user has any
+                active coupons and hasn't applied one yet. Each card directly
+                applies on tap (no code typing required). */}
+            {myCoupons.length > 0 && !couponPreview ? (
+              <View style={styles.couponPickerWrap}>
+                <Text style={styles.couponPickerHeading}>Your coupons</Text>
+                <View style={styles.couponPickerList}>
+                  {myCoupons.map((c) => (
+                    <Pressable
+                      key={c.assignmentId}
+                      onPress={() => void applyCouponCard(c)}
+                      disabled={couponBusy}
+                      style={styles.couponPickerCard}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Apply coupon ${c.code}`}
+                    >
+                      <View style={styles.couponPickerBadge}>
+                        <Text style={styles.couponPickerBadgePct}>
+                          {c.discountPercent}%
+                        </Text>
+                        <Text style={styles.couponPickerBadgeOff}>OFF</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.couponPickerCode} numberOfLines={1}>
+                          {c.code}
+                        </Text>
+                        <Text
+                          style={styles.couponPickerLabel}
+                          numberOfLines={2}
+                        >
+                          {c.label}
+                        </Text>
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={16}
+                        color={ACCENT}
+                      />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
 
             {/* Coupon picker — collapsed by default; expands to an input row. */}
             <View style={styles.couponBox}>
@@ -703,6 +830,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'rgba(255,255,255,0.45)',
     textDecorationLine: 'line-through',
+  },
+  couponPickerWrap: {
+    marginTop: 14,
+  },
+  couponPickerHeading: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.55)',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  couponPickerList: {
+    gap: 8,
+  },
+  couponPickerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.3)',
+  },
+  couponPickerBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    backgroundColor: 'rgba(34, 197, 94, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(34, 197, 94, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  couponPickerBadgePct: {
+    color: ACCENT,
+    fontFamily: FF.bold,
+    fontSize: 16,
+    lineHeight: 18,
+  },
+  couponPickerBadgeOff: {
+    color: ACCENT,
+    fontFamily: FF.bold,
+    fontSize: 9,
+    letterSpacing: 1.1,
+  },
+  couponPickerCode: {
+    color: '#fff',
+    fontFamily: FF.bold,
+    fontSize: 13,
+    letterSpacing: 1.1,
+  },
+  couponPickerLabel: {
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 14,
   },
   couponBox: {
     marginTop: 14,

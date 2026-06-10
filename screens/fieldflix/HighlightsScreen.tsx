@@ -36,6 +36,7 @@ import { mergeServerUnlockedRecordingIds } from '@/lib/unlockedRecordingSync';
 import { appendLocalPaymentHistory } from '@/lib/paymentHistoryLocal';
 import { presentEventNotification } from '@/utils/presentEventNotification';
 import { ShareProgressModal } from '@/components/ui/ShareProgressModal';
+import { SubmitToFlickShortSheet } from '@/components/screens/video-player/components/SubmitToFlickShortSheet';
 import { shareHighlightClipMp4 } from '@/utils/recordingPlaybackShare';
 import type { ShareHighlightProgressUpdate } from '@/utils/shareHighlightClip';
 import { FieldflixBottomNav } from '@/screens/fieldflix/BottomNav';
@@ -247,6 +248,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
     message: 'Getting your MP4 ready to share…',
     progress: null,
   });
+  /**
+   * When non-null, the SubmitToFlickShorts sheet is open for this highlight.
+   * Set from the Submit pill rendered on each `HighlightRow`; cleared by the
+   * sheet's onClose.
+   */
+  const [submitFlickHighlightId, setSubmitFlickHighlightId] = useState<
+    string | null
+  >(null);
 
   const onShareHighlightMp4 = useCallback((highlightId: string) => {
     const hid = String(highlightId ?? '').trim();
@@ -1026,6 +1035,9 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
                   onPress={() => void onHighlightPress(h)}
                   onToggleLike={() => void onToggleHighlightLike(h.id)}
                   onToggleSave={() => void onToggleHighlightSave(h.id)}
+                  onSubmitToFlickShorts={() =>
+                    setSubmitFlickHighlightId(String(h.id ?? ''))
+                  }
                 />
               );
             })}
@@ -1199,6 +1211,14 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           progress={shareProgress.progress}
         />
 
+        {/* Submit-to-FlickShorts bottom sheet — opened from the Submit pill
+            on each HighlightRow's engage rail. */}
+        <SubmitToFlickShortSheet
+          visible={submitFlickHighlightId !== null}
+          highlightId={submitFlickHighlightId}
+          onClose={() => setSubmitFlickHighlightId(null)}
+        />
+
         <FieldflixBottomNav active="recordings" />
       </View>
     </WebShell>
@@ -1215,6 +1235,7 @@ function HighlightRow({
   onPress,
   onToggleLike,
   onToggleSave,
+  onSubmitToFlickShorts,
 }: {
   highlight: UiHighlight;
   index: number;
@@ -1225,6 +1246,8 @@ function HighlightRow({
   onPress: () => void;
   onToggleLike: () => void;
   onToggleSave: () => void;
+  /** Opens the "Submit to FlickShorts" sheet for this highlight. */
+  onSubmitToFlickShorts?: () => void;
 }) {
   const thumb = highlight.thumbnail_url
     ? { uri: highlight.thumbnail_url }
@@ -1322,6 +1345,22 @@ function HighlightRow({
               {saved ? 'Saved' : 'Save'}
             </Text>
           </Pressable>
+          {/* Submit to FlickShorts. Only on real, playable, non-flickshort
+              highlights — same gates as the Like/Save buttons. */}
+          {onSubmitToFlickShorts ? (
+            <Pressable
+              hitSlop={10}
+              style={styles.rowEngageBtn}
+              onPress={onSubmitToFlickShorts}
+              accessibilityRole="button"
+              accessibilityLabel="Submit this highlight to FlickShorts"
+            >
+              <Ionicons name="film-outline" size={18} color="#fde68a" />
+              <Text style={styles.rowEngageCount} numberOfLines={1}>
+                Submit
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
     </View>

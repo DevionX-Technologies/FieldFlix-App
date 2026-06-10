@@ -10,6 +10,7 @@ import { FF } from "@/screens/fieldflix/fonts";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { BG } from "@/screens/fieldflix/bundledBackgrounds";
 import { ShareProgressModal } from "@/components/ui/ShareProgressModal";
+import { SubmitToFlickShortSheet } from "@/components/screens/video-player/components/SubmitToFlickShortSheet";
 import {
   shareHighlightAsMp4File,
   type ShareHighlightProgressUpdate,
@@ -51,6 +52,10 @@ export default function SavedHighlightsScreen() {
     message: 'Getting your MP4 ready to share…',
     progress: null as number | null,
   });
+  /** Open SubmitToFlickShorts sheet for the highlight id stored here. */
+  const [submitFlickHighlightId, setSubmitFlickHighlightId] = useState<
+    string | null
+  >(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -223,12 +228,35 @@ export default function SavedHighlightsScreen() {
                         Saved
                       </Text>
                     </View>
+                    <Pressable
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        setSubmitFlickHighlightId(String(item.highlightId));
+                      }}
+                      hitSlop={6}
+                      style={styles.action}
+                      accessibilityRole="button"
+                      accessibilityLabel="Submit highlight to FlickShorts"
+                    >
+                      <Ionicons name="film-outline" size={14} color="#fde68a" />
+                      <Text style={[styles.actionText, { color: '#fde68a' }]}>
+                        Submit
+                      </Text>
+                    </Pressable>
                   </View>
                 </View>
               </Pressable>
             )}
           />
         )}
+
+        {/* Submit-to-FlickShorts bottom sheet — opened from the gold Submit
+            pill on each saved highlight card. */}
+        <SubmitToFlickShortSheet
+          visible={submitFlickHighlightId !== null}
+          highlightId={submitFlickHighlightId}
+          onClose={() => setSubmitFlickHighlightId(null)}
+        />
 
         <ShareProgressModal
           visible={shareProgressVisible}

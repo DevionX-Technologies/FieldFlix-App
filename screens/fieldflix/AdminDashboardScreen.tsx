@@ -7,6 +7,7 @@ import { useIsAdminRole } from '@/hooks/useIsAdminRole';
 import { AdminCouponsTab } from '@/screens/fieldflix/admin/AdminCouponsTab';
 import { AdminLeaderboardTab } from '@/screens/fieldflix/admin/AdminLeaderboardTab';
 import { AdminPointsTab } from '@/screens/fieldflix/admin/AdminPointsTab';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   addAdminByPhone,
   approveFlickShort,
@@ -466,22 +467,34 @@ export default function AdminDashboardScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabBarScroll}
-        style={styles.tabBar}
-      >
-        {tabLabels.map(({ id, label }) => (
-          <Pressable
-            key={id}
-            onPress={() => setTab(id)}
-            style={[styles.tabItem, tab === id && styles.tabItemActive]}
-          >
-            <Text style={[styles.tabTxt, tab === id && styles.tabTxtActive]}>{label}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <View style={styles.tabBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBarScroll}
+        >
+          {tabLabels.map(({ id, label }) => (
+            <Pressable
+              key={id}
+              onPress={() => setTab(id)}
+              style={[styles.tabItem, tab === id && styles.tabItemActive]}
+            >
+              <Text style={[styles.tabTxt, tab === id && styles.tabTxtActive]}>
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        {/* Right-edge fade-out — hints at horizontal scrollability so the
+            last tab (Coupons) is discoverable without trial and error. */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(2,6,23,0.95)']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          pointerEvents="none"
+          style={styles.tabBarFade}
+        />
+      </View>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -990,14 +1003,33 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(0,0,0,0.25)',
     flexGrow: 0,
+    position: 'relative',
   },
   tabBarScroll: {
     flexDirection: 'row',
     paddingHorizontal: 4,
+    // Right-edge breathing room so the gradient hint doesn't obscure the
+    // last tab's hit-target.
+    paddingRight: 28,
+  },
+  /**
+   * Right-edge fade-out — sits above the ScrollView via absolute positioning.
+   * Tells the user there's more horizontally when the last tab is cut off.
+   * `pointerEvents="none"` lets taps fall through to the underlying tabs.
+   */
+  tabBarFade: {
+    position: 'absolute',
+    top: 0,
+    bottom: 1,
+    right: 0,
+    width: 32,
   },
   tabItem: {
     paddingVertical: 12,
-    paddingHorizontal: 18,
+    // Tighter than 18 — at 12 horizontal, all six labels
+    // (Overview/Studio/Queue/Points/Leaderboard/Coupons) fit on a 380px
+    // screen with a small right scroll-hint margin.
+    paddingHorizontal: 12,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
