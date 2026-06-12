@@ -28,18 +28,37 @@ export const useVideoPlayerState = (
   const [paywallTriggered, setPaywallTriggered] = React.useState(false);
 
   // Create video player. VOD: no loop (full-match replays are long; looping is confusing).
+  // The initial source is loaded by `useVideoPlayer` itself; we MUST NOT call
+  // `player.replace()` again on first mount with the same URL — that resets
+  // expo-video mid-load and triggers a "plays then immediately pauses at 00:00"
+  // bug where the play() call lands before the buffer is ready.
   const player = useVideoPlayer(currentVideoSource, (p) => {
     p.loop = false;
     p.play();
   });
 
-  // Update player source when currentVideoSource changes
+  /**
+   * Tracks whether the *initial* source has already been consumed by
+   * `useVideoPlayer`. The follow-up effect uses this ref to skip the
+   * redundant replace+play on first mount, which would otherwise re-load
+   * the same source mid-flight and cause expo-video to halt at 00:00 with
+   * the user unable to start playback. We only call `player.replace()`
+   * when the source genuinely changes (e.g. user taps a highlight).
+   */
+  const initialSourceConsumedRef = React.useRef(false);
+
   React.useEffect(() => {
-    if (player) {
-      player.replace(currentVideoSource);
-      player.play();
-      setPaywallTriggered(false);
+    if (!player) return;
+    if (!initialSourceConsumedRef.current) {
+      // First fire — `useVideoPlayer` has already loaded `currentVideoSource`.
+      // Don't replace; just mark that we've now seen the initial source.
+      initialSourceConsumedRef.current = true;
+      return;
     }
+    // Subsequent source change (user opened a highlight, etc.) — swap sources.
+    player.replace(currentVideoSource);
+    player.play();
+    setPaywallTriggered(false);
   }, [currentVideoSource, player]);
 
   const { isPlaying } = useEvent(player, "playingChange", {
@@ -60,6 +79,21 @@ export const useVideoPlayerState = (
   React.useEffect(() => {
     if (isPaid || !player) return;
     let cancelled = false;
+    /**
+     * Soft-trigger guard. The cap-watch interval used to call `player.pause()`
+     * every 500ms while `current >= capSeconds`, which produced two ugly side
+     * effects in practice:
+     *   1. After a forward seek that landed past the cap, the very next tick
+     *      pause-trapped the player; the user could never escape the cap zone.
+     *   2. During early buffering, transient `duration === 0` reads combined
+     *      with phantom `currentTime` values occasionally tripped the cap at
+     *      0:00, halting the player before it had a chance to start.
+     * We now (a) require a strictly positive current time, (b) require the
+     * cap was actually breached (not just touched at boundary), and (c) call
+     * pause + paywall *once* via the `paywallTriggered` flag rather than on
+     * every interval tick. That preserves the paywall UX without trapping a
+     * paid user whose entitlement hasn't propagated yet.
+     */
     const timer = setInterval(() => {
       if (cancelled) return;
       try {
@@ -68,7 +102,10 @@ export const useVideoPlayerState = (
         if (total > 0 && total <= capSeconds) {
           return;
         }
-        if (current >= capSeconds) {
+        // Ignore the first half-second of buffering — `currentTime` can read
+        // as a non-zero garbage value before the player is actually ready.
+        if (current <= 0.5) return;
+        if (current >= capSeconds && !paywallTriggered) {
           try {
             player.pause();
           } catch {
