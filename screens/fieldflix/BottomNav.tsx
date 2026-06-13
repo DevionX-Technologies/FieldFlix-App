@@ -2,8 +2,7 @@ import { Paths } from "@/data/paths";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router";
-import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
-import { CurvedBottomBarExpo } from "react-native-curved-bottom-bar";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const COLORS = {
@@ -20,58 +19,30 @@ const COLORS = {
 } as const;
 
 type Tab = "home" | "sessions" | "flix" | "recordings";
-type BarRoute = "home" | "sessions" | "flix" | "recordings";
 
-const DUMMY = () => null;
-const TAB_WIDTH = Dimensions.get("window").width;
 const BAR_HEIGHT = 68;
-const FAB_SIZE = 68;
+const FAB_SIZE = 60;
 export const FIELD_FLIX_BOTTOM_NAV_SPACE = 110;
 
-const ROUTE_CONFIG: {
-  key: BarRoute;
+/**
+ * Bottom navigation tabs configured in left-to-right rendering order, with a
+ * `centerSlot` marker indicating where the QR-scanner FAB sits between the
+ * Sessions and FlickShorts items. We previously used `CurvedBottomBarExpo`
+ * here, but its tab-slot layout silently dropped Home + Recordings on
+ * tablet / floating-window widths, leaving only 3 visible items. The custom
+ * flex layout below renders all 5 reliably at any width.
+ */
+const TABS: {
+  key: Tab;
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
   label: string;
   appRoute: string;
-  position: "LEFT" | "RIGHT";
 }[] = [
-    {
-      key: "home",
-      icon: "home-variant",
-      label: "Home",
-      appRoute: Paths.home,
-      position: "LEFT",
-    },
-    {
-      key: "sessions",
-      icon: "video-outline",
-      label: "Sessions",
-      appRoute: Paths.sessions,
-      position: "LEFT",
-    },
-    {
-      key: "flix",
-      icon: "play-circle-outline",
-      label: "FlickShorts",
-      appRoute: Paths.flixshorts,
-      position: "RIGHT",
-    },
-    {
-      key: "recordings",
-      icon: "camera-iris",
-      label: "Recordings",
-      appRoute: Paths.recordings,
-      position: "RIGHT",
-    },
-  ];
-
-function initialTab(active: Tab): BarRoute {
-  if (active === "home") return "home";
-  if (active === "sessions") return "sessions";
-  if (active === "flix") return "flix";
-  if (active === "recordings") return "recordings";
-  return "home";
-}
+  { key: "home", icon: "home-variant", label: "Home", appRoute: Paths.home },
+  { key: "sessions", icon: "video-outline", label: "Sessions", appRoute: Paths.sessions },
+  { key: "flix", icon: "play-circle-outline", label: "FlickShorts", appRoute: Paths.flixshorts },
+  { key: "recordings", icon: "camera-iris", label: "Recordings", appRoute: Paths.recordings },
+];
 
 export function FieldflixBottomNav({
   active,
@@ -81,7 +52,39 @@ export function FieldflixBottomNav({
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const startTab = initialTab(active);
+
+  const leftTabs = TABS.slice(0, 2); // Home, Sessions
+  const rightTabs = TABS.slice(2); // FlickShorts, Recordings
+
+  const renderTab = (cfg: (typeof TABS)[number]) => {
+    const isActive = active === cfg.key;
+    return (
+      <Pressable
+        key={cfg.key}
+        onPress={() => router.replace(cfg.appRoute as never)}
+        style={styles.tabSlot}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={cfg.label}
+      >
+        <MaterialCommunityIcons
+          name={cfg.icon}
+          size={26}
+          color={isActive ? COLORS.iconActive : COLORS.iconIdle}
+        />
+        <Text
+          style={[
+            styles.tabLabel,
+            isActive ? styles.tabLabelActive : styles.tabLabelIdle,
+          ]}
+          numberOfLines={1}
+        >
+          {cfg.label}
+        </Text>
+        {isActive ? <View style={styles.indicator} /> : null}
+      </Pressable>
+    );
+  };
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
@@ -89,93 +92,24 @@ export function FieldflixBottomNav({
         pointerEvents="none"
         style={[styles.bottomFill, { height: Math.max(insets.bottom, 12) }]}
       />
-      <CurvedBottomBarExpo.Navigator
-        key={`nav-${active}`}
-        id="fieldflix-bottom-nav"
-        type="DOWN"
-        circlePosition="CENTER"
-        width={TAB_WIDTH}
-        height={BAR_HEIGHT}
-        circleWidth={60}
-        borderTopLeftRight={false}
-        bgColor={COLORS.barBg}
-        borderColor={COLORS.barBorder}
-        borderWidth={1}
-        initialRouteName={startTab}
-        backBehavior="initialRoute"
-        screenListeners={{}}
-        screenOptions={{ headerShown: false }}
-        defaultScreenOptions={{}}
-        style={styles.navigatorShell}
-        shadowStyle={styles.navigatorShadow}
-        tabBar={({
-          routeName,
-          selectedTab,
-          navigate,
-        }: {
-          routeName: string;
-          selectedTab: string;
-          navigate: (tab: string) => void;
-        }) => {
-          const cfg = ROUTE_CONFIG.find((x) => x.key === routeName);
-          if (!cfg) return <View style={styles.tabSlot} />;
-          const isActive = selectedTab === routeName;
-          return (
-            <Pressable
-              onPress={() => {
-                navigate(routeName);
-                router.replace(cfg.appRoute as any);
-              }}
-              style={styles.tabSlot}
-              hitSlop={8}
-            >
-              <MaterialCommunityIcons
-                name={cfg.icon}
-                size={29}
-                color={isActive ? COLORS.iconActive : COLORS.iconIdle}
-              />
-              <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : styles.tabLabelIdle]}>
-                {cfg.label}
-              </Text>
-              {isActive ? <View style={styles.indicator} /> : null}
-            </Pressable>
-          );
-        }}
-        renderCircle={() => (
-          <Pressable
-            accessibilityLabel="Open QR scanner"
-            onPress={() => router.replace(Paths.scan as any)}
-            style={styles.fab}
-          >
-            <MaterialCommunityIcons
-              name="qrcode-scan"
-              size={28}
-              color={COLORS.fabIcon}
-            />
-          </Pressable>
-        )}
-      >
-        <CurvedBottomBarExpo.Screen
-          name="home"
-          position="LEFT"
-          component={DUMMY}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="sessions"
-          position="LEFT"
-          component={DUMMY}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="flix"
-          position="RIGHT"
-          component={DUMMY}
-        />
-        <CurvedBottomBarExpo.Screen
-          name="recordings"
-          position="RIGHT"
-          component={DUMMY}
-        />
-      </CurvedBottomBarExpo.Navigator>
+      <View style={styles.bar}>
+        <View style={styles.tabGroup}>{leftTabs.map(renderTab)}</View>
+        {/* Center spacer that the FAB sits over. Keeps tab widths balanced. */}
+        <View style={styles.centerSlot} />
+        <View style={styles.tabGroup}>{rightTabs.map(renderTab)}</View>
+        <Pressable
+          accessibilityLabel="Open QR scanner"
+          accessibilityRole="button"
+          onPress={() => router.replace(Paths.scan as never)}
+          style={styles.fab}
+        >
+          <MaterialCommunityIcons
+            name="qrcode-scan"
+            size={26}
+            color={COLORS.fabIcon}
+          />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -197,22 +131,29 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: COLORS.barBg,
   },
-  navigatorShell: {
-    borderWidth: 1,
-    borderColor: COLORS.barInner,
+  bar: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    height: BAR_HEIGHT,
+    backgroundColor: COLORS.barBg,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    overflow: "hidden",
-    backgroundColor: "transparent",
-  },
-  navigatorShadow: {
+    borderWidth: 1,
+    borderColor: COLORS.barBorder,
+    overflow: "visible",
     shadowColor: COLORS.shadow,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.34,
     shadowRadius: 18,
     elevation: 14,
+  },
+  tabGroup: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "stretch",
+  },
+  centerSlot: {
+    width: FAB_SIZE + 16, // breathing room around the FAB
   },
   tabSlot: {
     flex: 1,
@@ -243,8 +184,12 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.indicator,
   },
   fab: {
+    position: "absolute",
+    left: "50%",
+    top: -FAB_SIZE / 3,
     width: FAB_SIZE,
     height: FAB_SIZE,
+    marginLeft: -FAB_SIZE / 2,
     borderRadius: FAB_SIZE / 2,
     alignItems: "center",
     justifyContent: "center",
@@ -256,6 +201,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.32,
     shadowRadius: 12,
     elevation: 12,
-    bottom: 4,
   },
 });
