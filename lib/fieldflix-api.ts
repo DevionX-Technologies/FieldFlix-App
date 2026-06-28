@@ -1372,3 +1372,83 @@ export async function claimRecording(recordingId: string): Promise<{
   );
   return data as { claimed: boolean; reason: string; recording: any };
 }
+
+/**
+ * Fetch current user points, level, and progression details.
+ */
+export async function getMyPoints(): Promise<{
+  totalPoints: number;
+  perEvent: Array<{
+    eventType: string;
+    points: number;
+    count: number;
+  }>;
+  level: number;
+  levelName: string | null;
+  nextLevelPoints: number | null;
+  levelProgress: number;
+}> {
+  const { data } = await axiosInstance.get('/points/me');
+  return data;
+}
+
+/**
+ * Admin: get all event point configurations.
+ */
+export async function getPointsConfigs(): Promise<
+  Array<{
+    eventType: string;
+    label: string;
+    points: number;
+    enabled: boolean;
+  }>
+> {
+  const { data } = await axiosInstance.get('/points/configs');
+  return data;
+}
+
+/**
+ * Admin: update a point configuration.
+ */
+export async function updatePointsConfig(
+  eventType: string,
+  body: { points?: number; label?: string; enabled?: boolean },
+): Promise<any> {
+  const { data } = await axiosInstance.patch(`/points/configs/${encodeURIComponent(eventType)}`, body);
+  return data;
+}
+
+/**
+ * Admin/User: list all level configurations.
+ */
+export async function getLevels(): Promise<
+  Array<{
+    level: number;
+    minPoints: number;
+    name: string | null;
+  }>
+> {
+  const { data } = await axiosInstance.get('/points/levels');
+  return data;
+}
+
+/**
+ * Admin: upsert a level configuration.
+ */
+export async function upsertLevel(body: {
+  level: number;
+  minPoints: number;
+  name?: string;
+}): Promise<any> {
+  const { data } = await axiosInstance.post('/points/levels', body);
+  return data;
+}
+
+/**
+ * Admin: delete a level configuration.
+ */
+export async function deleteLevel(level: number): Promise<{ success: boolean }> {
+  const { data } = await axiosInstance.delete(`/points/levels/${level}`);
+  return data;
+}
+

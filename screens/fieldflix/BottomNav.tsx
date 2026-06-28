@@ -2,6 +2,7 @@ import { Paths } from "@/data/paths";
 import { WEB } from "@/screens/fieldflix/webDesign";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { Dimensions, Pressable, StyleSheet, Text, View } from "react-native";
 import { CurvedBottomBarExpo } from "react-native-curved-bottom-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +24,6 @@ type Tab = "home" | "sessions" | "flix" | "recordings";
 type BarRoute = "home" | "sessions" | "flix" | "recordings";
 
 const DUMMY = () => null;
-const TAB_WIDTH = Dimensions.get("window").width;
 const BAR_HEIGHT = 68;
 const FAB_SIZE = 68;
 export const FIELD_FLIX_BOTTOM_NAV_SPACE = 110;
@@ -35,35 +35,35 @@ const ROUTE_CONFIG: {
   appRoute: string;
   position: "LEFT" | "RIGHT";
 }[] = [
-    {
-      key: "home",
-      icon: "home-variant",
-      label: "Home",
-      appRoute: Paths.home,
-      position: "LEFT",
-    },
-    {
-      key: "sessions",
-      icon: "video-outline",
-      label: "Sessions",
-      appRoute: Paths.sessions,
-      position: "LEFT",
-    },
-    {
-      key: "flix",
-      icon: "play-circle-outline",
-      label: "FlickShorts",
-      appRoute: Paths.flixshorts,
-      position: "RIGHT",
-    },
-    {
-      key: "recordings",
-      icon: "camera-iris",
-      label: "Recordings",
-      appRoute: Paths.recordings,
-      position: "RIGHT",
-    },
-  ];
+  {
+    key: "home",
+    icon: "home-variant",
+    label: "Home",
+    appRoute: Paths.home,
+    position: "LEFT",
+  },
+  {
+    key: "sessions",
+    icon: "video-outline",
+    label: "Sessions",
+    appRoute: Paths.sessions,
+    position: "LEFT",
+  },
+  {
+    key: "flix",
+    icon: "play-circle-outline",
+    label: "FlickShorts",
+    appRoute: Paths.flixshorts,
+    position: "RIGHT",
+  },
+  {
+    key: "recordings",
+    icon: "camera-iris",
+    label: "Recordings",
+    appRoute: Paths.recordings,
+    position: "RIGHT",
+  },
+];
 
 function initialTab(active: Tab): BarRoute {
   if (active === "home") return "home";
@@ -73,6 +73,16 @@ function initialTab(active: Tab): BarRoute {
   return "home";
 }
 
+/**
+ * Restored from gamification branch (commit b3329a6) — the curved
+ * `CurvedBottomBarExpo` version that produces the notched cradle around
+ * the FAB. We previously swapped this out for a flex layout to fix tablets
+ * losing tabs at wide widths, but the trade-off lost the curve entirely.
+ *
+ * Tablet-width handling: the upstream component derives tab slot widths
+ * from the explicit `width` prop. We subscribe to `Dimensions` changes so
+ * the bar re-renders with a fresh width on orientation / window-resize.
+ */
 export function FieldflixBottomNav({
   active,
 }: {
@@ -83,6 +93,17 @@ export function FieldflixBottomNav({
   const insets = useSafeAreaInsets();
   const startTab = initialTab(active);
 
+  const [tabWidth, setTabWidth] = useState(
+    () => Dimensions.get("window").width,
+  );
+
+  useEffect(() => {
+    const sub = Dimensions.addEventListener("change", ({ window }) => {
+      setTabWidth(window.width);
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
       <View
@@ -90,11 +111,11 @@ export function FieldflixBottomNav({
         style={[styles.bottomFill, { height: Math.max(insets.bottom, 12) }]}
       />
       <CurvedBottomBarExpo.Navigator
-        key={`nav-${active}`}
+        key={`nav-${active}-${tabWidth}`}
         id="fieldflix-bottom-nav"
         type="DOWN"
         circlePosition="CENTER"
-        width={TAB_WIDTH}
+        width={tabWidth}
         height={BAR_HEIGHT}
         circleWidth={60}
         borderTopLeftRight={false}
@@ -134,7 +155,12 @@ export function FieldflixBottomNav({
                 size={29}
                 color={isActive ? COLORS.iconActive : COLORS.iconIdle}
               />
-              <Text style={[styles.tabLabel, isActive ? styles.tabLabelActive : styles.tabLabelIdle]}>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  isActive ? styles.tabLabelActive : styles.tabLabelIdle,
+                ]}
+              >
                 {cfg.label}
               </Text>
               {isActive ? <View style={styles.indicator} /> : null}

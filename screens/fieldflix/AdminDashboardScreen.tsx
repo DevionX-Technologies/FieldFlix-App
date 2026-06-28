@@ -4,10 +4,6 @@ import { FF } from '@/screens/fieldflix/fonts';
 import { WebShell } from '@/screens/fieldflix/WebShell';
 import { WEB } from '@/screens/fieldflix/webDesign';
 import { useIsAdminRole } from '@/hooks/useIsAdminRole';
-import { AdminCouponsTab } from '@/screens/fieldflix/admin/AdminCouponsTab';
-import { AdminLeaderboardTab } from '@/screens/fieldflix/admin/AdminLeaderboardTab';
-import { AdminPointsTab } from '@/screens/fieldflix/admin/AdminPointsTab';
-import { LinearGradient } from 'expo-linear-gradient';
 import {
   addAdminByPhone,
   approveFlickShort,
@@ -20,6 +16,11 @@ import {
   getFieldflixApiErrorMessage,
   getRecordingById,
   removeAdminPhone,
+  getPointsConfigs,
+  updatePointsConfig,
+  getLevels,
+  upsertLevel,
+  deleteLevel,
   type AdminMuxReadyRecording,
   type AdminPhoneRow,
   type FlickShortDto,
@@ -43,13 +44,7 @@ import {
   View,
 } from 'react-native';
 
-type AdminTab =
-  | 'overview'
-  | 'studio'
-  | 'queue'
-  | 'points'
-  | 'leaderboard'
-  | 'coupons';
+type AdminTab = 'landing' | 'overview' | 'studio' | 'queue' | 'points' | 'levels';
 
 function muxPoster(playbackId: string, timeSec = 1): string {
   const t = Math.max(0, Math.floor(timeSec));
@@ -192,7 +187,7 @@ export default function AdminDashboardScreen() {
   const { isAdmin, isLoading: authLoading } = useIsAdminRole();
   const previewHeight = Math.min(Math.round(Dimensions.get('window').height * 0.72), 560);
 
-  const [tab, setTab] = useState<AdminTab>('overview');
+  const [tab, setTab] = useState<AdminTab>('landing');
   const [userCount, setUserCount] = useState<number | null>(null);
   const [shorts, setShorts] = useState<FlickShortDto[]>([]);
   const [pickerRecordings, setPickerRecordings] = useState<AdminMuxReadyRecording[]>([]);
@@ -213,6 +208,18 @@ export default function AdminDashboardScreen() {
   const [endSecStr, setEndSecStr] = useState('15');
   const [adminPhones, setAdminPhones] = useState<AdminPhoneRow[]>([]);
   const [newAdminPhone, setNewAdminPhone] = useState('');
+
+  // Points configurations states
+  const [pointConfigs, setPointConfigs] = useState<Array<{ eventType: string; label: string; points: number; enabled: boolean }>>([]);
+  const [editingConfigType, setEditingConfigType] = useState<string | null>(null);
+  const [editPointsStr, setEditPointsStr] = useState('');
+
+  // Levels configurations states
+  const [levels, setLevels] = useState<Array<{ level: number; minPoints: number; name: string | null }>>([]);
+  const [newLevelNum, setNewLevelNum] = useState('');
+  const [newLevelPoints, setNewLevelPoints] = useState('');
+  const [newLevelName, setNewLevelName] = useState('');
+  const [editingLevelNum, setEditingLevelNum] = useState<number | null>(null);
   const [addingAdmin, setAddingAdmin] = useState(false);
   const [recordingSportFilter, setRecordingSportFilter] = useState<
     'all' | 'pickleball' | 'padel' | 'cricket'
@@ -239,7 +246,7 @@ export default function AdminDashboardScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [users, list, phones, muxList] = await Promise.all([
+      const [users, list, phones, muxList, ptsConfigs, lvlConfigs] = await Promise.all([
         getAllUsers(),
         getAdminFlickShorts(),
         getAdminPhoneList().catch(() => [] as AdminPhoneRow[]),
@@ -247,6 +254,8 @@ export default function AdminDashboardScreen() {
           setPickerError(getFieldflixApiErrorMessage(e, 'Could not load recordings'));
           return [] as AdminMuxReadyRecording[];
         }),
+        getPointsConfigs().catch(() => []),
+        getLevels().catch(() => []),
       ]);
       setUserCount(Array.isArray(users) ? users.length : 0);
       setShorts(list);
@@ -260,6 +269,8 @@ export default function AdminDashboardScreen() {
             : [],
         })),
       );
+      setPointConfigs(ptsConfigs);
+      setLevels(lvlConfigs);
       if (muxList.length) setPickerError(null);
     } catch (e) {
       Alert.alert('Error', getFieldflixApiErrorMessage(e, 'Failed to load admin data'));
@@ -268,6 +279,90 @@ export default function AdminDashboardScreen() {
       setRefreshing(false);
     }
   }, []);
+
+  const startEditPointConfig = (cfg: { eventType: string; points: number }) => {
+    setEditingConfigType(cfg.eventType);
+    setEditPointsStr(String(cfg.points));
+  };
+
+  const savePointConfig = async (eventType: string) => {
+    const pts = Number.parseInt(editPointsStr);
+    if (Number.isNaN(pts) || pts < 0) {
+      Alert.alert('Invalid points', 'Please enter a valid non-negative integer.');
+      return;
+    }
+    try {
+      await updatePointsConfig(eventType, { points: pts });
+      setEditingConfigType(null);
+      await load();
+      Alert.alert('Success', 'Points configuration updated successfully.');
+    } catch (e) {
+      Alert.alert('Error', getFieldflixApiErrorMessage(e, 'Failed to update points configuration'));
+    }
+  };
+
+  const togglePointConfig = async (cfg: { eventType: string; enabled: boolean }) => {
+    try {
+      await updatePointsConfig(cfg.eventType, { enabled: !cfg.enabled });
+      await load();
+    } catch (e) {
+      Alert.alert('Error', getFieldflixApiErrorMessage(e, 'Failed to update points configuration'));
+    }
+  };
+
+  const onAddOrEditLevel = async () => {
+    const lvl = Number.parseInt(newLevelNum);
+    const pts = Number.parseInt(newLevelPoints);
+    if (Number.isNaN(lvl) || lvl < 1) {
+      Alert.alert('Invalid level', 'Please enter a valid level number (>= 1).');
+      return;
+    }
+    if (Number.isNaN(pts) || pts < 0) {
+      Alert.alert('Invalid points', 'Please enter a valid points threshold (>= 0).');
+      return;
+    }
+    try {
+      await upsertLevel({
+        level: lvl,
+        minPoints: pts,
+        name: newLevelName.trim() || undefined,
+      });
+      setNewLevelNum('');
+      setNewLevelPoints('');
+      setNewLevelName('');
+      setEditingLevelNum(null);
+      await load();
+      Alert.alert('Success', 'Level configuration saved successfully.');
+    } catch (e) {
+      Alert.alert('Error', getFieldflixApiErrorMessage(e, 'Failed to save level config'));
+    }
+  };
+
+  const startEditLevel = (lvl: { level: number; minPoints: number; name: string | null }) => {
+    setEditingLevelNum(lvl.level);
+    setNewLevelNum(String(lvl.level));
+    setNewLevelPoints(String(lvl.minPoints));
+    setNewLevelName(lvl.name ?? '');
+  };
+
+  const onDeleteLevel = async (lvlNum: number) => {
+    Alert.alert('Delete level', `Are you sure you want to delete Level ${lvlNum}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteLevel(lvlNum);
+            await load();
+          } catch (e) {
+            Alert.alert('Error', getFieldflixApiErrorMessage(e, 'Failed to delete level'));
+          }
+        },
+      },
+    ]);
+  };
+
 
   useEffect(() => {
     if (authLoading) return;
@@ -439,12 +534,12 @@ export default function AdminDashboardScreen() {
   };
 
   const tabLabels: { id: AdminTab; label: string }[] = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'studio', label: 'Studio' },
-    { id: 'queue', label: 'Queue' },
-    { id: 'points', label: 'Points' },
-    { id: 'leaderboard', label: 'Leaderboard' },
-    { id: 'coupons', label: 'Coupons' },
+    { id: 'landing', label: 'Dashboard' },
+    { id: 'overview', label: 'Overview & Access' },
+    { id: 'studio', label: 'Content Studio' },
+    { id: 'queue', label: 'Moderation Queue' },
+    { id: 'points', label: 'Points Settings' },
+    { id: 'levels', label: 'Levels Settings' },
   ];
 
   if (authLoading || (!authLoading && !isAdmin)) {
@@ -460,41 +555,25 @@ export default function AdminDashboardScreen() {
   return (
     <WebShell backgroundColor={WEB.homeBg}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+        <Pressable
+          onPress={() => {
+            if (tab === 'landing') {
+              router.back();
+            } else {
+              setTab('landing');
+            }
+          }}
+          hitSlop={12}
+          style={styles.backBtn}
+        >
           <MaterialCommunityIcons name="chevron-left" size={28} color="rgba(255,255,255,0.85)" />
         </Pressable>
-        <Text style={styles.topTitle}>Admin</Text>
+        <Text style={styles.topTitle}>
+          {tab === 'landing' ? 'Admin' : `Admin - ${tabLabels.find(tl => tl.id === tab)?.label ?? ''}`}
+        </Text>
         <View style={{ width: 36 }} />
       </View>
 
-      <View style={styles.tabBar}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabBarScroll}
-        >
-          {tabLabels.map(({ id, label }) => (
-            <Pressable
-              key={id}
-              onPress={() => setTab(id)}
-              style={[styles.tabItem, tab === id && styles.tabItemActive]}
-            >
-              <Text style={[styles.tabTxt, tab === id && styles.tabTxtActive]}>
-                {label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-        {/* Right-edge fade-out — hints at horizontal scrollability so the
-            last tab (Coupons) is discoverable without trial and error. */}
-        <LinearGradient
-          colors={['rgba(0,0,0,0)', 'rgba(2,6,23,0.95)']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          pointerEvents="none"
-          style={styles.tabBarFade}
-        />
-      </View>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -511,6 +590,224 @@ export default function AdminDashboardScreen() {
       >
         {loading ? (
           <ActivityIndicator style={{ marginTop: 24 }} color={WEB.greenBright} />
+        ) : null}
+
+        {tab === 'landing' ? (
+          <View style={styles.gridContainer}>
+            <View style={styles.gridRow}>
+              <Pressable
+                onPress={() => setTab('overview')}
+                style={styles.gridItem}
+              >
+                <MaterialCommunityIcons name="view-dashboard-outline" size={32} color={WEB.greenBright} />
+                <Text style={styles.gridItemTitle}>Overview</Text>
+                <Text style={styles.gridItemSub}>Stats & Admins</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setTab('studio')}
+                style={styles.gridItem}
+              >
+                <MaterialCommunityIcons name="movie-edit-outline" size={32} color={WEB.greenBright} />
+                <Text style={styles.gridItemTitle}>Studio</Text>
+                <Text style={styles.gridItemSub}>Create FlickShort</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.gridRow}>
+              <Pressable
+                onPress={() => setTab('queue')}
+                style={styles.gridItem}
+              >
+                <MaterialCommunityIcons name="clock-outline" size={32} color={WEB.greenBright} />
+                <Text style={styles.gridItemTitle}>Queue</Text>
+                <Text style={styles.gridItemSub}>Moderation Queue</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setTab('points')}
+                style={styles.gridItem}
+              >
+                <MaterialCommunityIcons name="star-circle-outline" size={32} color={WEB.greenBright} />
+                <Text style={styles.gridItemTitle}>Points</Text>
+                <Text style={styles.gridItemSub}>Event Points</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.gridRow}>
+              <Pressable
+                onPress={() => setTab('levels')}
+                style={styles.gridItem}
+              >
+                <MaterialCommunityIcons name="trophy-outline" size={32} color={WEB.greenBright} />
+                <Text style={styles.gridItemTitle}>Levels</Text>
+                <Text style={styles.gridItemSub}>Level Tiers</Text>
+              </Pressable>
+
+              <View style={[styles.gridItem, { opacity: 0 }]} />
+            </View>
+          </View>
+        ) : null}
+
+        {tab === 'points' ? (
+          <SectionCard
+            eyebrow="Points System"
+            title="Configure Event Points"
+            subtitle="Change how many points are awarded to players for specific actions, or disable events."
+          >
+            {pointConfigs.map((cfg) => {
+              const editing = editingConfigType === cfg.eventType;
+              return (
+                <View key={cfg.eventType} style={styles.rowCard}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.rowTitle}>{cfg.label}</Text>
+                    <Text style={styles.rowSub}>Event Type: {cfg.eventType}</Text>
+                    {editing ? (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={styles.miniLabel}>Points Awarded</Text>
+                        <TextInput
+                          value={editPointsStr}
+                          onChangeText={setEditPointsStr}
+                          keyboardType="number-pad"
+                          placeholder="Points"
+                          placeholderTextColor="rgba(255,255,255,0.35)"
+                          style={styles.input}
+                        />
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                          <Pressable
+                            onPress={() => savePointConfig(cfg.eventType)}
+                            style={styles.btnSecondary}
+                          >
+                            <Text style={styles.btnSecondaryTxt}>Save</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setEditingConfigType(null)}
+                            style={styles.removePill}
+                          >
+                            <Text style={styles.removeTxt}>Cancel</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={[styles.p, { color: WEB.greenBright, fontFamily: FF.bold, marginTop: 4 }]}>
+                        {cfg.points} pts {cfg.enabled ? '' : '(Disabled)'}
+                      </Text>
+                    )}
+                  </View>
+                  {!editing && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Pressable
+                        onPress={() => startEditPointConfig(cfg)}
+                        style={styles.viewPill}
+                      >
+                        <Text style={styles.viewTxt}>Edit</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => togglePointConfig(cfg)}
+                        style={cfg.enabled ? styles.removePill : styles.approvePill}
+                      >
+                        <Text style={cfg.enabled ? styles.removeTxt : styles.approveTxt}>
+                          {cfg.enabled ? 'Disable' : 'Enable'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </SectionCard>
+        ) : null}
+
+        {tab === 'levels' ? (
+          <SectionCard
+            eyebrow="Levels system"
+            title="Configure Levels"
+            subtitle="Admins can define the points required to reach specific levels. Set Bronze, Silver, Gold, or custom tiers."
+          >
+            {levels.map((lvl) => (
+              <View key={lvl.level} style={styles.rowCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowTitle}>Level {lvl.level}</Text>
+                  <Text style={styles.rowSub}>
+                    Required points: <Text style={{ color: WEB.greenBright, fontFamily: FF.bold }}>{lvl.minPoints} pts</Text>
+                  </Text>
+                  {lvl.name ? <Text style={styles.rowSub}>Name: {lvl.name}</Text> : null}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  <Pressable
+                    onPress={() => startEditLevel(lvl)}
+                    style={styles.viewPill}
+                  >
+                    <Text style={styles.viewTxt}>Edit</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => onDeleteLevel(lvl.level)}
+                    style={styles.removePill}
+                  >
+                    <Text style={styles.removeTxt}>Delete</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+
+            <Text style={[styles.innerSectionLabel, { marginTop: 20 }]}>
+              {editingLevelNum !== null ? `Edit Level ${editingLevelNum}` : 'Create a Level Tier'}
+            </Text>
+
+            <Text style={styles.label}>Level Number</Text>
+            <TextInput
+              value={newLevelNum}
+              onChangeText={setNewLevelNum}
+              placeholder="e.g. 1"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={styles.input}
+              keyboardType="number-pad"
+              editable={editingLevelNum === null}
+            />
+
+            <Text style={styles.label}>Minimum Points Required</Text>
+            <TextInput
+              value={newLevelPoints}
+              onChangeText={setNewLevelPoints}
+              placeholder="e.g. 10"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={styles.input}
+              keyboardType="number-pad"
+            />
+
+            <Text style={styles.label}>Level Name (Optional)</Text>
+            <TextInput
+              value={newLevelName}
+              onChangeText={setNewLevelName}
+              placeholder="e.g. Bronze"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              style={styles.input}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+              <Pressable
+                onPress={onAddOrEditLevel}
+                style={styles.btnSecondary}
+              >
+                <Text style={styles.btnSecondaryTxt}>
+                  {editingLevelNum !== null ? 'Save changes' : 'Add level'}
+                </Text>
+              </Pressable>
+              {editingLevelNum !== null && (
+                <Pressable
+                  onPress={() => {
+                    setEditingLevelNum(null);
+                    setNewLevelNum('');
+                    setNewLevelPoints('');
+                    setNewLevelName('');
+                  }}
+                  style={styles.removePill}
+                >
+                  <Text style={styles.removeTxt}>Cancel</Text>
+                </Pressable>
+              )}
+            </View>
+          </SectionCard>
         ) : null}
 
         {tab === 'overview' ? (
@@ -902,10 +1199,6 @@ export default function AdminDashboardScreen() {
           </SectionCard>
         ) : null}
 
-        {tab === 'points' ? <AdminPointsTab /> : null}
-        {tab === 'leaderboard' ? <AdminLeaderboardTab /> : null}
-        {tab === 'coupons' ? <AdminCouponsTab /> : null}
-
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -999,37 +1292,14 @@ const styles = StyleSheet.create({
     color: WEB.white,
   },
   tabBar: {
+    flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.08)',
     backgroundColor: 'rgba(0,0,0,0.25)',
-    flexGrow: 0,
-    position: 'relative',
-  },
-  tabBarScroll: {
-    flexDirection: 'row',
-    paddingHorizontal: 4,
-    // Right-edge breathing room so the gradient hint doesn't obscure the
-    // last tab's hit-target.
-    paddingRight: 28,
-  },
-  /**
-   * Right-edge fade-out — sits above the ScrollView via absolute positioning.
-   * Tells the user there's more horizontally when the last tab is cut off.
-   * `pointerEvents="none"` lets taps fall through to the underlying tabs.
-   */
-  tabBarFade: {
-    position: 'absolute',
-    top: 0,
-    bottom: 1,
-    right: 0,
-    width: 32,
   },
   tabItem: {
+    flex: 1,
     paddingVertical: 12,
-    // Tighter than 18 — at 12 horizontal, all six labels
-    // (Overview/Studio/Queue/Points/Leaderboard/Coupons) fit on a 380px
-    // screen with a small right scroll-hint margin.
-    paddingHorizontal: 12,
     alignItems: 'center',
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
@@ -1309,4 +1579,43 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   modalClose: { padding: 4 },
+  gridContainer: {
+    padding: 8,
+    marginTop: 10,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  gridItem: {
+    flex: 1,
+    aspectRatio: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  gridItemTitle: {
+    fontFamily: FF.bold,
+    fontSize: 15,
+    color: WEB.white,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  gridItemSub: {
+    fontFamily: FF.medium,
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 4,
+    textAlign: 'center',
+  },
 });

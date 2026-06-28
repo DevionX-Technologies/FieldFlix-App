@@ -3,18 +3,13 @@ import { highlightCountFromRecording } from "@/utils/recordingDisplay";
 import { navigateBackOrHome } from "@/utils/navigateBackOrHome";
 import {
   getFieldflixApiErrorMessage,
-  getMyCoupons,
   getMyPoints,
-  getMyPointsEvents,
   getMyProfile,
   getMyRecordings,
   getSharedWithMe,
   patchUser,
   uploadProfilePicture,
   type FieldflixUser,
-  type MyCouponRow,
-  type PointEventRow,
-  type PointsMeResponse,
 } from "@/lib/fieldflix-api";
 import { FieldflixScreenHeader } from "@/screens/fieldflix/FieldflixScreenHeader";
 import { WebShell } from "@/screens/fieldflix/WebShell";
@@ -57,29 +52,12 @@ type ProfileVM = {
   shared: number;
   about: string[];
   loading: boolean;
+  totalPoints: number;
+  level: number;
+  levelName: string | null;
+  nextLevelPoints: number | null;
+  levelProgress: number;
 };
-
-/**
- * Maps the backend's PointEventType enum to a friendly sentence for the
- * activity-log modal. Falls through to the raw key so a future event type
- * still renders something readable.
- */
-function humanizeEventType(eventType: string): string {
-  switch (eventType) {
-    case "recording_create":
-      return "Started a session recording";
-    case "recording_share":
-      return "Shared a recording";
-    case "recording_receive":
-      return "Received a shared recording";
-    case "payment_complete":
-      return "Completed a payment";
-    case "flickshort_approved":
-      return "Highlight approved for FlickShorts";
-    default:
-      return eventType.replace(/_/g, " ");
-  }
-}
 
 function initialsFromName(name: string | null | undefined): string {
   if (!name) return "FF";
@@ -111,6 +89,11 @@ export default function FieldflixProfileScreen() {
     shared: 0,
     about: [],
     loading: true,
+    totalPoints: 0,
+    level: 1,
+    levelName: "Bronze",
+    nextLevelPoints: null,
+    levelProgress: 0,
   });
 
   const [editing, setEditing] = useState(false);
@@ -121,14 +104,6 @@ export default function FieldflixProfileScreen() {
   const [uploading, setUploading] = useState(false);
   const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  /** Gamification — total points + recent timeline.
-   *  Fetched alongside the rest of the profile data on focus / mount. */
-  const [points, setPoints] = useState<PointsMeResponse | null>(null);
-  const [pointsModalVisible, setPointsModalVisible] = useState(false);
-  const [pointsEvents, setPointsEvents] = useState<PointEventRow[]>([]);
-  const [pointsEventsLoading, setPointsEventsLoading] = useState(false);
-  /** Active coupons the user can apply at recording-unlock checkout. */
-  const [coupons, setCoupons] = useState<MyCouponRow[]>([]);
 
   const load = useCallback(async () => {
     const token = await SecureStore.getItemAsync("token");
@@ -142,19 +117,21 @@ export default function FieldflixProfileScreen() {
     let myCount = 0;
     let highlightsCount = 0;
     let sharedCount = 0;
+    let pointsData = {
+      totalPoints: 0,
+      level: 1,
+      levelName: "Bronze",
+      nextLevelPoints: null,
+      levelProgress: 0,
+    };
     try {
-      const [u, my, sh, pts, cps] = await Promise.all([
+      const [u, my, sh, pts] = await Promise.all([
         getMyProfile(token),
         getMyRecordings().catch(() => [] as unknown[]),
         getSharedWithMe().catch(() => [] as unknown[]),
-        getMyPoints().catch(
-          () => ({ totalPoints: 0, perEvent: [] }) as PointsMeResponse,
-        ),
-        getMyCoupons().catch(() => [] as MyCouponRow[]),
+        getMyPoints().catch(() => null),
       ]);
       user = u;
-      setPoints(pts);
-      setCoupons(Array.isArray(cps) ? cps : []);
       if (Array.isArray(my)) {
         myCount = my.length;
         highlightsCount = my.reduce(
@@ -167,6 +144,15 @@ export default function FieldflixProfileScreen() {
         );
       }
       sharedCount = Array.isArray(sh) ? sh.length : 0;
+      if (pts) {
+        pointsData = {
+          totalPoints: pts.totalPoints,
+          level: pts.level,
+          levelName: pts.levelName,
+          nextLevelPoints: pts.nextLevelPoints,
+          levelProgress: pts.levelProgress,
+        };
+      }
     } catch (e) {
       console.warn(
         "profile load failed:",
@@ -187,26 +173,13 @@ export default function FieldflixProfileScreen() {
       shared: sharedCount,
       about: [],
       loading: false,
+      ...pointsData,
     });
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  /** Open the activity log modal and lazy-load the most recent 30 events. */
-  const openPointsModal = useCallback(async () => {
-    setPointsModalVisible(true);
-    setPointsEventsLoading(true);
-    try {
-      const rows = await getMyPointsEvents(30);
-      setPointsEvents(rows);
-    } catch {
-      setPointsEvents([]);
-    } finally {
-      setPointsEventsLoading(false);
-    }
-  }, []);
 
   const performLogout = async () => {
     try {
@@ -405,25 +378,8 @@ export default function FieldflixProfileScreen() {
                 <Text style={styles.email} numberOfLines={1}>
                   {vm.email || "—"}
                 </Text>
-                <View style={styles.pillRow}>
-                  <View style={styles.pill}>
-                    <Text style={styles.pillText}>{vm.plan}</Text>
-                  </View>
-                  <Pressable
-                    onPress={openPointsModal}
-                    style={styles.pointsPill}
-                    accessibilityRole="button"
-                    accessibilityLabel="View points activity"
-                  >
-                    <MaterialCommunityIcons
-                      name="lightning-bolt"
-                      size={12}
-                      color="#fde68a"
-                    />
-                    <Text style={styles.pointsPillText}>
-                      {points?.totalPoints ?? 0} pts
-                    </Text>
-                  </Pressable>
+                <View style={styles.pill}>
+                  <Text style={styles.pillText}>{vm.plan}</Text>
                 </View>
               </View>
             </View>
@@ -446,43 +402,102 @@ export default function FieldflixProfileScreen() {
             </View>
           </LinearGradient>
 
-          {coupons.length > 0 ? (
-            <View style={styles.section}>
-              <View style={styles.personalHead}>
-                <View style={styles.personalHeadTitle}>
-                  <View style={styles.personalAccent} />
-                  <Text style={styles.sectionTitle}>My coupons</Text>
-                </View>
+          {/* Level & Points Progress Section */}
+          <LinearGradient
+            colors={["#0c1a15", "#020705"]}
+            style={[
+              styles.levelCard,
+              { borderRadius: WEB.profileCardRadius, marginTop: 16 }
+            ]}
+          >
+            <View style={styles.levelCardHeader}>
+              <View>
+                <Text style={styles.levelCardTitle}>Level {vm.level}</Text>
+                {vm.levelName ? (
+                  <Text style={styles.levelNameText}>{vm.levelName}</Text>
+                ) : null}
               </View>
-              <View style={{ marginTop: 12, gap: 10 }}>
-                {coupons.map((c) => (
-                  <View key={c.assignmentId} style={styles.couponCard}>
-                    <View style={styles.couponBadge}>
-                      <Text style={styles.couponBadgeText}>
-                        {c.discountPercent}%
-                      </Text>
-                      <Text style={styles.couponBadgeSub}>OFF</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.couponCardCode}>{c.code}</Text>
-                      <Text style={styles.couponCardLabel} numberOfLines={2}>
-                        {c.label}
-                      </Text>
-                      <Text style={styles.couponCardMeta}>
-                        {c.remainingRecordings} use
-                        {c.remainingRecordings === 1 ? "" : "s"} left
-                        {c.expiresAt
-                          ? ` · expires ${new Date(
-                              c.expiresAt,
-                            ).toLocaleDateString()}`
-                          : ""}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
+              <View style={styles.pointsPill}>
+                <Text style={styles.pointsPillText}>{vm.totalPoints} pts</Text>
               </View>
             </View>
-          ) : null}
+
+            {vm.nextLevelPoints !== null ? (
+              <View style={styles.progressContainer}>
+                <View style={styles.progressBarBg}>
+                  <View
+                    style={[
+                      styles.progressBarFill,
+                      { width: `${Math.min(100, Math.max(0, vm.levelProgress * 100))}%` }
+                    ]}
+                  />
+                </View>
+                <View style={styles.progressLabels}>
+                  <Text style={styles.progressMutedText}>
+                    {vm.totalPoints} / {vm.nextLevelPoints} pts
+                  </Text>
+                  <Text style={styles.progressGreenText}>
+                    {vm.nextLevelPoints - vm.totalPoints} pts to Level {vm.level + 1}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.progressContainer}>
+                <Text style={styles.maxLevelText}>🎉 Max Level Reached!</Text>
+              </View>
+            )}
+          </LinearGradient>
+
+          {/* Leaderboard CTA — prominent gateway to the leaderboard. Sits
+            *  directly under the Levels card so the user's natural eye-path
+            *  is points → progress → "see how I stack up against everyone".
+            *  Routes via the literal pathname so the typecheck passes on
+            *  branches where the const isn't declared yet. */}
+          <Pressable
+            onPress={() => router.push("/leaderboard" as never)}
+            accessibilityRole="button"
+            accessibilityLabel="Open the leaderboard"
+            style={({ pressed }) => [
+              styles.leaderboardCta,
+              {
+                borderRadius: WEB.profileCardRadius,
+                marginTop: 12,
+                opacity: pressed ? 0.85 : 1,
+                transform: [{ scale: pressed ? 0.99 : 1 }],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={["#0e4d2b", "#0a8a4d", "#22c55e"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[
+                styles.leaderboardCtaInner,
+                { borderRadius: WEB.profileCardRadius },
+              ]}
+            >
+              <View style={styles.leaderboardCtaIconWrap}>
+                <MaterialCommunityIcons
+                  name="trophy"
+                  size={24}
+                  color="#FFD27A"
+                />
+              </View>
+              <View style={styles.leaderboardCtaText}>
+                <Text style={styles.leaderboardCtaTitle}>Leaderboard</Text>
+                <Text style={styles.leaderboardCtaSubtitle}>
+                  See where you stack up this week
+                </Text>
+              </View>
+              <View style={styles.leaderboardCtaArrow}>
+                <MaterialCommunityIcons
+                  name="chevron-right"
+                  size={22}
+                  color="rgba(255,255,255,0.95)"
+                />
+              </View>
+            </LinearGradient>
+          </Pressable>
 
           <View style={styles.section}>
             <View style={styles.personalHead}>
@@ -723,77 +738,6 @@ export default function FieldflixProfileScreen() {
           </Pressable>
         </ScrollView>
       </View>
-      <Modal
-        transparent
-        animationType="fade"
-        visible={pointsModalVisible}
-        onRequestClose={() => setPointsModalVisible(false)}
-      >
-        <View style={styles.confirmOverlay}>
-          <View style={styles.pointsModalCard}>
-            <View style={styles.pointsModalHeader}>
-              <MaterialCommunityIcons
-                name="lightning-bolt"
-                size={18}
-                color="#fde68a"
-              />
-              <Text style={styles.pointsModalTitle}>
-                {points?.totalPoints ?? 0} points
-              </Text>
-              <Pressable
-                onPress={() => setPointsModalVisible(false)}
-                hitSlop={10}
-                style={{ padding: 4 }}
-              >
-                <MaterialCommunityIcons name="close" size={18} color={MUTED} />
-              </Pressable>
-            </View>
-            <Text style={styles.pointsModalSubhead}>
-              Recent activity (newest first)
-            </Text>
-            <ScrollView style={styles.pointsModalScroll}>
-              {pointsEventsLoading ? (
-                <View style={{ paddingVertical: 40, alignItems: "center" }}>
-                  <ActivityIndicator color={PG} />
-                </View>
-              ) : pointsEvents.length === 0 ? (
-                <Text style={styles.pointsEmptyText}>
-                  No points yet. Start a session, share a recording, or get a
-                  highlight approved as a FlickShort to earn.
-                </Text>
-              ) : (
-                pointsEvents.map((ev) => (
-                  <View key={ev.id} style={styles.pointsEventRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.pointsEventLabel}>
-                        {humanizeEventType(ev.eventType)}
-                      </Text>
-                      <Text style={styles.pointsEventDate}>
-                        {new Date(ev.createdAt).toLocaleString()}
-                      </Text>
-                    </View>
-                    <Text style={styles.pointsEventDelta}>+{ev.points}</Text>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-            <Pressable
-              style={styles.leaderboardCta}
-              onPress={() => {
-                setPointsModalVisible(false);
-                router.push(Paths.leaderboard);
-              }}
-            >
-              <MaterialCommunityIcons
-                name="trophy-outline"
-                size={16}
-                color="#04130d"
-              />
-              <Text style={styles.leaderboardCtaText}>View leaderboard</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
       <Modal
         transparent
         animationType="fade"
@@ -1097,6 +1041,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   pill: {
+    marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
@@ -1110,159 +1055,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     color: PG,
     textTransform: "uppercase",
-  },
-  pillRow: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  pointsPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: "rgba(120, 80, 0, 0.45)",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(253, 230, 138, 0.4)",
-  },
-  pointsPillText: {
-    fontFamily: FF.bold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: "#fde68a",
-    textTransform: "uppercase",
-  },
-  pointsModalCard: {
-    width: "90%",
-    maxWidth: 380,
-    maxHeight: "75%",
-    backgroundColor: "#0f172a",
-    borderRadius: 18,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  pointsModalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  pointsModalTitle: {
-    flex: 1,
-    color: "#fff",
-    fontFamily: FF.bold,
-    fontSize: 18,
-  },
-  pointsModalSubhead: {
-    color: MUTED,
-    fontSize: 12,
-    marginTop: 6,
-    marginBottom: 8,
-  },
-  pointsModalScroll: {
-    marginTop: 4,
-  },
-  pointsEventRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 11,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  pointsEventLabel: {
-    color: "#e5e7eb",
-    fontSize: 13,
-    fontFamily: FF.semiBold,
-  },
-  pointsEventDate: {
-    color: MUTED,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  pointsEventDelta: {
-    color: "#86efac",
-    fontFamily: FF.bold,
-    fontSize: 14,
-    marginLeft: 12,
-  },
-  pointsEmptyText: {
-    color: MUTED,
-    fontSize: 13,
-    lineHeight: 19,
-    paddingVertical: 22,
-    paddingHorizontal: 10,
-    textAlign: "center",
-  },
-  leaderboardCta: {
-    marginTop: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: PG,
-  },
-  leaderboardCtaText: {
-    color: "#04130d",
-    fontFamily: FF.bold,
-    fontSize: 13,
-    letterSpacing: 0.4,
-  },
-  couponCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 14,
-    backgroundColor: "rgba(15,23,42,0.55)",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.25)",
-  },
-  couponBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 14,
-    backgroundColor: "rgba(34, 197, 94, 0.18)",
-    borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.5)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  couponBadgeText: {
-    color: PG,
-    fontFamily: FF.bold,
-    fontSize: 18,
-    lineHeight: 22,
-  },
-  couponBadgeSub: {
-    color: PG,
-    fontFamily: FF.bold,
-    fontSize: 10,
-    letterSpacing: 1.3,
-  },
-  couponCardCode: {
-    color: "#fff",
-    fontFamily: FF.bold,
-    fontSize: 14,
-    letterSpacing: 1.2,
-  },
-  couponCardLabel: {
-    color: "rgba(255,255,255,0.78)",
-    fontFamily: FF.semiBold,
-    fontSize: 12,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  couponCardMeta: {
-    color: MUTED,
-    fontFamily: FF.regular,
-    fontSize: 11,
-    marginTop: 4,
   },
   stats: {
     marginTop: 28,
@@ -1663,5 +1455,133 @@ const styles = StyleSheet.create({
     fontFamily: FF.bold,
     fontSize: 14,
     color: "#FCA5A5",
+  },
+  levelCard: {
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.2)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  levelCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  levelCardTitle: {
+    fontFamily: FF.bold,
+    fontSize: 18,
+    color: WEB.white,
+  },
+  levelNameText: {
+    fontFamily: FF.semiBold,
+    fontSize: 12,
+    color: PG,
+    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 1.0,
+  },
+  pointsPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.25)",
+  },
+  pointsPillText: {
+    fontFamily: FF.bold,
+    fontSize: 12,
+    color: PG,
+  },
+  progressContainer: {
+    marginTop: 4,
+  },
+  progressBarBg: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+  },
+  progressBarFill: {
+    height: "100%",
+    borderRadius: 4,
+    backgroundColor: PG,
+  },
+  progressLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+  },
+  progressMutedText: {
+    fontFamily: FF.medium,
+    fontSize: 11,
+    color: MUTED,
+  },
+  progressGreenText: {
+    fontFamily: FF.semiBold,
+    fontSize: 11,
+    color: PG,
+  },
+  maxLevelText: {
+    fontFamily: FF.bold,
+    fontSize: 12,
+    color: PG,
+    textAlign: "center",
+    marginTop: 4,
+  },
+  /* ---- Leaderboard CTA card ---- */
+  leaderboardCta: {
+    overflow: "hidden",
+    shadowColor: "#0a8a4d",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.32,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  leaderboardCtaInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+  },
+  leaderboardCtaIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+  },
+  leaderboardCtaText: {
+    flex: 1,
+  },
+  leaderboardCtaTitle: {
+    fontFamily: FF.bold,
+    fontSize: 17,
+    color: "#FFFFFF",
+    letterSpacing: 0.2,
+  },
+  leaderboardCtaSubtitle: {
+    fontFamily: FF.medium,
+    fontSize: 12,
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 2,
+  },
+  leaderboardCtaArrow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
 });
