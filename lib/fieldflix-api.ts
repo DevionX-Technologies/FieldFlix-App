@@ -707,6 +707,14 @@ export type PointsMeResponse = {
     points: number;
     count: number;
   }>;
+  /** Current level number (1-based). Added in v3.7 levels gamification. */
+  level: number;
+  /** Display name of the current level, e.g. "Bronze". Null if no tier set. */
+  levelName: string | null;
+  /** minPoints of the next level, or null if at max level. */
+  nextLevelPoints: number | null;
+  /** Fractional progress to next level in [0..1]. 0 if at max level. */
+  levelProgress: number;
 };
 
 export async function getMyPoints(): Promise<PointsMeResponse> {
@@ -1371,25 +1379,6 @@ export async function claimRecording(recordingId: string): Promise<{
     `/recording/claim/${encodeURIComponent(recordingId)}`,
   );
   return data as { claimed: boolean; reason: string; recording: any };
-}
-
-/**
- * Fetch current user points, level, and progression details.
- */
-export async function getMyPoints(): Promise<{
-  totalPoints: number;
-  perEvent: Array<{
-    eventType: string;
-    points: number;
-    count: number;
-  }>;
-  level: number;
-  levelName: string | null;
-  nextLevelPoints: number | null;
-  levelProgress: number;
-}> {
-  const { data } = await axiosInstance.get('/points/me');
-  return data;
 }
 
 /**
