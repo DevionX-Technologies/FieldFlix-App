@@ -479,7 +479,7 @@ export function RecordingUnlockSheet({
                   {quoteLoading
                     ? '…'
                     : quoteError
-                      ? '—'
+                      ? '-'
                       : isQuoteFree
                         ? 'Free'
                         : `₹${displayDiscountedTotal}`}
