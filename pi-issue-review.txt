@@ -1,0 +1,238 @@
+FIELDFLICKS
+Raspberry Pi Recorder
+Issue Review and Future Scope
+A field report of production defects observed in the on-camera recording software, with an actionable punch list for the Pi engineering team and a proposal to chunk video upload during the recording rather than at session end.
+Observed Defects  ·  Root Cause Analysis  ·  Immediate Fixes  ·  Fragmented MP4  ·  Chunked Upload  ·  Observability  ·  Acceptance Criteria
+Prepared for	Raspberry Pi engineering team, FieldFlicks partners
+Document version	v1.0  ·  16 June 2026
+Window analysed	9 to 16 June 2026  (production traffic, all venues)
+
+Executive Overview
+Over the past week of production traffic at FieldFlicks venues, several recurring defects in the on-camera Raspberry Pi recording software have caused user recordings to be silently lost, rendered unplayable, or attributed to the wrong S3 object. This document collects the observed defects with the supporting evidence from the backend database and CloudWatch logs, attributes each one to a plausible Pi-side code path, and lays out two parallel tracks of work.
+The first track is a punch list of immediate fixes that the Pi team can ship without coordination with the FieldFlicks backend or mobile teams. These are scoped to be small, independent changes that close the gap between what the backend trusts the Pi to do and what the Pi is actually doing in production today.
+The second track is a forward looking proposal to evolve the upload model. Today the Pi records the whole session to local disk and uploads the complete MP4 to S3 only at session stop. This means that any Pi crash before stop loses the entire session, and the burst upload at session end stresses the venue WiFi. The proposal is to use S3 multipart uploads throughout the session so that completed segments are durably stored on S3 as the session progresses. The backend continues to operate the same way, and Mux continues to ingest a single completed S3 object.
+The Pi is trusted by every other system in the pipeline. When it returns the wrong answer, the backend has no way to detect it. The fixes below restore that trust.
+Severity at a glance
+#
+Defect
+Production evidence
+Severity
+1
+Stale s3Path on stop
+TSG Santacruz, 13 Jun, recording ff7276cb. /stop returned a path belonging to a session 49 minutes earlier.
+CRITICAL  ·  silent data loss
+2
+HTTP 400 on stop
+TSG Padel, recurring across 9 to 13 Jun. /stop rejected with 400 Bad Request despite valid recordingId.
+HIGH  ·  every affected session fails
+3
+ECONNRESET on stop
+Pickleflow Social Noida, recurring across 11 to 13 Jun. TCP reset mid-response on /stop.
+HIGH  ·  every affected session fails
+4
+No internal timeout
+When the app timer overshoots, the Pi keeps recording until the backend cron stops it. No Pi-side safety net.
+MEDIUM  ·  storage and quality risk
+5
+MOOV-less MP4 on crash
+Standard MP4 encoder; any Pi crash before stop leaves an unplayable file even if frames are on disk.
+MEDIUM  ·  full session lost on crash
+
+Section 1  ·  Observed Defects
+Three distinct production failure modes have been confirmed in the past seven days. Each one occurred at a different venue and each one left behind a different signature in the database and the CloudWatch logs. The fact that the symptoms differ across venues suggests the root causes are likely independent, but all three share one trait. The Pi returned a response that the backend trusted, and the backend had no way to detect that the response was wrong.
+1.1  Stale s3Path returned on stop  (TSG Sports Arena, Santacruz)
+Date
+13 June 2026, 07:43 UTC
+Recording id
+ff7276cb (cricket, 28 seconds planned)
+Reported s3Path
+recordings/5392406b-e300-4e45-8ed1-28e7a502a2c9_20260613065422.mp4
+Filename timestamp decodes to
+06:54:22 UTC  (49 minutes before the session in question)
+Belongs to
+an earlier session, recording id b687149d, which ended at 01:27 UTC
+Symptom
+Backend marked ff7276cb completed; mobile app says "Not ready to play yet"
+The Pi recorded a 28 second cricket session, the user tapped stop, and the Pi responded to /stop with an s3Path that was the path it had returned for a different session almost an hour earlier. The actual bytes of the 28 second session were never uploaded to S3. The S3 object that the backend now thinks belongs to ff7276cb is the contents of b687149d.
+There are three Pi-side code paths that could produce this signature. They are not mutually exclusive.
+	•	The /start endpoint returned the previous session's recordingId instead of generating a fresh one.
+	•	The /stop handler did not look up the requested recordingId before responding, and returned whatever was cached as the last successful s3Path.
+	•	Internal recording state was not initialized when the new session started, so the Pi had no entry for the new recordingId but still returned a response based on the old one.
+All three are variants of the same underlying problem. The Pi is not properly resetting state between sessions.
+1.2  HTTP 400 on stop  (TSG Padel)
+Pattern
+Recurring across multiple sessions, 9 to 13 June 2026
+Backend call
+POST /stop with a valid recordingId previously issued by /start
+Pi response
+HTTP 400 Bad Request
+Backend behaviour
+Marks the recording as failed; no upload is attempted
+The backend has been calling /stop on the TSG Padel Pi with the exact recordingId that /start returned, and the Pi has been rejecting that request with HTTP 400. There are two plausible Pi-side causes. The first is that the /stop endpoint is performing payload validation that rejects a body it should accept, perhaps because of a recent contract change. The second is that the Pi's internal state machine has no session matching the requested recordingId, and the Pi treats that as a client error instead of a server error, returning 400 instead of 404 or 409.
+Either way, the Pi side response is incorrect. If the request body is well-formed and the recordingId is one the Pi recently issued, /stop should succeed even if internal state is in a strange place. At minimum the response should clearly say what went wrong so that the backend can act on it.
+1.3  ECONNRESET on stop  (Pickleflow Social, Noida)
+Pattern
+Recurring across multiple sessions, 11 to 13 June 2026
+Backend call
+POST /stop with a valid recordingId
+Pi response
+TCP connection reset mid-response (ECONNRESET)
+Backend behaviour
+Mark failed after retries exhausted
+A TCP reset during a response means the Pi's HTTP server process died before it could finish writing the response. The most likely root cause is an uncaught exception in the /stop handler, perhaps from the ffmpeg subprocess exit handler firing in an unexpected order. The Pi may also be running out of file descriptors or memory if previous sessions leaked resources, which would manifest at session boundaries.
+This is the most serious of the three because the Pi simply disappears. The backend has no way to know whether the recording was stopped cleanly or not, and the user gets a "recording failed" message with no further context.
+1.4  Timer overshoots (no internal session timeout)
+When the mobile app's client-side stop timer fails to fire on time (because the app was backgrounded, the user navigated away, or the device went to sleep), the Pi keeps recording indefinitely. The backend now has an auto-stop cron job that catches this case and forcibly stops sessions that exceed their planned duration by more than 30 seconds (shipped in backend v3.6). However the Pi should also have its own internal safety net. A recording that has been live for more than (planned + 60 seconds) without a /stop should be stopped by the Pi on its own and reported back to the backend.
+1.5  MOOV-less MP4 on crash
+The Pi appears to record standard MP4 with the MOOV atom written at end-of-file, which is ffmpeg's default. The MOOV atom is the index of the file. Without it, no player can decode the frames. This means that if the Pi crashes, power-cycles, or is forcibly killed during a recording, the bytes on disk are unplayable even though every frame may be present. This blocks any potential crash-recovery flow.
+The fix is a one-line change to the ffmpeg command line. See Section 3.4.
+
+Section 2  ·  Root Cause Analysis
+The three primary defects share a common pattern: state held between sessions on the Pi is not being properly reset. The Santacruz case is the clearest illustration. The Pi's /stop endpoint returned data that belonged to a session that ended 49 minutes earlier. For that to be possible, at least one of the following must be true on the Pi.
+	•	The /start endpoint returned the same recordingId for both sessions, indicating that the recordingId generator is keyed on some piece of state that was not reset.
+	•	The /stop handler returns cached state rather than looking up the requested recordingId from a freshly initialized session record.
+	•	The session record for the new session was never created at /start time, so /stop is falling through to the last successful response.
+The TSG Padel HTTP 400 and the Pickleflow ECONNRESET errors are likely related symptoms of the same underlying issue. A partially initialized session causes a validation failure (400) or a crash (ECONNRESET) when /stop arrives. The fix in all three cases is the same: ensure the Pi has a clean, well-defined session lifecycle.
+Recommended session lifecycle (Pi side)
+A minimal session lifecycle would look like this:
+	•	On /start: create a fresh in-memory session record, key it by a newly generated recordingId, persist any state needed for /stop to look it up, then return the recordingId to the backend.
+	•	On /stop: look up the session record by the recordingId in the request body. If not found, return 404. If found but not in recording state, return 409 with the current state name. Otherwise stop the recording, upload to S3, and return the resulting s3Path.
+	•	After /stop returns: delete the session record. Do not retain any state from the previous session.
+	•	On Pi startup: load no session state from disk. Treat any in-progress recording on disk as an orphan that needs separate handling (see Section 3.6).
+
+Section 3  ·  Immediate Fixes (Action Items)
+This section lists discrete, actionable changes the Pi team can ship without coordination with the backend or mobile teams. Each item is independent. They can be shipped in any order and acceptance criteria for each is listed in Section 6.
+3.1  Validate recordingId on /stop
+	•	On every /stop call, look up the active recording by the recordingId in the request body.
+	•	If no session matches: return 404 Not Found with a clear error message. Do not return 200 with stale data. Do not return 400.
+	•	If a session matches but is not in recording state (already stopping, already stopped, or in an error state): return 409 Conflict with the current state name.
+	•	If a session matches and is recording: proceed to stop and upload as today.
+3.2  Reset session state on /start
+	•	Before starting a new session, clear all in-memory state from the previous session.
+	•	Specifically: cached s3Path, cached recordingId, ffmpeg subprocess handles, temp file paths, and any caller-context variables.
+	•	Generate the new recordingId only after the previous state is cleared so there is no chance of accidentally reusing it.
+	•	Add a unit test that runs two back-to-back /start /stop pairs against the same Pi and asserts that no field in the second response equals the corresponding field in the first.
+3.3  Internal session timeout
+	•	At /start time the backend passes the planned duration of the session (already in the request body).
+	•	The Pi stores planned duration alongside the session record.
+	•	A background watchdog wakes every 30 seconds and stops any session whose elapsed time exceeds planned + 60 seconds.
+	•	On forced stop, the Pi uploads what it has to S3 and notifies the backend via the existing /stop callback (or a new /session-timeout webhook).
+	•	This is a safety net for the case where the backend's own auto-stop cron also fails.
+3.4  Switch to fragmented MP4
+Add fragmented MP4 flags to the ffmpeg command line so the local file is playable even if it is truncated.
+ffmpeg ... -movflags +empty_moov+default_base_moof+frag_keyframe -frag_duration 2000000 ... output.mp4
+	•	Produces a file with a 2 second fragment cadence. Truncation loses at most 2 seconds of content.
+	•	Mux ingests fragmented MP4 with no special handling.
+	•	No backend or mobile app changes are required.
+	•	Test by killing ffmpeg mid-recording, then opening the partial file in VLC. It should play up to the moment of the kill.
+3.5  Structured logging
+	•	Every Pi action (start, stop, upload begin, upload complete, error) should emit a structured JSON log line.
+	•	Required fields: timestamp (ISO 8601 UTC), sessionId (or recordingId), action, outcome, durationMs.
+	•	Ship logs to CloudWatch under a consistent log stream name per Pi  (for example, fieldflicks-pi-{venue}-{cameraId}).
+	•	Without structured logs, post-mortem analysis depends on grepping unstructured text, which has been costing the FieldFlicks team significant time during incident response.
+3.6  Crash recovery on Pi reboot
+	•	On startup, scan the recording directory for files that were not finalized cleanly.
+	•	With fragmented MP4 (3.4), the partial file is already playable. With the legacy encoder, run a one-time MOOV repair step (untrunc or equivalent).
+	•	Upload the recovered file to S3 using the same naming convention as a normal recording.
+	•	Notify the backend via a new /recovered endpoint so it can be associated with the right recording row.
+	•	Today, any recording on the Pi at the moment of reboot is simply lost. This step ensures it is not.
+
+Section 4  ·  Future Scope  ·  Chunked Upload During Recording
+The current architecture has the Pi record the entire session to local disk and then upload the complete MP4 to S3 at session stop. This produces two operational risks. First, any Pi crash before stop loses the entire session because nothing has been uploaded yet. Second, the upload at session stop is a bandwidth burst that can stress the venue WiFi at the exact moment several users are trying to leave the court and load their video.
+The proposed alternative is to upload to S3 continuously during the session, rather than only at the end. S3's multipart upload API was designed for exactly this kind of pattern.
+4.1  Architectural sketch
+	•	At /start time, the Pi opens an S3 multipart upload using s3.create_multipart_upload(Bucket=..., Key=...) and stores the resulting UploadId alongside the session record.
+	•	The Pi records to local disk in fragmented MP4 mode as today.
+	•	A background uploader wakes every 30 seconds, reads the bytes appended to the file since the last upload, sends them as a numbered part via s3.upload_part, and stores the returned ETag.
+	•	At /stop time, the Pi flushes any remaining bytes as a final part, then calls s3.complete_multipart_upload with the ordered list of (PartNumber, ETag) pairs.
+	•	At that point the S3 object exists as a single contiguous MP4. The backend's existing /stop flow proceeds unchanged: it reads the s3Path and tells Mux to ingest from S3.
+4.2  Behaviour on Pi crash
+This is the key benefit. With the current architecture, a Pi crash mid-session leaves nothing in S3 because the upload never started. With chunked upload, the chunks that have already landed in S3 are durably stored as part of an in-progress multipart upload, even though the upload was never completed.
+	•	S3 retains the parts of an in-progress multipart upload for as long as the bucket lifecycle rule allows (typically 7 days, configurable).
+	•	After the Pi crash, the backend can list in-progress multipart uploads for the affected recording's prefix using s3.list_multipart_uploads.
+	•	The backend can then call s3.complete_multipart_upload with whatever parts S3 has, producing a valid S3 object containing the recording up to the last successfully uploaded chunk.
+	•	Mux ingests this object normally. The user sees a recording up to the moment of the crash, instead of "recording failed" with no footage at all.
+4.3  Operational benefits
+	•	Crash recovery: any Pi crash leaves up to the chunk interval (default 30 seconds) of footage retrievable, instead of all or nothing.
+	•	Smoother bandwidth: the Pi uses roughly 2 Mbps continuously instead of bursting tens of megabits for several minutes at session end.
+	•	Lower user-perceived latency: by the time /stop is called, most of the bytes are already in S3. The /stop call only needs to finalize, not transfer.
+	•	Future ready: this same chunked-upload model is the foundation for any future "watch your game while it is being recorded" feature, although that would also require a Mux ingest model change.
+4.4  Cost considerations
+	•	S3 charges per UploadPart request. At a 30-second chunk cadence over a 60-minute session, that is 120 part requests.
+	•	At AWS published S3 PUT pricing of approximately 0.005 USD per 1000 PUT requests, this adds approximately 0.0006 USD per session.
+	•	No change in storage cost. The final object is the same size as today.
+	•	No change in egress cost. The file still goes through S3 in the same way.
+4.5  Implementation effort estimate (Pi side)
+	•	Use boto3 helpers: s3.create_multipart_upload, s3.upload_part, s3.complete_multipart_upload, s3.abort_multipart_upload.
+	•	Add a thread (or asyncio task) that wakes every 30 seconds and uploads the bytes added since the last upload.
+	•	Add idempotency keys so retries do not double-upload a part.
+	•	Estimated 2 to 3 days of development, plus 5 to 7 days of soak testing at one or two pilot venues before fleet rollout.
+4.6  What the backend needs
+The backend can remain agnostic to this change. The /start and /stop API contracts stay identical, and the Pi continues to return an s3Path on /stop. The only optional backend addition is a recovery routine that finalizes in-flight multipart uploads after a Pi crash, which is a follow-on cleanup task and not a blocker for shipping the Pi-side change.
+
+Section 5  ·  Monitoring and Observability
+To detect Pi failures before they show up in the user-facing app, the Pi team should expose lightweight visibility hooks that the backend can consume.
+5.1  Health endpoint
+	•	Expose GET /health that returns the Pi's current state (idle, recording, uploading, error), the recordingId of any active session, and the elapsed seconds since the session started.
+	•	The backend can poll this every 60 seconds and surface alerts like "Pi at venue X has been recording for 90 minutes without a stop".
+5.2  State transition webhooks
+	•	On every state transition (idle to recording, recording to uploading, uploading to complete, any to error), the Pi POSTs a structured event to the backend's /pi-events endpoint.
+	•	This eliminates polling overhead and gives the backend near real-time visibility.
+	•	Webhook payloads should include the same fields as the structured log lines (Section 3.5).
+5.3  Disk and resource self-check
+	•	Before accepting a /start, the Pi should verify it has at least 4 GB of free disk and that ffmpeg can be spawned.
+	•	If either check fails, return 503 Service Unavailable with the specific failure reason, instead of accepting the request and failing silently later.
+
+Section 6  ·  Acceptance Criteria
+Each immediate fix from Section 3 is considered shipped when the corresponding criteria below pass against a Pi running the updated firmware in a staging environment.
+3.1  Validate recordingId on /stop
+	•	Unit test: /stop with an unknown recordingId returns HTTP 404 with a clear error message.
+	•	Unit test: /stop with a recordingId whose session is already stopped returns HTTP 409.
+	•	Unit test: /stop with a valid recording session returns HTTP 200 with the correct s3Path for that session, not any other session.
+3.2  Reset session state on /start
+	•	Unit test: two back-to-back /start /stop pairs on the same Pi produce two different recordingIds and two different s3Paths.
+	•	Unit test: explicitly assert that no field from session 1 appears in session 2's state.
+3.3  Internal session timeout
+	•	Load test: a session left open for planned + 60 seconds is auto-stopped by the Pi.
+	•	Load test: the auto-stop triggers an upload of whatever was recorded so far.
+	•	Load test: the backend receives a notification of the auto-stop within 5 seconds.
+3.4  Switch to fragmented MP4
+	•	Integration test: killing ffmpeg with SIGKILL mid-recording produces a file that plays in VLC up to the kill moment.
+	•	Integration test: the same partial file ingests cleanly into Mux as a VOD asset.
+3.5  Structured logging
+	•	CloudWatch Insights query against the new log stream returns valid JSON for every line.
+	•	A standard incident query (filter by recordingId, sort by timestamp) returns a clean session trace in under 10 seconds.
+3.6  Crash recovery on Pi reboot
+	•	Soak test: power-cycle the Pi mid-recording. After reboot, the partial file uploads within 5 minutes.
+	•	Soak test: the backend receives a /recovered notification and the recording row is updated correctly.
+
+Appendix  ·  Affected Recordings
+A non-exhaustive sample of production incidents in the past seven days that informed this report. Full data is available in the backend database and in CloudWatch Logs Insights.
+Date
+Venue
+Sport
+Failure mode
+13 Jun 2026
+TSG Sports Arena, Santacruz
+Cricket
+Stale s3Path (defect 1.1)
+11 to 13 Jun
+Pickleflow Social, Noida
+Pickleball
+ECONNRESET on stop (defect 1.3)
+9 to 13 Jun
+TSG Padel, Bandra
+Padel
+HTTP 400 on stop (defect 1.2)
+12 Jun 2026
+TSG Sports Arena, Santacruz
+Cricket (x4)
+4 recoverable recordings; Mux ingest never triggered
+10 to 13 Jun
+Multiple
+Multiple
+Sessions that overran planned duration with no Pi auto-stop
+ 
+The four recoverable recordings at TSG Santacruz on 12 June are documented in the backend's scripts/recover-check.js output. These are cases where the Pi successfully uploaded the file to S3 but the Mux ingest trigger never fired, so the recording shows as "completed" in the database but has no playable Mux asset. These do not appear to be Pi defects, but they share the same incident response burden and are noted here for completeness.
+ 
+The single highest-impact fix in this document is Section 3.2 (reset session state on /start). Shipping that one change would address the root cause of defects 1.1, 1.2, and most likely 1.3 in a single release.

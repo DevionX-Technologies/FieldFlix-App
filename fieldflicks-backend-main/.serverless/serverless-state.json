@@ -1,0 +1,924 @@
+{
+  "service": {
+    "service": "fieldflicks",
+    "serviceObject": {
+      "name": "fieldflicks"
+    },
+    "provider": {
+      "name": "aws",
+      "runtime": "nodejs20.x",
+      "region": "ap-south-1",
+      "stage": "production",
+      "timeout": 900,
+      "memorySize": 3008,
+      "architecture": "x86_64",
+      "tracing": {
+        "lambda": true
+      },
+      "deploymentBucket": "fieldflicks-production-deployment-bucket",
+      "iam": {
+        "role": {
+          "statements": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "xray:PutTraceSegments",
+                "xray:PutTelemetryRecords",
+                "xray:GetSamplingRules",
+                "xray:GetSamplingTargets",
+                "xray:GetSamplingStatisticSummaries"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:PutObjectAcl",
+                "s3:DeleteObject"
+              ],
+              "Resource": "arn:aws:s3:::*/*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Resource": "arn:aws:s3:::*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "lambda:InvokeFunction"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams",
+                "logs:PutLogEvents",
+                "logs:GetLogEvents",
+                "logs:FilterLogEvents"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "ec2:CreateNetworkInterface",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DeleteNetworkInterface"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "sqs:SendMessage",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:ChangeMessageVisibility",
+                "sqs:GetQueueAttributes",
+                "sqs:GetQueueUrl"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "ClipProcessingQueue",
+                    "Arn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "versionFunctions": true,
+      "environment": {
+        "MUX_TOKEN_ID": "8bb2b620-c6c7-4692-a874-e960e376c8aa",
+        "MUX_TOKEN_SECRET": "+bUfhJfU6C/kIbEgvO2RWuPIdVZssXOSw7B5XTNwlNZrY7ZplVRxv2/IYNxPXOasqjrLs4GJcmJ",
+        "PORT": "8000",
+        "ENVIRONMENT": "production",
+        "APP_NAME": "fieldflicks",
+        "JWT_SECRET": "awesosasdffledfme",
+        "JWT_EXPIRATION": "90d",
+        "DB_PORT": "5432",
+        "DB_HOST": "field-flicks.c7mckqyiqiqo.ap-south-1.rds.amazonaws.com",
+        "DB_USER": "fieldflicks",
+        "DB_PASSWORD": "curJqH6SwDwEFSbawMva",
+        "DB_DATABASE": "fieldflicks-prod",
+        "GOOGLE_OAUTH_CLIENT_ID": "716223644152-oci5c0o6b4h2pk76j28avc8lkma8lj7k.apps.googleusercontent.com",
+        "GOOGLE_OAUTH_SECRET": "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",
+        "GOOGLE_OAUTH_REDIRECT_URL": "http://localhost:8000/auth/google/callback",
+        "TWILIO_ACCOUNT_SID": "AC2abc17adc4aecdf436622fa3cda33e7f",
+        "TWILIO_AUTH_TOKEN": "dc693bf8a1468d1e61efc81fa134681a",
+        "TWILIO_PHONE_NUMBER": "‪‪+18036184058‬‬",
+        "FIREBASE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6HuLR3dOwbH/N\\nqr59VO0uSOczwVvCyFcLaK5zYF1BjfQfa3Guglpkh3WOwFoj0jWbOjhdtwXtggUW\\n5qG/g0Td9lYLF7d7LKPmxMndI+MZEJCES56i11fKHX2Nf2NpSuNNc8cjgVIYg05S\\n+fGh/0x9NTlZwQeT6XrtOn0EX6hgyCEuy5ManjMaxWQ2Uu+zP3N/PZFojLlNTm81\\nHxbwx7dRllS7n2llpkwYML10qxjXIKushl9rXbo81odhti9mD932gimz3Uze1Usm\\n8gQZAwaOroGlmcQ/lvOLQNHAp7k6/T+/U/AUsvsYC+cJtUmLh9oWRkNmS3sVLI4y\\nYnT+rDPPAgMBAAECggEAC+pxGeYtm/lZgu2JvcGgYCE5iorrkm0Vg/Z5jL6m2cz6\\nMlsq1duLAmEMLRp/HhUvap1WNH6RbS/kBLmGGE1ek4zzQnyMBuFhxCMYy9HbXT4K\\n2PcNoSrpeCT3mWwf2jYTY8cKZ2lR7zdtquRNP9J14pVz8x1OArGlAoEgteH5IeqY\\nhcfpPtXjdLgTqIIMy1ww045MYwq1Xk9QRqsUTOj5ZAKGTCNAFQCukgDrqBvRNtiA\\nbTNumjmwy+7KPHLN8HuET9OPm/IVEXfeuanaCeuWAbGY8II9lbW8TSe4of0G8Kos\\n75e0J+87eGrKzVSmhDtN213e2uo0I/FS2l2leO1T4QKBgQDt9ob0LTdlWFBzfaDw\\naj0jykhld3XN/ovNFa6JPzXeOuPNMIqGcph2na0ps1th85OpYZeB0CNKH57Nudzc\\nSrkOWRI1fsF0TpZ1ZEDMQ5GzgKRKfuNaZ5pRxFZcsNxpW3eBj1RPvGtBO4FXEhE/\\ntQmB8VGv6z1jAa/j5Pjb0IRSPwKBgQDIOmbGRaSnTvmJOCIrkW7OYtm4F9oD1Xwt\\nBuo9kk1Jhm4mvFKVAffJCfBPwpBR8cjF9NbvnS/uGvkjuzAMwMeTiE9e4HQFi6k3\\n5gU6MMpY8aG/C8UvaHivBgn3H5SvWn51N6jOs1M4fFTekctEZL0ohnJu5d+r85K0\\nG56XnraacQKBgEj7h0B0bb0DbQk+ypFxw/aqH7IfBV58Z1wq/jDR1i+mWB+id5ns\\no54dlfJoM+rCzdLxP4psz6X4NLhb/MUDleY0o0UM70BAqhyu9sCvKIypM7o1WH1t\\nsQLK+MHM7IzTpL9zuiQKYcrL+Us/G1MyrwvPe4I838LxzYRTwY+JUEv5AoGALfTJ\\nlgRyEDyeJZKOtTVCG3iwxAIlde/P+n210b/8oT2LlrRut+iluKzhTU041rYKAPV7\\nR6/qSlpCiKL0Glk89W252ermdkdh5YST+pEsQFHlb/YBoin2WSWnr+K9u6mnkLvf\\nsOGT3kkbKaKI5v/AMsb5CN8WAV98cn5MXjx9aOECgYEA3J0KudDzr11kxs+qzaL1\\n4eOnQ9mvQsMrpDI//uwlfo7k0cXp4NVnW3VO3KZkGZYnQxhnBe6XP2xn/dh26Ygi\\nGruDL2XOvd4mw1hEaFQMtoc7+2X0quMj4c4k3OeaQ2wqkVXETZvY6tB7l1wdx4U6\\nJqK0zKDZliIVHjrhus3XMcU=\\n-----END PRIVATE KEY-----\\n",
+        "FIREBASE_PROJECT_ID": "fieldflicksproduction",
+        "FIREBASE_CLIENT_EMAIL": "firebase-adminsdk-fbsvc@fieldflicksproduction.iam.gserviceaccount.com",
+        "RASPBERRY_PI_API_URL": "https://hnseoibzhx.a.pinggy.link",
+        "RASPBERRY_PI_API_KEY": "fl_thjN3n8jSV9Sy2I.env4FxzuBWweUr9A4rxbO445TRgmA7GqnzZjLNmsghuDvPVS01HVvuK2tVzPeApURk0TiqXyBOdWyOxql17gtEfCvoCLHi5KREeJZkBqkwgQ4CTM9",
+        "RPI_CLIENT_ID": "HCwPW8Cy5wijWiFd84SRaOxmBF9Ww88Z",
+        "MUX_WEBHOOK_SECRET": "1nd42fcduiq1v699gf7t4sf0jsfq1ujp",
+        "FFMPEG_PATH": "/opt/bin/ffmpeg",
+        "RAZORPAY_KEY_ID": "rzp_test_RQbGJa98EUfITd",
+        "RAZORPAY_KEY_SECRET": "frXKqJNAgMyKd8TrpV2WKO1B"
+      },
+      "deploymentBucketObject": {
+        "name": "fieldflicks-production-deployment-bucket"
+      },
+      "compiledCloudFormationTemplate": {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Description": "The AWS CloudFormation template for this Serverless application",
+        "Resources": {
+          "MuxM3u8ConverterLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+              "LogGroupName": "/aws/lambda/fieldflicks-production-m3u8-converter"
+            }
+          },
+          "RetryFailedHighlightsLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+              "LogGroupName": "/aws/lambda/fieldflicks-production-retry-failed-highlights"
+            }
+          },
+          "MuxUploadVideoLogGroup": {
+            "Type": "AWS::Logs::LogGroup",
+            "Properties": {
+              "LogGroupName": "/aws/lambda/fieldflicks-production-mux-upload-video"
+            }
+          },
+          "IamRoleLambdaExecution": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": [
+                        "lambda.amazonaws.com"
+                      ]
+                    },
+                    "Action": [
+                      "sts:AssumeRole"
+                    ]
+                  }
+                ]
+              },
+              "Policies": [
+                {
+                  "PolicyName": {
+                    "Fn::Join": [
+                      "-",
+                      [
+                        "fieldflicks",
+                        "production",
+                        "lambda"
+                      ]
+                    ]
+                  },
+                  "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:CreateLogStream",
+                          "logs:CreateLogGroup",
+                          "logs:TagResource"
+                        ],
+                        "Resource": [
+                          {
+                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/fieldflicks-production*:*"
+                          }
+                        ]
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "logs:PutLogEvents"
+                        ],
+                        "Resource": [
+                          {
+                            "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/fieldflicks-production*:*:*"
+                          }
+                        ]
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][0]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][1]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][2]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][3]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][4]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][5]"
+                      },
+                      {
+                        "$ref": "$[\"service\"][\"provider\"][\"iam\"][\"role\"][\"statements\"][6]"
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Action": [
+                          "xray:PutTraceSegments",
+                          "xray:PutTelemetryRecords"
+                        ],
+                        "Resource": [
+                          "*"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "Path": "/",
+              "RoleName": {
+                "Fn::Join": [
+                  "-",
+                  [
+                    "fieldflicks",
+                    "production",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    "lambdaRole"
+                  ]
+                ]
+              }
+            }
+          },
+          "MuxM3u8ConverterLambdaFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+              "Code": {
+                "S3Bucket": "fieldflicks-production-deployment-bucket",
+                "S3Key": "serverless/fieldflicks/production/1772800004208-2026-03-06T12:26:44.208Z/muxM3u8Converter.zip"
+              },
+              "Handler": "dist/src/lambda/mux-m3u8-converter/mux-m3u8-converter_lambda.main",
+              "Runtime": "nodejs20.x",
+              "FunctionName": "fieldflicks-production-m3u8-converter",
+              "MemorySize": 512,
+              "Timeout": 900,
+              "Architectures": [
+                "x86_64"
+              ],
+              "Description": "Convert Mux M3U8 streams to MP4 and upload to S3 (Direct Invocation)",
+              "EphemeralStorage": {
+                "Size": 8192
+              },
+              "TracingConfig": {
+                "Mode": "Active"
+              },
+              "Environment": {
+                "Variables": {
+                  "MUX_TOKEN_ID": "8bb2b620-c6c7-4692-a874-e960e376c8aa",
+                  "MUX_TOKEN_SECRET": "+bUfhJfU6C/kIbEgvO2RWuPIdVZssXOSw7B5XTNwlNZrY7ZplVRxv2/IYNxPXOasqjrLs4GJcmJ",
+                  "PORT": "8000",
+                  "ENVIRONMENT": "production",
+                  "APP_NAME": "fieldflicks",
+                  "JWT_SECRET": "awesosasdffledfme",
+                  "JWT_EXPIRATION": "90d",
+                  "DB_PORT": "5432",
+                  "DB_HOST": "field-flicks.c7mckqyiqiqo.ap-south-1.rds.amazonaws.com",
+                  "DB_USER": "fieldflicks",
+                  "DB_PASSWORD": "curJqH6SwDwEFSbawMva",
+                  "DB_DATABASE": "fieldflicks-prod",
+                  "GOOGLE_OAUTH_CLIENT_ID": "716223644152-oci5c0o6b4h2pk76j28avc8lkma8lj7k.apps.googleusercontent.com",
+                  "GOOGLE_OAUTH_SECRET": "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",
+                  "GOOGLE_OAUTH_REDIRECT_URL": "http://localhost:8000/auth/google/callback",
+                  "TWILIO_ACCOUNT_SID": "AC2abc17adc4aecdf436622fa3cda33e7f",
+                  "TWILIO_AUTH_TOKEN": "dc693bf8a1468d1e61efc81fa134681a",
+                  "TWILIO_PHONE_NUMBER": "‪‪+18036184058‬‬",
+                  "FIREBASE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6HuLR3dOwbH/N\\nqr59VO0uSOczwVvCyFcLaK5zYF1BjfQfa3Guglpkh3WOwFoj0jWbOjhdtwXtggUW\\n5qG/g0Td9lYLF7d7LKPmxMndI+MZEJCES56i11fKHX2Nf2NpSuNNc8cjgVIYg05S\\n+fGh/0x9NTlZwQeT6XrtOn0EX6hgyCEuy5ManjMaxWQ2Uu+zP3N/PZFojLlNTm81\\nHxbwx7dRllS7n2llpkwYML10qxjXIKushl9rXbo81odhti9mD932gimz3Uze1Usm\\n8gQZAwaOroGlmcQ/lvOLQNHAp7k6/T+/U/AUsvsYC+cJtUmLh9oWRkNmS3sVLI4y\\nYnT+rDPPAgMBAAECggEAC+pxGeYtm/lZgu2JvcGgYCE5iorrkm0Vg/Z5jL6m2cz6\\nMlsq1duLAmEMLRp/HhUvap1WNH6RbS/kBLmGGE1ek4zzQnyMBuFhxCMYy9HbXT4K\\n2PcNoSrpeCT3mWwf2jYTY8cKZ2lR7zdtquRNP9J14pVz8x1OArGlAoEgteH5IeqY\\nhcfpPtXjdLgTqIIMy1ww045MYwq1Xk9QRqsUTOj5ZAKGTCNAFQCukgDrqBvRNtiA\\nbTNumjmwy+7KPHLN8HuET9OPm/IVEXfeuanaCeuWAbGY8II9lbW8TSe4of0G8Kos\\n75e0J+87eGrKzVSmhDtN213e2uo0I/FS2l2leO1T4QKBgQDt9ob0LTdlWFBzfaDw\\naj0jykhld3XN/ovNFa6JPzXeOuPNMIqGcph2na0ps1th85OpYZeB0CNKH57Nudzc\\nSrkOWRI1fsF0TpZ1ZEDMQ5GzgKRKfuNaZ5pRxFZcsNxpW3eBj1RPvGtBO4FXEhE/\\ntQmB8VGv6z1jAa/j5Pjb0IRSPwKBgQDIOmbGRaSnTvmJOCIrkW7OYtm4F9oD1Xwt\\nBuo9kk1Jhm4mvFKVAffJCfBPwpBR8cjF9NbvnS/uGvkjuzAMwMeTiE9e4HQFi6k3\\n5gU6MMpY8aG/C8UvaHivBgn3H5SvWn51N6jOs1M4fFTekctEZL0ohnJu5d+r85K0\\nG56XnraacQKBgEj7h0B0bb0DbQk+ypFxw/aqH7IfBV58Z1wq/jDR1i+mWB+id5ns\\no54dlfJoM+rCzdLxP4psz6X4NLhb/MUDleY0o0UM70BAqhyu9sCvKIypM7o1WH1t\\nsQLK+MHM7IzTpL9zuiQKYcrL+Us/G1MyrwvPe4I838LxzYRTwY+JUEv5AoGALfTJ\\nlgRyEDyeJZKOtTVCG3iwxAIlde/P+n210b/8oT2LlrRut+iluKzhTU041rYKAPV7\\nR6/qSlpCiKL0Glk89W252ermdkdh5YST+pEsQFHlb/YBoin2WSWnr+K9u6mnkLvf\\nsOGT3kkbKaKI5v/AMsb5CN8WAV98cn5MXjx9aOECgYEA3J0KudDzr11kxs+qzaL1\\n4eOnQ9mvQsMrpDI//uwlfo7k0cXp4NVnW3VO3KZkGZYnQxhnBe6XP2xn/dh26Ygi\\nGruDL2XOvd4mw1hEaFQMtoc7+2X0quMj4c4k3OeaQ2wqkVXETZvY6tB7l1wdx4U6\\nJqK0zKDZliIVHjrhus3XMcU=\\n-----END PRIVATE KEY-----\\n",
+                  "FIREBASE_PROJECT_ID": "fieldflicksproduction",
+                  "FIREBASE_CLIENT_EMAIL": "firebase-adminsdk-fbsvc@fieldflicksproduction.iam.gserviceaccount.com",
+                  "RASPBERRY_PI_API_URL": "https://hnseoibzhx.a.pinggy.link",
+                  "RASPBERRY_PI_API_KEY": "fl_thjN3n8jSV9Sy2I.env4FxzuBWweUr9A4rxbO445TRgmA7GqnzZjLNmsghuDvPVS01HVvuK2tVzPeApURk0TiqXyBOdWyOxql17gtEfCvoCLHi5KREeJZkBqkwgQ4CTM9",
+                  "RPI_CLIENT_ID": "HCwPW8Cy5wijWiFd84SRaOxmBF9Ww88Z",
+                  "MUX_WEBHOOK_SECRET": "1nd42fcduiq1v699gf7t4sf0jsfq1ujp",
+                  "FFMPEG_PATH": "/opt/bin/ffmpeg",
+                  "RAZORPAY_KEY_ID": "rzp_test_RQbGJa98EUfITd",
+                  "RAZORPAY_KEY_SECRET": "frXKqJNAgMyKd8TrpV2WKO1B"
+                }
+              },
+              "Role": {
+                "Fn::GetAtt": [
+                  "IamRoleLambdaExecution",
+                  "Arn"
+                ]
+              },
+              "Layers": [
+                "arn:aws:lambda:ap-south-1:047719657860:layer:fieldflicks-ffmpeg-layer:1"
+              ]
+            },
+            "DependsOn": [
+              "MuxM3u8ConverterLogGroup"
+            ]
+          },
+          "RetryFailedHighlightsLambdaFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+              "Code": {
+                "S3Bucket": "fieldflicks-production-deployment-bucket",
+                "S3Key": "serverless/fieldflicks/production/1772800004208-2026-03-06T12:26:44.208Z/retryFailedHighlights.zip"
+              },
+              "Handler": "dist/src/lambda/retry-failed-highlights/retry-failed-highlights_lambda.main",
+              "Runtime": "nodejs20.x",
+              "FunctionName": "fieldflicks-production-retry-failed-highlights",
+              "MemorySize": 512,
+              "Timeout": 900,
+              "Architectures": [
+                "x86_64"
+              ],
+              "Description": "Sweep stuck/failed highlights, reset status, and enqueue distinct recordings to SQS",
+              "TracingConfig": {
+                "Mode": "Active"
+              },
+              "Environment": {
+                "Variables": {
+                  "MUX_TOKEN_ID": "8bb2b620-c6c7-4692-a874-e960e376c8aa",
+                  "MUX_TOKEN_SECRET": "+bUfhJfU6C/kIbEgvO2RWuPIdVZssXOSw7B5XTNwlNZrY7ZplVRxv2/IYNxPXOasqjrLs4GJcmJ",
+                  "PORT": "8000",
+                  "ENVIRONMENT": "production",
+                  "APP_NAME": "fieldflicks",
+                  "JWT_SECRET": "awesosasdffledfme",
+                  "JWT_EXPIRATION": "90d",
+                  "DB_PORT": "5432",
+                  "DB_HOST": "field-flicks.c7mckqyiqiqo.ap-south-1.rds.amazonaws.com",
+                  "DB_USER": "fieldflicks",
+                  "DB_PASSWORD": "curJqH6SwDwEFSbawMva",
+                  "DB_DATABASE": "fieldflicks-prod",
+                  "GOOGLE_OAUTH_CLIENT_ID": "716223644152-oci5c0o6b4h2pk76j28avc8lkma8lj7k.apps.googleusercontent.com",
+                  "GOOGLE_OAUTH_SECRET": "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",
+                  "GOOGLE_OAUTH_REDIRECT_URL": "http://localhost:8000/auth/google/callback",
+                  "TWILIO_ACCOUNT_SID": "AC2abc17adc4aecdf436622fa3cda33e7f",
+                  "TWILIO_AUTH_TOKEN": "dc693bf8a1468d1e61efc81fa134681a",
+                  "TWILIO_PHONE_NUMBER": "‪‪+18036184058‬‬",
+                  "FIREBASE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6HuLR3dOwbH/N\\nqr59VO0uSOczwVvCyFcLaK5zYF1BjfQfa3Guglpkh3WOwFoj0jWbOjhdtwXtggUW\\n5qG/g0Td9lYLF7d7LKPmxMndI+MZEJCES56i11fKHX2Nf2NpSuNNc8cjgVIYg05S\\n+fGh/0x9NTlZwQeT6XrtOn0EX6hgyCEuy5ManjMaxWQ2Uu+zP3N/PZFojLlNTm81\\nHxbwx7dRllS7n2llpkwYML10qxjXIKushl9rXbo81odhti9mD932gimz3Uze1Usm\\n8gQZAwaOroGlmcQ/lvOLQNHAp7k6/T+/U/AUsvsYC+cJtUmLh9oWRkNmS3sVLI4y\\nYnT+rDPPAgMBAAECggEAC+pxGeYtm/lZgu2JvcGgYCE5iorrkm0Vg/Z5jL6m2cz6\\nMlsq1duLAmEMLRp/HhUvap1WNH6RbS/kBLmGGE1ek4zzQnyMBuFhxCMYy9HbXT4K\\n2PcNoSrpeCT3mWwf2jYTY8cKZ2lR7zdtquRNP9J14pVz8x1OArGlAoEgteH5IeqY\\nhcfpPtXjdLgTqIIMy1ww045MYwq1Xk9QRqsUTOj5ZAKGTCNAFQCukgDrqBvRNtiA\\nbTNumjmwy+7KPHLN8HuET9OPm/IVEXfeuanaCeuWAbGY8II9lbW8TSe4of0G8Kos\\n75e0J+87eGrKzVSmhDtN213e2uo0I/FS2l2leO1T4QKBgQDt9ob0LTdlWFBzfaDw\\naj0jykhld3XN/ovNFa6JPzXeOuPNMIqGcph2na0ps1th85OpYZeB0CNKH57Nudzc\\nSrkOWRI1fsF0TpZ1ZEDMQ5GzgKRKfuNaZ5pRxFZcsNxpW3eBj1RPvGtBO4FXEhE/\\ntQmB8VGv6z1jAa/j5Pjb0IRSPwKBgQDIOmbGRaSnTvmJOCIrkW7OYtm4F9oD1Xwt\\nBuo9kk1Jhm4mvFKVAffJCfBPwpBR8cjF9NbvnS/uGvkjuzAMwMeTiE9e4HQFi6k3\\n5gU6MMpY8aG/C8UvaHivBgn3H5SvWn51N6jOs1M4fFTekctEZL0ohnJu5d+r85K0\\nG56XnraacQKBgEj7h0B0bb0DbQk+ypFxw/aqH7IfBV58Z1wq/jDR1i+mWB+id5ns\\no54dlfJoM+rCzdLxP4psz6X4NLhb/MUDleY0o0UM70BAqhyu9sCvKIypM7o1WH1t\\nsQLK+MHM7IzTpL9zuiQKYcrL+Us/G1MyrwvPe4I838LxzYRTwY+JUEv5AoGALfTJ\\nlgRyEDyeJZKOtTVCG3iwxAIlde/P+n210b/8oT2LlrRut+iluKzhTU041rYKAPV7\\nR6/qSlpCiKL0Glk89W252ermdkdh5YST+pEsQFHlb/YBoin2WSWnr+K9u6mnkLvf\\nsOGT3kkbKaKI5v/AMsb5CN8WAV98cn5MXjx9aOECgYEA3J0KudDzr11kxs+qzaL1\\n4eOnQ9mvQsMrpDI//uwlfo7k0cXp4NVnW3VO3KZkGZYnQxhnBe6XP2xn/dh26Ygi\\nGruDL2XOvd4mw1hEaFQMtoc7+2X0quMj4c4k3OeaQ2wqkVXETZvY6tB7l1wdx4U6\\nJqK0zKDZliIVHjrhus3XMcU=\\n-----END PRIVATE KEY-----\\n",
+                  "FIREBASE_PROJECT_ID": "fieldflicksproduction",
+                  "FIREBASE_CLIENT_EMAIL": "firebase-adminsdk-fbsvc@fieldflicksproduction.iam.gserviceaccount.com",
+                  "RASPBERRY_PI_API_URL": "https://hnseoibzhx.a.pinggy.link",
+                  "RASPBERRY_PI_API_KEY": "fl_thjN3n8jSV9Sy2I.env4FxzuBWweUr9A4rxbO445TRgmA7GqnzZjLNmsghuDvPVS01HVvuK2tVzPeApURk0TiqXyBOdWyOxql17gtEfCvoCLHi5KREeJZkBqkwgQ4CTM9",
+                  "RPI_CLIENT_ID": "HCwPW8Cy5wijWiFd84SRaOxmBF9Ww88Z",
+                  "MUX_WEBHOOK_SECRET": "1nd42fcduiq1v699gf7t4sf0jsfq1ujp",
+                  "FFMPEG_PATH": "/opt/bin/ffmpeg",
+                  "RAZORPAY_KEY_ID": "rzp_test_RQbGJa98EUfITd",
+                  "RAZORPAY_KEY_SECRET": "frXKqJNAgMyKd8TrpV2WKO1B",
+                  "CLIP_PROCESSING_QUEUE_URL": {
+                    "Ref": "ClipProcessingQueue"
+                  }
+                }
+              },
+              "Role": {
+                "Fn::GetAtt": [
+                  "IamRoleLambdaExecution",
+                  "Arn"
+                ]
+              },
+              "Layers": [
+                "arn:aws:lambda:ap-south-1:047719657860:layer:npm-dependencies:2"
+              ]
+            },
+            "DependsOn": [
+              "RetryFailedHighlightsLogGroup"
+            ]
+          },
+          "MuxUploadVideoLambdaFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+              "Code": {
+                "S3Bucket": "fieldflicks-production-deployment-bucket",
+                "S3Key": "serverless/fieldflicks/production/1772800004208-2026-03-06T12:26:44.208Z/muxUploadVideo.zip"
+              },
+              "Handler": "dist/src/lambda/mux-upload-video/mux-upload-video_lambda.main",
+              "Runtime": "nodejs20.x",
+              "FunctionName": "fieldflicks-production-mux-upload-video",
+              "MemorySize": 512,
+              "Timeout": 900,
+              "Architectures": [
+                "x86_64"
+              ],
+              "Description": "Upload video recordings from S3 to Mux when files are uploaded to recordings folder",
+              "TracingConfig": {
+                "Mode": "Active"
+              },
+              "Environment": {
+                "Variables": {
+                  "MUX_TOKEN_ID": "8bb2b620-c6c7-4692-a874-e960e376c8aa",
+                  "MUX_TOKEN_SECRET": "+bUfhJfU6C/kIbEgvO2RWuPIdVZssXOSw7B5XTNwlNZrY7ZplVRxv2/IYNxPXOasqjrLs4GJcmJ",
+                  "PORT": "8000",
+                  "ENVIRONMENT": "production",
+                  "APP_NAME": "fieldflicks",
+                  "JWT_SECRET": "awesosasdffledfme",
+                  "JWT_EXPIRATION": "90d",
+                  "DB_PORT": "5432",
+                  "DB_HOST": "field-flicks.c7mckqyiqiqo.ap-south-1.rds.amazonaws.com",
+                  "DB_USER": "fieldflicks",
+                  "DB_PASSWORD": "curJqH6SwDwEFSbawMva",
+                  "DB_DATABASE": "fieldflicks-prod",
+                  "GOOGLE_OAUTH_CLIENT_ID": "716223644152-oci5c0o6b4h2pk76j28avc8lkma8lj7k.apps.googleusercontent.com",
+                  "GOOGLE_OAUTH_SECRET": "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",
+                  "GOOGLE_OAUTH_REDIRECT_URL": "http://localhost:8000/auth/google/callback",
+                  "TWILIO_ACCOUNT_SID": "AC2abc17adc4aecdf436622fa3cda33e7f",
+                  "TWILIO_AUTH_TOKEN": "dc693bf8a1468d1e61efc81fa134681a",
+                  "TWILIO_PHONE_NUMBER": "‪‪+18036184058‬‬",
+                  "FIREBASE_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6HuLR3dOwbH/N\\nqr59VO0uSOczwVvCyFcLaK5zYF1BjfQfa3Guglpkh3WOwFoj0jWbOjhdtwXtggUW\\n5qG/g0Td9lYLF7d7LKPmxMndI+MZEJCES56i11fKHX2Nf2NpSuNNc8cjgVIYg05S\\n+fGh/0x9NTlZwQeT6XrtOn0EX6hgyCEuy5ManjMaxWQ2Uu+zP3N/PZFojLlNTm81\\nHxbwx7dRllS7n2llpkwYML10qxjXIKushl9rXbo81odhti9mD932gimz3Uze1Usm\\n8gQZAwaOroGlmcQ/lvOLQNHAp7k6/T+/U/AUsvsYC+cJtUmLh9oWRkNmS3sVLI4y\\nYnT+rDPPAgMBAAECggEAC+pxGeYtm/lZgu2JvcGgYCE5iorrkm0Vg/Z5jL6m2cz6\\nMlsq1duLAmEMLRp/HhUvap1WNH6RbS/kBLmGGE1ek4zzQnyMBuFhxCMYy9HbXT4K\\n2PcNoSrpeCT3mWwf2jYTY8cKZ2lR7zdtquRNP9J14pVz8x1OArGlAoEgteH5IeqY\\nhcfpPtXjdLgTqIIMy1ww045MYwq1Xk9QRqsUTOj5ZAKGTCNAFQCukgDrqBvRNtiA\\nbTNumjmwy+7KPHLN8HuET9OPm/IVEXfeuanaCeuWAbGY8II9lbW8TSe4of0G8Kos\\n75e0J+87eGrKzVSmhDtN213e2uo0I/FS2l2leO1T4QKBgQDt9ob0LTdlWFBzfaDw\\naj0jykhld3XN/ovNFa6JPzXeOuPNMIqGcph2na0ps1th85OpYZeB0CNKH57Nudzc\\nSrkOWRI1fsF0TpZ1ZEDMQ5GzgKRKfuNaZ5pRxFZcsNxpW3eBj1RPvGtBO4FXEhE/\\ntQmB8VGv6z1jAa/j5Pjb0IRSPwKBgQDIOmbGRaSnTvmJOCIrkW7OYtm4F9oD1Xwt\\nBuo9kk1Jhm4mvFKVAffJCfBPwpBR8cjF9NbvnS/uGvkjuzAMwMeTiE9e4HQFi6k3\\n5gU6MMpY8aG/C8UvaHivBgn3H5SvWn51N6jOs1M4fFTekctEZL0ohnJu5d+r85K0\\nG56XnraacQKBgEj7h0B0bb0DbQk+ypFxw/aqH7IfBV58Z1wq/jDR1i+mWB+id5ns\\no54dlfJoM+rCzdLxP4psz6X4NLhb/MUDleY0o0UM70BAqhyu9sCvKIypM7o1WH1t\\nsQLK+MHM7IzTpL9zuiQKYcrL+Us/G1MyrwvPe4I838LxzYRTwY+JUEv5AoGALfTJ\\nlgRyEDyeJZKOtTVCG3iwxAIlde/P+n210b/8oT2LlrRut+iluKzhTU041rYKAPV7\\nR6/qSlpCiKL0Glk89W252ermdkdh5YST+pEsQFHlb/YBoin2WSWnr+K9u6mnkLvf\\nsOGT3kkbKaKI5v/AMsb5CN8WAV98cn5MXjx9aOECgYEA3J0KudDzr11kxs+qzaL1\\n4eOnQ9mvQsMrpDI//uwlfo7k0cXp4NVnW3VO3KZkGZYnQxhnBe6XP2xn/dh26Ygi\\nGruDL2XOvd4mw1hEaFQMtoc7+2X0quMj4c4k3OeaQ2wqkVXETZvY6tB7l1wdx4U6\\nJqK0zKDZliIVHjrhus3XMcU=\\n-----END PRIVATE KEY-----\\n",
+                  "FIREBASE_PROJECT_ID": "fieldflicksproduction",
+                  "FIREBASE_CLIENT_EMAIL": "firebase-adminsdk-fbsvc@fieldflicksproduction.iam.gserviceaccount.com",
+                  "RASPBERRY_PI_API_URL": "https://hnseoibzhx.a.pinggy.link",
+                  "RASPBERRY_PI_API_KEY": "fl_thjN3n8jSV9Sy2I.env4FxzuBWweUr9A4rxbO445TRgmA7GqnzZjLNmsghuDvPVS01HVvuK2tVzPeApURk0TiqXyBOdWyOxql17gtEfCvoCLHi5KREeJZkBqkwgQ4CTM9",
+                  "RPI_CLIENT_ID": "HCwPW8Cy5wijWiFd84SRaOxmBF9Ww88Z",
+                  "MUX_WEBHOOK_SECRET": "1nd42fcduiq1v699gf7t4sf0jsfq1ujp",
+                  "FFMPEG_PATH": "/opt/bin/ffmpeg",
+                  "RAZORPAY_KEY_ID": "rzp_test_RQbGJa98EUfITd",
+                  "RAZORPAY_KEY_SECRET": "frXKqJNAgMyKd8TrpV2WKO1B"
+                }
+              },
+              "Role": {
+                "Fn::GetAtt": [
+                  "IamRoleLambdaExecution",
+                  "Arn"
+                ]
+              },
+              "Layers": [
+                "arn:aws:lambda:ap-south-1:047719657860:layer:npm-dependencies:2"
+              ]
+            },
+            "DependsOn": [
+              "MuxUploadVideoLogGroup"
+            ]
+          },
+          "MuxM3u8ConverterLambdaVersionmcbmdhc1jDRgVwJSNyNQqcitphQUoVs3XDfq9c0hbo": {
+            "Type": "AWS::Lambda::Version",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+              "FunctionName": {
+                "Ref": "MuxM3u8ConverterLambdaFunction"
+              },
+              "CodeSha256": "yI/SR5WgFnnYQoRmYCh0VvY0U8JaAoipDr5aiiIH28w=",
+              "Description": "Convert Mux M3U8 streams to MP4 and upload to S3 (Direct Invocation)"
+            }
+          },
+          "MuxUploadVideoLambdaVersionhBUluDD8SNfhEMoajoDks5tCKv6UDpHDFEr103cLuiA": {
+            "Type": "AWS::Lambda::Version",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+              "FunctionName": {
+                "Ref": "MuxUploadVideoLambdaFunction"
+              },
+              "CodeSha256": "CCDZ1gGrLshNNRTH4zFyLkpqGOnztukhvjNVewDzHmc=",
+              "Description": "Upload video recordings from S3 to Mux when files are uploaded to recordings folder"
+            }
+          },
+          "RetryFailedHighlightsLambdaVersionpwTThYXXWh0ZNqvf88dLUPdW5ftopURA59Duattq5s": {
+            "Type": "AWS::Lambda::Version",
+            "DeletionPolicy": "Retain",
+            "Properties": {
+              "FunctionName": {
+                "Ref": "RetryFailedHighlightsLambdaFunction"
+              },
+              "CodeSha256": "y+w6zA2WXO9CVTGA3NKacQcNe7+WczVu5+dY3usO8E4=",
+              "Description": "Sweep stuck/failed highlights, reset status, and enqueue distinct recordings to SQS"
+            }
+          },
+          "RetryFailedHighlightsEventsRuleSchedule1": {
+            "Type": "AWS::Events::Rule",
+            "Properties": {
+              "ScheduleExpression": "rate(10 minutes)",
+              "State": "ENABLED",
+              "Description": "Sweep stuck/failed highlights and enqueue recordings to SQS every 10 minutes",
+              "Targets": [
+                {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "RetryFailedHighlightsLambdaFunction",
+                      "Arn"
+                    ]
+                  },
+                  "Id": "retryFailedHighlightsSchedule"
+                }
+              ]
+            }
+          },
+          "RetryFailedHighlightsLambdaPermissionEventsRuleSchedule1": {
+            "Type": "AWS::Lambda::Permission",
+            "Properties": {
+              "FunctionName": {
+                "Fn::GetAtt": [
+                  "RetryFailedHighlightsLambdaFunction",
+                  "Arn"
+                ]
+              },
+              "Action": "lambda:InvokeFunction",
+              "Principal": "events.amazonaws.com",
+              "SourceArn": {
+                "Fn::GetAtt": [
+                  "RetryFailedHighlightsEventsRuleSchedule1",
+                  "Arn"
+                ]
+              }
+            }
+          },
+          "MuxUploadVideoCustomS31": {
+            "Type": "Custom::S3",
+            "Version": 1,
+            "DependsOn": [
+              "MuxUploadVideoLambdaFunction",
+              "CustomDashresourceDashexistingDashs3LambdaFunction"
+            ],
+            "Properties": {
+              "ServiceToken": {
+                "Fn::GetAtt": [
+                  "CustomDashresourceDashexistingDashs3LambdaFunction",
+                  "Arn"
+                ]
+              },
+              "FunctionName": "fieldflicks-production-mux-upload-video",
+              "BucketName": "fieldflicks-production-media",
+              "BucketConfigs": [
+                {
+                  "Event": "s3:ObjectCreated:*",
+                  "Rules": [
+                    {
+                      "Prefix": "recordings/"
+                    },
+                    {
+                      "Suffix": ".mp4"
+                    }
+                  ]
+                }
+              ],
+              "ForceDeploy": 1772800004319
+            }
+          },
+          "IamRoleCustomResourcesLambdaExecution": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+              "AssumeRolePolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Principal": {
+                      "Service": [
+                        "lambda.amazonaws.com"
+                      ]
+                    },
+                    "Action": [
+                      "sts:AssumeRole"
+                    ]
+                  }
+                ]
+              },
+              "Policies": [
+                {
+                  "PolicyName": {
+                    "Fn::Join": [
+                      "-",
+                      [
+                        "production",
+                        "fieldflicks",
+                        "custom-resources-lambda"
+                      ]
+                    ]
+                  },
+                  "PolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                      {
+                        "Effect": "Allow",
+                        "Resource": {
+                          "Fn::Join": [
+                            ":",
+                            [
+                              "arn",
+                              {
+                                "Ref": "AWS::Partition"
+                              },
+                              "s3",
+                              "",
+                              "",
+                              "fieldflicks-production-media"
+                            ]
+                          ]
+                        },
+                        "Action": [
+                          "s3:PutBucketNotification",
+                          "s3:GetBucketNotification"
+                        ]
+                      },
+                      {
+                        "Effect": "Allow",
+                        "Resource": {
+                          "Fn::Join": [
+                            ":",
+                            [
+                              "arn",
+                              {
+                                "Ref": "AWS::Partition"
+                              },
+                              "lambda",
+                              {
+                                "Ref": "AWS::Region"
+                              },
+                              {
+                                "Ref": "AWS::AccountId"
+                              },
+                              "function",
+                              "*"
+                            ]
+                          ]
+                        },
+                        "Action": [
+                          "lambda:AddPermission",
+                          "lambda:RemovePermission"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "CustomDashresourceDashexistingDashs3LambdaFunction": {
+            "Type": "AWS::Lambda::Function",
+            "Properties": {
+              "Code": {
+                "S3Bucket": "fieldflicks-production-deployment-bucket",
+                "S3Key": "serverless/fieldflicks/production/1772800004208-2026-03-06T12:26:44.208Z/custom-resources.zip"
+              },
+              "FunctionName": "fieldflicks-production-custom-resource-existing-s3",
+              "Handler": "s3/handler.handler",
+              "MemorySize": 1024,
+              "Runtime": "nodejs18.x",
+              "Timeout": 180,
+              "Role": {
+                "Fn::GetAtt": [
+                  "IamRoleCustomResourcesLambdaExecution",
+                  "Arn"
+                ]
+              }
+            },
+            "DependsOn": [
+              "IamRoleCustomResourcesLambdaExecution"
+            ]
+          },
+          "ClipProcessingQueue": {
+            "Type": "AWS::SQS::Queue",
+            "Properties": {
+              "QueueName": "fieldflicks-production-clip-processing",
+              "VisibilityTimeout": 960,
+              "MessageRetentionPeriod": 1209600,
+              "ReceiveMessageWaitTimeSeconds": 20
+            }
+          }
+        },
+        "Outputs": {
+          "ServerlessDeploymentBucketName": {
+            "Value": "fieldflicks-production-deployment-bucket",
+            "Export": {
+              "Name": "sls-fieldflicks-production-ServerlessDeploymentBucketName"
+            }
+          },
+          "MuxM3u8ConverterLambdaFunctionQualifiedArn": {
+            "Description": "Current Lambda function version",
+            "Value": {
+              "Ref": "MuxM3u8ConverterLambdaVersionmcbmdhc1jDRgVwJSNyNQqcitphQUoVs3XDfq9c0hbo"
+            },
+            "Export": {
+              "Name": "sls-fieldflicks-production-MuxM3u8ConverterLambdaFunctionQualifiedArn"
+            }
+          },
+          "MuxUploadVideoLambdaFunctionQualifiedArn": {
+            "Description": "Current Lambda function version",
+            "Value": {
+              "Ref": "MuxUploadVideoLambdaVersionhBUluDD8SNfhEMoajoDks5tCKv6UDpHDFEr103cLuiA"
+            },
+            "Export": {
+              "Name": "sls-fieldflicks-production-MuxUploadVideoLambdaFunctionQualifiedArn"
+            }
+          },
+          "RetryFailedHighlightsLambdaFunctionQualifiedArn": {
+            "Description": "Current Lambda function version",
+            "Value": {
+              "Ref": "RetryFailedHighlightsLambdaVersionpwTThYXXWh0ZNqvf88dLUPdW5ftopURA59Duattq5s"
+            },
+            "Export": {
+              "Name": "sls-fieldflicks-production-RetryFailedHighlightsLambdaFunctionQualifiedArn"
+            }
+          }
+        }
+      },
+      "vpc": {}
+    },
+    "custom": {
+      "serverless-offline": {
+        "httpPort": 8080
+      },
+      "warmup": {
+        "default": {
+          "enabled": true,
+          "events": [
+            {
+              "schedule": "rate(5 minutes)"
+            }
+          ],
+          "payload": {
+            "source": "serverless-plugin-warmup"
+          },
+          "concurrency": 1,
+          "prewarm": true,
+          "timeout": 10
+        }
+      },
+      "prune": {
+        "automatic": true,
+        "number": 5
+      },
+      "esbuild": {
+        "bundle": true,
+        "config": "./esbuild.config.js",
+        "external": [],
+        "platform": "node",
+        "target": "node20",
+        "format": "cjs",
+        "sourcemap": true,
+        "keepNames": true
+      }
+    },
+    "plugins": [
+      "serverless-esbuild",
+      "serverless-offline",
+      "serverless-deployment-bucket",
+      "serverless-dotenv-plugin",
+      "serverless-prune-plugin"
+    ],
+    "pluginsData": {},
+    "functions": {
+      "muxM3u8Converter": {
+        "handler": "dist/src/lambda/mux-m3u8-converter/mux-m3u8-converter_lambda.main",
+        "name": "fieldflicks-production-m3u8-converter",
+        "description": "Convert Mux M3U8 streams to MP4 and upload to S3 (Direct Invocation)",
+        "memorySize": 512,
+        "timeout": 900,
+        "architecture": "x86_64",
+        "ephemeralStorageSize": 8192,
+        "environment": {
+          "FFMPEG_PATH": "/opt/bin/ffmpeg"
+        },
+        "layers": {
+          "$ref": "$[\"service\"][\"provider\"][\"compiledCloudFormationTemplate\"][\"Resources\"][\"MuxM3u8ConverterLambdaFunction\"][\"Properties\"][\"Layers\"]"
+        },
+        "package": {
+          "artifact": ".serverless\\muxM3u8Converter.zip"
+        },
+        "events": [],
+        "memory": 512,
+        "runtime": "nodejs20.x",
+        "vpc": {},
+        "versionLogicalId": "MuxM3u8ConverterLambdaVersionmcbmdhc1jDRgVwJSNyNQqcitphQUoVs3XDfq9c0hbo"
+      },
+      "retryFailedHighlights": {
+        "handler": "dist/src/lambda/retry-failed-highlights/retry-failed-highlights_lambda.main",
+        "name": "fieldflicks-production-retry-failed-highlights",
+        "description": "Sweep stuck/failed highlights, reset status, and enqueue distinct recordings to SQS",
+        "memorySize": 512,
+        "timeout": 900,
+        "architecture": "x86_64",
+        "environment": {
+          "CLIP_PROCESSING_QUEUE_URL": {
+            "$ref": "$[\"service\"][\"provider\"][\"compiledCloudFormationTemplate\"][\"Resources\"][\"RetryFailedHighlightsLambdaFunction\"][\"Properties\"][\"Environment\"][\"Variables\"][\"CLIP_PROCESSING_QUEUE_URL\"]"
+          }
+        },
+        "events": [
+          {
+            "schedule": {
+              "rate": [
+                "rate(10 minutes)"
+              ],
+              "description": "Sweep stuck/failed highlights and enqueue recordings to SQS every 10 minutes",
+              "enabled": true
+            }
+          }
+        ],
+        "layers": {
+          "$ref": "$[\"service\"][\"provider\"][\"compiledCloudFormationTemplate\"][\"Resources\"][\"RetryFailedHighlightsLambdaFunction\"][\"Properties\"][\"Layers\"]"
+        },
+        "package": {
+          "artifact": ".serverless\\retryFailedHighlights.zip"
+        },
+        "memory": 512,
+        "runtime": "nodejs20.x",
+        "vpc": {},
+        "versionLogicalId": "RetryFailedHighlightsLambdaVersionpwTThYXXWh0ZNqvf88dLUPdW5ftopURA59Duattq5s"
+      },
+      "muxUploadVideo": {
+        "handler": "dist/src/lambda/mux-upload-video/mux-upload-video_lambda.main",
+        "name": "fieldflicks-production-mux-upload-video",
+        "description": "Upload video recordings from S3 to Mux when files are uploaded to recordings folder",
+        "memorySize": 512,
+        "timeout": 900,
+        "architecture": "x86_64",
+        "events": [
+          {
+            "s3": {
+              "bucket": "fieldflicks-production-media",
+              "event": "s3:ObjectCreated:*",
+              "rules": [
+                {
+                  "prefix": "recordings/"
+                },
+                {
+                  "suffix": ".mp4"
+                }
+              ],
+              "existing": true,
+              "forceDeploy": true
+            }
+          }
+        ],
+        "layers": {
+          "$ref": "$[\"service\"][\"provider\"][\"compiledCloudFormationTemplate\"][\"Resources\"][\"MuxUploadVideoLambdaFunction\"][\"Properties\"][\"Layers\"]"
+        },
+        "package": {
+          "artifact": ".serverless\\muxUploadVideo.zip"
+        },
+        "memory": 512,
+        "runtime": "nodejs20.x",
+        "vpc": {},
+        "versionLogicalId": "MuxUploadVideoLambdaVersionhBUluDD8SNfhEMoajoDks5tCKv6UDpHDFEr103cLuiA"
+      }
+    },
+    "resources": {
+      "Resources": {
+        "ClipProcessingQueue": {
+          "Type": "AWS::SQS::Queue",
+          "Properties": {
+            "QueueName": "fieldflicks-production-clip-processing",
+            "VisibilityTimeout": 960,
+            "MessageRetentionPeriod": 1209600,
+            "ReceiveMessageWaitTimeSeconds": 20
+          }
+        }
+      },
+      "Outputs": {}
+    },
+    "configValidationMode": "warn",
+    "serviceFilename": "serverless.yml",
+    "initialServerlessConfig": {
+      "service": "fieldflicks",
+      "plugins": {
+        "$ref": "$[\"service\"][\"plugins\"]"
+      },
+      "provider": {
+        "$ref": "$[\"service\"][\"provider\"]"
+      },
+      "custom": {
+        "$ref": "$[\"service\"][\"custom\"]"
+      },
+      "package": {
+        "individually": true,
+        "exclude": [
+          "node_modules/**",
+          "src/**",
+          "test/**",
+          "*.md",
+          ".git/**",
+          ".gitignore",
+          ".env*"
+        ],
+        "artifactsS3KeyDirname": "serverless/fieldflicks/production/code-artifacts",
+        "deploymentBucket": "fieldflicks-production-deployment-bucket"
+      },
+      "functions": {
+        "$ref": "$[\"service\"][\"functions\"]"
+      },
+      "resources": {
+        "$ref": "$[\"service\"][\"resources\"]"
+      }
+    },
+    "layers": {},
+    "isDashboardMonitoringPreconfigured": false
+  },
+  "package": {
+    "individually": true,
+    "artifactDirectoryName": "serverless/fieldflicks/production/1772800004208-2026-03-06T12:26:44.208Z",
+    "artifact": ""
+  }
+}
