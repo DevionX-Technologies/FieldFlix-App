@@ -6,10 +6,29 @@ import type {
   Tournament,
   CouponItem,
   VenueFleet,
+  TurfRecord,
+  DatabaseSnapshot,
 } from '../types';
 
-const rawBaseUrl = import.meta.env.VITE_API_URL !== undefined ? import.meta.env.VITE_API_URL : '';
-const API_BASE_URL = rawBaseUrl.replace(/\/+$/, '');
+const defaultProdUrl = 'https://fieldfflix-backend.onrender.com';
+const isDev = import.meta.env.DEV;
+let rawBaseUrl = import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== ''
+  ? String(import.meta.env.VITE_API_URL)
+  : (isDev ? '' : defaultProdUrl);
+
+// Sanitize accidental copy-paste in Vercel env settings (e.g. trailing "vite_api_url=")
+rawBaseUrl = rawBaseUrl
+  .replace(/^VITE_API_URL\s*=\s*/i, '')
+  .replace(/vite_api_url.*$/i, '')
+  .replace(/=+$/, '')
+  .replace(/\/+$/, '')
+  .trim();
+
+if (!rawBaseUrl && !isDev) {
+  rawBaseUrl = defaultProdUrl;
+}
+
+const API_BASE_URL = rawBaseUrl;
 
 const api = axios.create({
   baseURL: API_BASE_URL || undefined,
@@ -27,6 +46,19 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Handle 401 Unauthorized globally by purging token
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      localStorage.removeItem('fieldflix_admin_token');
+      // If we are not already on the login page (which would have no token anyway), reload to force the LoginView
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Helper to extract data from NestJS GlobalResponseInterceptor { success: true, data: ... }
 function extractData<T>(response: any): T {
   if (response && response.data !== undefined) {
@@ -40,6 +72,17 @@ function extractData<T>(response: any): T {
 }
 
 export const AdminApi = {
+  // Authentication
+  async sendOtp(mobile: string): Promise<any> {
+    const res = await api.post('/auth/send-otp', { mobile });
+    return extractData<any>(res);
+  },
+
+  async verifyOtp(mobile: string, otp: string): Promise<{ token: string; isFirstTimeLogin: boolean }> {
+    const res = await api.post('/auth/verify-otp', { mobile, otp });
+    return extractData<any>(res);
+  },
+
   // 1. Overview & Analytics: Real backend aggregate metrics & charts
   async getOverview(): Promise<OverviewData> {
     const res = await api.get('/admin/analytics/overview');
@@ -116,6 +159,19 @@ export const AdminApi = {
     return extractData<any>(res);
   },
 
+  async updateTournament(id: string, dto: Partial<Tournament>): Promise<Tournament> {
+    const res = await api.patch(`/tournaments/${id}`, dto);
+    return extractData<Tournament>(res);
+  },
+
+  async updateTournamentLiveStreams(
+    id: string,
+    liveStreams: Tournament['liveStreams'],
+  ): Promise<Tournament> {
+    const res = await api.patch(`/tournaments/${id}/live-streams`, { liveStreams });
+    return extractData<Tournament>(res);
+  },
+
   // 4. Coupons & Free Games: Real discount codes and assignments
   async listCoupons(): Promise<CouponItem[]> {
     const res = await api.get('/coupons');
@@ -153,16 +209,260 @@ export const AdminApi = {
     return Array.isArray(raw) ? raw : [];
   },
 
-  async startLiveStream(cameraId: string, courtName: string): Promise<any> {
+  async updateCameraMapping(
+    cameraId: string,
+    data: { name?: string; court_number?: number; raspberryPiBaseUrl?: string }
+  ): Promise<any> {
+    const res = await api.put(`/admin/cameras/${cameraId}`, data);
+    return extractData<any>(res);
+  },
+
+  async createCameraMapping(data: {
+    turfId: string;
+    name?: string;
+    court_number?: number;
+    raspberryPiBaseUrl?: string;
+  }): Promise<any> {
+    const res = await api.post('/admin/cameras', data);
+    return extractData<any>(res);
+  },
+
+  async createTurf(dto: {
+    name: string;
+    closing_time: string;
+    sports_supported?: string[];
+    city?: string;
+    state?: string;
+    country?: string;
+    location?: string;
+    description?: string;
+    opening_time?: string;
+    latitude?: number;
+    longitude?: number;
+    contact_phone?: string;
+    contact_email?: string;
+  }): Promise<TurfRecord> {
+    const res = await api.post('/turfs', dto);
+    const raw = extractData<any>(res);
+    if (raw?.data?.id) return raw.data as TurfRecord;
+    if (raw?.id) return raw as TurfRecord;
+    return raw as TurfRecord;
+  },
+
+  async listTurfs(page = 1, limit = 100): Promise<{ items: TurfRecord[]; total: number }> {
+    const res = await api.get('/turfs', { params: { page, limit } });
+    const raw = extractData<any>(res);
+    if (raw?.items && Array.isArray(raw.items)) {
+      return {
+        items: raw.items,
+        total: raw.meta?.totalItems ?? raw.items.length,
+      };
+    }
+    if (Array.isArray(raw)) {
+      return { items: raw, total: raw.length };
+    }
+    return { items: [], total: 0 };
+  },
+
+  /** Aggregate fleet + overview into a human-readable DB snapshot for admin. */
+  async getDatabaseSnapshot(): Promise<DatabaseSnapshot> {
+    const [overview, fleet, turfPage] = await Promise.all([
+      this.getOverview(),
+      this.getFleet(),
+      this.listTurfs(1, 200),
+    ]);
+
+    const counts = {
+      turfs: overview.summary.totalVenues,
+      cameras: overview.summary.totalCourts,
+      users: overview.summary.totalUsers,
+      recordings: overview.summary.totalRecordings,
+    };
+
+    return {
+      generatedAt: new Date().toISOString(),
+      counts,
+      tableCounts: [
+        { table: 'turfs', count: counts.turfs, label: 'Venues / Arenas' },
+        { table: 'cameras', count: counts.cameras, label: 'Courts (cameras)' },
+        { table: 'users', count: counts.users, label: 'Users' },
+        { table: 'recordings', count: counts.recordings, label: 'Recordings' },
+      ],
+      fleet,
+      turfs: turfPage.items,
+    };
+  },
+
+  async testPiConnectivity(url: string): Promise<{ success: boolean; message: string; data?: any }> {
+    try {
+      const res = await api.post('/admin/cameras/test-connectivity', { url });
+      return extractData<any>(res);
+    } catch (err: any) {
+      // Direct browser fallback probe to Pi /health if backend is currently restarting/deploying
+      try {
+        const cleanUrl = url.trim().replace(/\/+$/, '');
+        const target = cleanUrl.endsWith('/health') ? cleanUrl : `${cleanUrl}/health`;
+        const start = Date.now();
+        const probe = await fetch(target, { method: 'GET' });
+        const latency = Date.now() - start;
+        if (probe.ok || probe.status === 200) {
+          const body = await probe.json().catch(() => ({ status: 'OK' }));
+          return {
+            success: true,
+            message: `Device reached directly (${latency}ms): ${JSON.stringify(body)}`,
+          };
+        }
+      } catch {
+        // Ignore direct probe error and throw backend error
+      }
+      throw err;
+    }
+  },
+
+  async startLiveStream(
+    cameraId: string,
+    courtName: string,
+    channel?: number,
+  ): Promise<any> {
     const res = await api.post('/recording/start-live-stream', {
       cameraId,
       streamTitle: `Live Stream: ${courtName}`,
+      ...(channel != null ? { channel } : {}),
     });
     return extractData<any>(res);
   },
 
-  async stopLiveStream(cameraId: string): Promise<any> {
-    const res = await api.post('/recording/stop-live-stream', { cameraId });
+  async startDualLiveStream(
+    cameraId: string,
+    courtName: string,
+    channels: number[] = [1, 2],
+  ): Promise<{ channels: Array<{ channel: number; result: any }> }> {
+    const results = await Promise.all(
+      channels.map(async (channel) => ({
+        channel,
+        result: await this.startLiveStream(cameraId, `${courtName} (NVR ch ${channel})`, channel),
+      })),
+    );
+    return { channels: results };
+  },
+
+  async stopLiveStream(cameraId: string, channel?: number): Promise<any> {
+    const res = await api.post('/recording/stop-live-stream', {
+      cameraId,
+      ...(channel != null ? { channel } : {}),
+    });
+    return extractData<any>(res);
+  },
+
+  async stopDualLiveStream(
+    cameraId: string,
+    channels: number[] = [1, 2],
+  ): Promise<void> {
+    await Promise.all(channels.map((channel) => this.stopLiveStream(cameraId, channel)));
+  },
+
+  async getRecordings(params?: { page?: number; limit?: number; status?: string }): Promise<{
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    recordings: import('../types').AdminRecordingItem[];
+  }> {
+    const res = await api.get('/admin/recordings', { params });
+    return extractData<any>(res);
+  },
+
+  async triggerTestExtraction(data: {
+    cameraId: string;
+    durationMinutes?: number;
+    startTime?: string;
+    endTime?: string;
+  }): Promise<{
+    success: boolean;
+    cached: boolean;
+    recordingId: string;
+    status: string;
+    venueName: string;
+    courtName: string;
+    startTime: string;
+    endTime: string;
+    playableUrl?: string;
+    s3Path?: string;
+  }> {
+    const res = await api.post('/admin/recordings/test-extract', data);
+    return extractData<any>(res);
+  },
+
+  async getRecordingPlaybackUrl(id: string): Promise<{ playableUrl: string }> {
+    const res = await api.get(`/admin/recordings/${id}/playback-url`);
+    return extractData<any>(res);
+  },
+
+  // 6. FlickShorts Moderation & Public Feed
+  async getFlickShorts(sport?: string): Promise<any[]> {
+    const res = await api.get('/flick-shorts/admin', { params: { sport } });
+    const raw = extractData<any>(res);
+    return Array.isArray(raw) ? raw : [];
+  },
+
+  async approveFlickShort(id: string, approved = true): Promise<any> {
+    const res = await api.patch(`/flick-shorts/${id}/approve`, { approved });
+    return extractData<any>(res);
+  },
+
+  async deleteFlickShort(id: string): Promise<any> {
+    const res = await api.delete(`/flick-shorts/${id}`);
+    return extractData<any>(res);
+  },
+
+  async createFlickShort(data: {
+    title: string;
+    sport: string;
+    tags?: string[];
+    videoUrl?: string;
+    thumbnailUrl?: string;
+  }): Promise<any> {
+    const res = await api.post('/flick-shorts', data);
+    return extractData<any>(res);
+  },
+
+  // 7. Points & Multi-Sport Leaderboard
+  async getLeaderboard(period = 'all', limit = 50): Promise<any[]> {
+    const res = await api.get('/points/leaderboard', { params: { period, limit } });
+    const raw = extractData<any>(res);
+    if (raw && Array.isArray(raw.rows)) {
+      return raw.rows;
+    }
+    return Array.isArray(raw) ? raw : [];
+  },
+
+  async getPointConfigs(): Promise<any[]> {
+    const res = await api.get('/points/configs');
+    const raw = extractData<any>(res);
+    return Array.isArray(raw) ? raw : [];
+  },
+
+  async getPointLevels(): Promise<any[]> {
+    const res = await api.get('/points/levels');
+    const raw = extractData<any>(res);
+    return Array.isArray(raw) ? raw : [];
+  },
+
+  async updatePointConfig(eventType: string, data: { label?: string; points?: number; enabled?: boolean }): Promise<any> {
+    const res = await api.patch(`/points/configs/${eventType}`, data);
+    return extractData<any>(res);
+  },
+
+  // 8. Notifications & Broadcast Campaigns
+  async broadcastNotification(data: {
+    title: string;
+    body: string;
+    targetAudience: string;
+    specificNumber?: string;
+    channels?: string[];
+  }): Promise<{ success: boolean; recipientCount: number }> {
+    const res = await api.post('/admin/notifications/broadcast', data);
     return extractData<any>(res);
   },
 };
+

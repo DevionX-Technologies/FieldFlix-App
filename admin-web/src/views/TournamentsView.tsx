@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   MapPin,
@@ -9,28 +9,39 @@ import {
   X,
   AlertTriangle,
   RefreshCw,
+  Play,
+  Square,
+  Video,
 } from 'lucide-react';
 import { AdminApi } from '../services/api';
 import { SkeletonCardList } from '../components/Skeleton';
 import { CompactDateBadge } from '../components/CompactDateBadge';
-import type { Tournament } from '../types';
+import { LiveStreamModal } from '../components/LiveStreamModal';
+import type { Tournament, VenueFleet, CourtCamera, TournamentLiveStream } from '../types';
 
 export const TournamentsView = () => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [fleet, setFleet] = useState<VenueFleet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterSport, setFilterSport] = useState<string>('All');
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [streamLoadingId, setStreamLoadingId] = useState<string | null>(null);
+  const [activeStreamModal, setActiveStreamModal] = useState<{
+    court: CourtCamera;
+    venueName: string;
+    playbackUrl: string;
+  } | null>(null);
 
-  // Form State
   const [formData, setFormData] = useState({
     name: '',
     sport: 'Pickleball',
-    venue: '',
+    turfId: '',
+    cameraIds: [] as string[],
     city: 'Mumbai',
     prizePool: 50000,
-    entryFee: 1000, // 0 for free/unpaid
+    entryFee: 1000,
     isPaid: true,
     startDate: '',
     maxParticipants: 32,
@@ -38,6 +49,126 @@ export const TournamentsView = () => {
     championPrize: '₹ 25,000 + Trophy',
     runnerUpPrize: '₹ 15,000',
   });
+
+  const selectedVenue = useMemo(
+    () => fleet.find((v) => v.turfId === formData.turfId),
+    [fleet, formData.turfId],
+  );
+
+  const venueCourts = selectedVenue?.courts ?? [];
+
+  const fetchFleet = () => {
+    AdminApi.getFleet()
+      .then(setFleet)
+      .catch((err) => console.error('Failed to load fleet for tournaments:', err));
+  };
+
+  const findCourtInFleet = (cameraId: string): { court: CourtCamera; venue: VenueFleet } | null => {
+    for (const venue of fleet) {
+      const court = venue.courts.find((c) => c.cameraId === cameraId);
+      if (court) return { court, venue };
+    }
+    return null;
+  };
+
+  const persistLiveStreams = async (tournament: Tournament, liveStreams: TournamentLiveStream[]) => {
+    const updated = await AdminApi.updateTournamentLiveStreams(tournament.id, liveStreams);
+    setTournaments((prev) => prev.map((t) => (t.id === tournament.id ? { ...t, ...updated, liveStreams } : t)));
+    return updated;
+  };
+
+  const handleStartStream = async (tournament: Tournament, cameraId: string) => {
+    const isCh2 = cameraId.endsWith('_ch2');
+    const baseCameraId = cameraId.replace('_ch1', '').replace('_ch2', '');
+    const channel = isCh2 ? 2 : 1;
+    
+    const match = findCourtInFleet(baseCameraId);
+    if (!match) {
+      alert('Camera not found in fleet. Refresh and try again.');
+      return;
+    }
+    const { court, venue } = match;
+    if (!court.raspberryPiBaseUrl?.trim()) {
+      alert(`${court.name} is not configured with a Pi URL. Configure it in Camera Fleet first.`);
+      return;
+    }
+
+    setStreamLoadingId(cameraId);
+    try {
+      const res = await AdminApi.startLiveStream(baseCameraId, `${venue.turfName} ${court.name}`, channel);
+      const playbackUrl = res.playbackUrl || `https://stream.mux.com/live-${baseCameraId}.m3u8`;
+      const existing = tournament.liveStreams ?? [];
+      const nextStreams: TournamentLiveStream[] = [
+        ...existing.filter((s) => s.cameraId !== cameraId),
+        {
+          cameraId,
+          cameraName: court.name + (isCh2 ? ' (Ch 2)' : ' (Ch 1)'),
+          courtNumber: court.courtNumber,
+          playbackUrl,
+          isLive: true,
+        },
+      ];
+      await persistLiveStreams(tournament, nextStreams);
+      setActiveStreamModal({
+        court: { ...court, isLiveStreaming: !isCh2, isLiveStreamingCh2: isCh2, livePlaybackUrl: playbackUrl },
+        venueName: venue.turfName,
+        playbackUrl,
+      });
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to start stream');
+    } finally {
+      setStreamLoadingId(null);
+    }
+  };
+
+  const handleStopStream = async (tournament: Tournament, cameraId: string) => {
+    const isCh2 = cameraId.endsWith('_ch2');
+    const baseCameraId = cameraId.replace('_ch1', '').replace('_ch2', '');
+    const channel = isCh2 ? 2 : 1;
+
+    setStreamLoadingId(cameraId);
+    try {
+      await AdminApi.stopLiveStream(baseCameraId, channel);
+      const nextStreams = (tournament.liveStreams ?? []).map((s) =>
+        s.cameraId === cameraId ? { ...s, isLive: false, playbackUrl: undefined } : s,
+      );
+      await persistLiveStreams(tournament, nextStreams);
+      if (activeStreamModal?.court.cameraId === baseCameraId) {
+        setActiveStreamModal(null);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to stop stream');
+    } finally {
+      setStreamLoadingId(null);
+    }
+  };
+
+  const handleWatchStream = (tournament: Tournament, cameraId: string) => {
+    const baseCameraId = cameraId.replace('_ch1', '').replace('_ch2', '');
+    const match = findCourtInFleet(baseCameraId);
+    const stream = tournament.liveStreams?.find((s) => s.cameraId === cameraId);
+    if (!match || !stream?.playbackUrl) {
+      alert('No active playback URL for this camera.');
+      return;
+    }
+    setActiveStreamModal({
+      court: match.court,
+      venueName: match.venue.turfName,
+      playbackUrl: stream.playbackUrl,
+    });
+  };
+
+  const toggleCameraSelection = (cameraId: string) => {
+    setFormData((prev) => {
+      const has = prev.cameraIds.includes(cameraId);
+      return {
+        ...prev,
+        cameraIds: has
+          ? prev.cameraIds.filter((id) => id !== cameraId)
+          : [...prev.cameraIds, cameraId],
+      };
+    });
+  };
 
   const fetchTournaments = () => {
     setLoading(true);
@@ -60,6 +191,7 @@ export const TournamentsView = () => {
 
   useEffect(() => {
     fetchTournaments();
+    fetchFleet();
   }, []);
 
   const handleStatusChange = async (id: string, newStatus: string) => {
@@ -75,11 +207,37 @@ export const TournamentsView = () => {
 
   const handleCreateTournament = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.turfId) {
+      alert('Please select a venue from the fleet.');
+      return;
+    }
+    if (formData.cameraIds.length === 0) {
+      alert('Select at least one camera for this tournament.');
+      return;
+    }
+
+    const venue = fleet.find((v) => v.turfId === formData.turfId);
+    const liveStreams: TournamentLiveStream[] = formData.cameraIds.map((selectedId) => {
+      // selectedId is like "uuid_ch1" or "uuid_ch2"
+      const isCh2 = selectedId.endsWith('_ch2');
+      const baseCameraId = selectedId.replace('_ch1', '').replace('_ch2', '');
+      const court = venue?.courts.find((c) => c.cameraId === baseCameraId);
+      return {
+        cameraId: selectedId,
+        cameraName: (court?.name || `Camera ${baseCameraId.slice(0, 6)}`) + (isCh2 ? ' (Ch 2)' : ' (Ch 1)'),
+        courtNumber: court?.courtNumber,
+        isLive: false,
+      };
+    });
+
     const payload: Partial<Tournament> = {
       name: formData.name,
       sport: formData.sport,
-      venue: formData.venue || 'Bandra Arena',
-      city: formData.city,
+      venue: venue?.turfName || 'Venue',
+      turfId: formData.turfId,
+      cameraIds: formData.cameraIds,
+      liveStreams,
+      city: venue?.city || formData.city,
       prizePool: Number(formData.prizePool),
       entryFee: formData.isPaid ? Number(formData.entryFee) : 0,
       startDate: formData.startDate || new Date().toISOString(),
@@ -100,7 +258,8 @@ export const TournamentsView = () => {
       setFormData({
         name: '',
         sport: 'Pickleball',
-        venue: '',
+        turfId: '',
+        cameraIds: [],
         city: 'Mumbai',
         prizePool: 50000,
         entryFee: 1000,
@@ -123,10 +282,10 @@ export const TournamentsView = () => {
   });
 
   return (
-    <div style={{ padding: 32, display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="view-padding" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Top Header & Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Sport Filter */}
           <select
             value={filterSport}
@@ -212,8 +371,8 @@ export const TournamentsView = () => {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-          gap: 24,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))',
+          gap: 20,
         }}>
           {filteredTournaments.map((t) => (
             <div key={t.id} className="glass-card" style={{ padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -280,6 +439,85 @@ export const TournamentsView = () => {
                   </div>
                 </div>
 
+                {/* Assigned cameras & live stream controls */}
+                {(t.cameraIds?.length ?? 0) > 0 && (
+                  <div style={{
+                    marginTop: 16,
+                    padding: 12,
+                    backgroundColor: 'rgba(0, 230, 118, 0.04)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid rgba(0, 230, 118, 0.15)',
+                  }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', textTransform: 'uppercase', marginBottom: 10 }}>
+                      Live Cameras ({t.cameraIds?.length ?? 0})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {(t.cameraIds ?? []).map((cameraId) => {
+                        const stream = t.liveStreams?.find((s) => s.cameraId === cameraId);
+                        const courtInfo = findCourtInFleet(cameraId);
+                        const label = stream?.cameraName || courtInfo?.court.name || cameraId.slice(0, 8);
+                        const isLive = !!stream?.isLive;
+                        const busy = streamLoadingId === cameraId;
+                        return (
+                          <div
+                            key={cameraId}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 8,
+                              padding: '8px 10px',
+                              backgroundColor: 'rgba(255,255,255,0.03)',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.8rem', color: '#FFF', fontWeight: 600 }}>{label}</div>
+                              <div style={{ fontSize: '0.7rem', color: isLive ? 'var(--primary-neon)' : 'var(--text-dim)' }}>
+                                {isLive ? '● STREAMING' : 'Offline'}
+                              </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                              {!isLive ? (
+                                <button
+                                  type="button"
+                                  disabled={busy || t.status === 'Completed'}
+                                  onClick={() => handleStartStream(t, cameraId)}
+                                  className="btn-primary"
+                                  style={{ padding: '6px 10px', fontSize: '0.7rem' }}
+                                >
+                                  <Play size={12} /> Start
+                                </button>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => handleWatchStream(t, cameraId)}
+                                    className="btn-secondary"
+                                    style={{ padding: '6px 10px', fontSize: '0.7rem' }}
+                                  >
+                                    <Video size={12} /> Watch
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => handleStopStream(t, cameraId)}
+                                    className="btn-secondary"
+                                    style={{ padding: '6px 10px', fontSize: '0.7rem', color: 'var(--accent-crimson)' }}
+                                  >
+                                    <Square size={12} /> Stop
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Organizer Info if requested */}
                 {t.organizer && (
                   <div style={{ marginTop: 12, fontSize: '0.75rem', color: 'var(--text-dim)' }}>
@@ -340,28 +578,35 @@ export const TournamentsView = () => {
 
       {/* Create Tournament Modal */}
       {showCreateModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          backdropFilter: 'blur(10px)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 100,
-          padding: 24,
-        }}>
-          <div className="glass-card" style={{
-            width: '100%',
-            maxWidth: 640,
-            backgroundColor: '#0C1017',
-            padding: 32,
-            position: 'relative',
-            border: '1px solid rgba(0, 230, 118, 0.3)',
-          }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 100,
+            padding: 16,
+          }}
+        >
+          <div
+            className="glass-card responsive-modal-content"
+            style={{
+              width: '100%',
+              maxWidth: 640,
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              backgroundColor: '#0C1017',
+              padding: 28,
+              position: 'relative',
+              border: '1px solid rgba(0, 230, 118, 0.3)',
+            }}
+          >
             <button
               onClick={() => setShowCreateModal(false)}
               style={{
@@ -432,13 +677,13 @@ export const TournamentsView = () => {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Venue & City</label>
-                  <input
-                    type="text"
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Venue</label>
+                  <select
                     required
-                    placeholder="e.g. Bandra Arena, Mumbai"
-                    value={formData.venue}
-                    onChange={(e) => setFormData({ ...formData, venue: e.target.value })}
+                    value={formData.turfId}
+                    onChange={(e) =>
+                      setFormData({ ...formData, turfId: e.target.value, cameraIds: [] })
+                    }
                     style={{
                       width: '100%',
                       backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -448,9 +693,91 @@ export const TournamentsView = () => {
                       color: '#FFFFFF',
                       marginTop: 6,
                     }}
-                  />
+                  >
+                    <option value="">Select venue from fleet…</option>
+                    {fleet.map((v) => (
+                      <option key={v.turfId} value={v.turfId}>
+                        {v.turfName} — {v.city}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
+
+              {formData.turfId && (
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    Cameras to include (select one or more)
+                  </label>
+                  <div style={{
+                    marginTop: 8,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    maxHeight: 180,
+                    overflowY: 'auto',
+                    padding: 10,
+                    backgroundColor: 'rgba(255,255,255,0.03)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
+                  }}>
+                    {venueCourts.length === 0 ? (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+                        No cameras configured for this venue.
+                      </span>
+                    ) : (
+                      venueCourts.map((court) => (
+                        <React.Fragment key={court.cameraId}>
+                          <label
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              fontSize: '0.85rem',
+                              color: '#FFF',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.cameraIds.includes(`${court.cameraId}_ch1`)}
+                              onChange={() => toggleCameraSelection(`${court.cameraId}_ch1`)}
+                            />
+                            <span>
+                              {court.name} (Ch 1) (Court {court.courtNumber})
+                              {!court.raspberryPiBaseUrl?.trim() && (
+                                <span style={{ color: 'var(--accent-crimson)', marginLeft: 6 }}>— not configured</span>
+                              )}
+                            </span>
+                          </label>
+                          <label
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              fontSize: '0.85rem',
+                              color: '#FFF',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.cameraIds.includes(`${court.cameraId}_ch2`)}
+                              onChange={() => toggleCameraSelection(`${court.cameraId}_ch2`)}
+                            />
+                            <span>
+                              {court.name} (Ch 2) (Court {court.courtNumber})
+                              {!court.raspberryPiBaseUrl?.trim() && (
+                                <span style={{ color: 'var(--accent-crimson)', marginLeft: 6 }}>— not configured</span>
+                              )}
+                            </span>
+                          </label>
+                        </React.Fragment>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Paid vs Free Game Switch */}
               <div style={{
@@ -579,6 +906,15 @@ export const TournamentsView = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {activeStreamModal && (
+        <LiveStreamModal
+          court={activeStreamModal.court}
+          venueName={activeStreamModal.venueName}
+          playbackUrl={activeStreamModal.playbackUrl}
+          onClose={() => setActiveStreamModal(null)}
+        />
       )}
     </div>
   );
