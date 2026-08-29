@@ -38,6 +38,7 @@ import { navigateMainTabBackToHome } from "@/utils/navigateBackOrHome";
 import { presentEventNotification } from "@/utils/presentEventNotification";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { Skeleton } from "@/components/atoms";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import DateTimePicker, {
@@ -495,6 +496,25 @@ function dedupeTurfsByNormalizedNameForFind(rows: any[]): {
   return { unique, duplicates };
 }
 
+function RecordingRowSkeleton() {
+  return (
+    <View style={styles.myRow}>
+      <View style={styles.thumb}>
+        <Skeleton width="100%" height="100%" loading />
+      </View>
+      <View style={styles.myBody}>
+        <Skeleton width="80%" height={18} style={{ marginBottom: 12 }} loading />
+        <View style={styles.myLine}>
+          <Skeleton width="60%" height={12} style={{ marginBottom: 8 }} loading />
+        </View>
+        <View style={styles.myLine}>
+          <Skeleton width="40%" height={12} loading />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function FieldflixRecordingsScreen() {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
@@ -508,6 +528,7 @@ export default function FieldflixRecordingsScreen() {
   const [my, setMy] = useState<any[]>([]);
   const [shared, setShared] = useState<any[]>([]);
   const [sharedByMe, setSharedByMe] = useState<any[]>([]);
+  const [loadingRecordings, setLoadingRecordings] = useState(true);
   /** Approved FlickShorts are a separate table from `recordingHighlights` — tally per recording for counts. */
   const [shortsPerRecording, setShortsPerRecording] = useState<
     Record<string, number>
@@ -845,21 +866,41 @@ export default function FieldflixRecordingsScreen() {
       });
     }
 
-    // Multiple cameras can sit on the same physical court — collapse to one row.
-    // Pick the lowest camera id so the selection is deterministic.
-    const merged = new Map<string, GroundOpt>();
+    // Group cameras by court number to append suffixes if multiple exist
+    const courtCount = new Map<number, number>();
     for (const row of rows) {
-      const prev = merged.get(row.dedupeKey);
-      const pick =
-        prev == null || String(row.id).localeCompare(String(prev.id)) < 0
-          ? row
-          : prev;
-      merged.set(row.dedupeKey, pick);
+      courtCount.set(row.courtSortKey, (courtCount.get(row.courtSortKey) || 0) + 1);
     }
 
-    return [...merged.values()]
+    const finalRows: GroundOpt[] = [];
+    for (const row of rows) {
+      if ((courtCount.get(row.courtSortKey) || 0) > 1) {
+        const isCh2 = row.id?.endsWith('_ch2');
+        row.name = `Court ${row.courtSortKey} ${isCh2 ? '(Ch 2)' : '(Ch 1)'}`;
+        finalRows.push(row);
+      } else {
+        // If it's a dual-channel venue but only has 1 camera record (like Pickleflow or Botanical), synthesize the second channel
+        const turfName = (row.turf?.name || '').toLowerCase();
+        const piUrl = (row.raspberryPiBaseUrl || '').toLowerCase();
+        const isDualChannelVenue = turfName.includes('pickleflow') || piUrl.includes('pickleflow') || turfName.includes('botanical') || piUrl.includes('botanical');
+        
+        if (isDualChannelVenue) {
+          finalRows.push({ ...row, name: `Court ${row.courtSortKey} (Ch 1)` });
+          finalRows.push({ ...row, id: `${row.id}_ch2`, name: `Court ${row.courtSortKey} (Ch 2)` });
+        } else {
+          finalRows.push(row);
+        }
+      }
+    }
+
+    return finalRows
       .filter((x) => !q || x.name.toLowerCase().includes(q))
-      .sort((a, b) => a.courtSortKey - b.courtSortKey);
+      .sort((a, b) => {
+        if (a.courtSortKey !== b.courtSortKey) {
+          return a.courtSortKey - b.courtSortKey;
+        }
+        return String(a.id).localeCompare(String(b.id));
+      });
   }, [findGround, findVenueId, findVenueAliasIds, systemCameras]);
 
   const isLocationComplete = !!findVenueId;
@@ -907,6 +948,7 @@ export default function FieldflixRecordingsScreen() {
   );
 
   const load = useCallback(async () => {
+    setLoadingRecordings(true);
     try {
       const [a, b, c, flickList, turfsResult] = await Promise.all([
         getMyRecordings(),
@@ -945,6 +987,8 @@ export default function FieldflixRecordingsScreen() {
       setMy([]);
       setShared([]);
       setSharedByMe([]);
+    } finally {
+      setLoadingRecordings(false);
     }
   }, []);
 
@@ -1403,117 +1447,125 @@ export default function FieldflixRecordingsScreen() {
         >
           {tab === "my" && (
             <View style={styles.myList}>
-              {myRows.length === 0 ? (
-                <Text style={styles.emptyList}>
-                  No recordings yet. Scan a court QR and start a session to
-                  build your library.
-                </Text>
-              ) : null}
-              {myRows.map((row) => (
-                <Pressable
-                  key={row.id}
-                  style={styles.myRow}
-                  onPress={() => {
-                    if (!row.recordingId) return;
-                    router.push({
-                      pathname: Paths.highlights,
-                      params: { id: row.recordingId },
-                    });
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${row.title} highlights`}
-                >
-                  <View style={styles.thumb}>
-                    <Image
-                      source={row.thumbUrl ? { uri: row.thumbUrl } : BG.arena}
-                      style={StyleSheet.absoluteFillObject}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.thumbBar} />
-                    <View style={styles.thumbDur}>
-                      <Text style={styles.thumbDurText}>{row.duration}</Text>
-                    </View>
-                    <Pressable
-                      style={styles.thumbShare}
-                      onPress={() => {
-                        if (row.recordingId) {
-                          void onShareRecording(row.recordingId, row.title);
-                        }
-                      }}
-                      accessibilityLabel="Share recording"
-                      hitSlop={8}
-                    >
-                      <ShareIcon color="#fff" size={14} />
-                    </Pressable>
-                    <View style={styles.thumbPlayOverlay}>
-                      <View style={styles.thumbPlayBtn}>
-                        <PlayIcon color="#0a0a0a" size={18} />
-                      </View>
-                    </View>
-                    {row.recordingId ? (
-                      <View
-                        style={[
-                          styles.thumbLockState,
-                          recordingUnlockedPlayback(row.recordingId)
-                            ? styles.thumbLockStateUnlocked
-                            : styles.thumbLockStateLocked,
-                        ]}
-                        pointerEvents="none"
-                        accessibilityElementsHidden
-                        importantForAccessibility="no-hide-descendants"
-                      >
-                        <MaterialCommunityIcons
-                          // Distinct icons + colors so locked vs unlocked
-                          // are recognisable at a glance, not just outlines.
-                          name={
-                            recordingUnlockedPlayback(row.recordingId)
-                              ? "lock-open-variant"
-                              : "lock"
-                          }
-                          size={16}
-                          color={
-                            recordingUnlockedPlayback(row.recordingId)
-                              ? "#22C55E"
-                              : "#F87171"
-                          }
-                        />
-                      </View>
-                    ) : null}
-                  </View>
-                  <View style={styles.myBody}>
-                    <Text style={styles.myTitle} numberOfLines={2}>
-                      {row.title}
+              {loadingRecordings ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <RecordingRowSkeleton key={`my-sk-${index}`} />
+                ))
+              ) : (
+                <>
+                  {myRows.length === 0 ? (
+                    <Text style={styles.emptyList}>
+                      No recordings yet. Scan a court QR and start a session to
+                      build your library.
                     </Text>
-                    <View style={styles.myLine}>
-                      <MapPinIcon color={ACCENT} size={14} />
-                      <Text style={styles.myLineText} numberOfLines={1}>
-                        {row.location}
-                      </Text>
-                    </View>
-                    <View style={styles.myLine}>
-                      <CalendarIcon color={ACCENT} size={14} />
-                      <Text style={styles.myLineTextMuted} numberOfLines={1}>
-                        {row.when}
-                      </Text>
-                    </View>
-                    {row.highlights != null ? (
-                      <View style={styles.myLine}>
-                        <TrophyIcon color={ACCENT} size={14} />
-                        <Text style={styles.myLineAccent}>
-                          {row.highlights} Highlights
-                        </Text>
+                  ) : null}
+                  {myRows.map((row) => (
+                    <Pressable
+                      key={row.id}
+                      style={styles.myRow}
+                      onPress={() => {
+                        if (!row.recordingId) return;
+                        router.push({
+                          pathname: Paths.highlights,
+                          params: { id: row.recordingId },
+                        });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${row.title} highlights`}
+                    >
+                      <View style={styles.thumb}>
+                        <Image
+                          source={row.thumbUrl ? { uri: row.thumbUrl } : BG.arena}
+                          style={StyleSheet.absoluteFillObject}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.thumbBar} />
+                        <View style={styles.thumbDur}>
+                          <Text style={styles.thumbDurText}>{row.duration}</Text>
+                        </View>
+                        <Pressable
+                          style={styles.thumbShare}
+                          onPress={() => {
+                            if (row.recordingId) {
+                              void onShareRecording(row.recordingId, row.title);
+                            }
+                          }}
+                          accessibilityLabel="Share recording"
+                          hitSlop={8}
+                        >
+                          <ShareIcon color="#fff" size={14} />
+                        </Pressable>
+                        <View style={styles.thumbPlayOverlay}>
+                          <View style={styles.thumbPlayBtn}>
+                            <PlayIcon color="#0a0a0a" size={18} />
+                          </View>
+                        </View>
+                        {row.recordingId ? (
+                          <View
+                            style={[
+                              styles.thumbLockState,
+                              recordingUnlockedPlayback(row.recordingId)
+                                ? styles.thumbLockStateUnlocked
+                                : styles.thumbLockStateLocked,
+                            ]}
+                            pointerEvents="none"
+                            accessibilityElementsHidden
+                            importantForAccessibility="no-hide-descendants"
+                          >
+                            <MaterialCommunityIcons
+                              // Distinct icons + colors so locked vs unlocked
+                              // are recognisable at a glance, not just outlines.
+                              name={
+                                recordingUnlockedPlayback(row.recordingId)
+                                  ? "lock-open-variant"
+                                  : "lock"
+                              }
+                              size={16}
+                              color={
+                                recordingUnlockedPlayback(row.recordingId)
+                                  ? "#22C55E"
+                                  : "#F87171"
+                              }
+                            />
+                          </View>
+                        ) : null}
                       </View>
-                    ) : null}
-                    {!row.isReady ? (
-                      <View style={styles.myLine}>
-                        <Text style={styles.myLineProcessing} numberOfLines={1}>
-                          Processing — your highlights will appear here shortly.
+                      <View style={styles.myBody}>
+                        <Text style={styles.myTitle} numberOfLines={2}>
+                          {row.title}
                         </Text>
+                        <View style={styles.myLine}>
+                          <MapPinIcon color={ACCENT} size={14} />
+                          <Text style={styles.myLineText} numberOfLines={1}>
+                            {row.location}
+                          </Text>
+                        </View>
+                        <View style={styles.myLine}>
+                          <CalendarIcon color={ACCENT} size={14} />
+                          <Text style={styles.myLineTextMuted} numberOfLines={1}>
+                            {row.when}
+                          </Text>
+                        </View>
+                        {row.highlights != null ? (
+                          <View style={styles.myLine}>
+                            <TrophyIcon color={ACCENT} size={14} />
+                            <Text style={styles.myLineAccent}>
+                              {row.highlights} Highlights
+                            </Text>
+                          </View>
+                        ) : null}
+                        {!row.isReady ? (
+                          <View style={styles.myLine}>
+                            <Text style={styles.myLineProcessing} numberOfLines={1}>
+                              Processing, your highlights will appear here shortly.
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
-                    ) : null}
-                  </View>
-                </Pressable>
-              ))}
+                    </Pressable>
+                  ))}
+                </>
+              )}
             </View>
           )}
 
@@ -1554,120 +1606,130 @@ export default function FieldflixRecordingsScreen() {
                 </Pressable>
               </View>
 
-              {sharedSubTab === "withMe" && sharedRows.length === 0 ? (
-                <Text style={styles.emptyList}>
-                  Nothing shared with you yet. When someone shares a recording,
-                  it will show here.
-                </Text>
-              ) : null}
-              {sharedSubTab === "to" && sharedToRows.length === 0 ? (
-                <Text style={styles.emptyList}>
-                  You have not shared any recordings yet.
-                </Text>
-              ) : null}
-              {(sharedSubTab === "withMe" ? sharedRows : sharedToRows).map(
-                (card) => (
-                <Pressable
-                  key={card.id}
-                  style={styles.sharedCard}
-                  onPress={() => {
-                    if (card.recordingId) {
-                      router.push({
-                        pathname: Paths.highlights,
-                        params: { id: card.recordingId },
-                      });
-                    } else if (card.shareToken) {
-                      router.push({
-                        pathname: Paths.sharedMedia,
-                        params: { token: card.shareToken },
-                      });
-                    }
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${card.title}`}
-                >
-                  <Image
-                    source={card.thumbUrl ? { uri: card.thumbUrl } : BG.arena}
-                    style={styles.sharedMedia}
-                    resizeMode="cover"
-                  />
-                  <LinearGradient
-                    colors={[
-                      "rgba(0,0,0,0.15)",
-                      "rgba(0,0,0,0.45)",
-                      "rgba(0,0,0,0.94)",
-                    ]}
-                    locations={[0, 0.55, 1]}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <View style={styles.sharedOverlay}>
-                    <View style={styles.sharedTop}>
-                      <View style={styles.sharedReady}>
-                        <Text style={styles.sharedReadyText}>Ready</Text>
-                      </View>
-                      <View style={styles.sharedDur}>
-                        <ClockIcon color="rgba(255,255,255,0.92)" size={14} />
-                        <Text style={styles.sharedDurText}>
-                          {card.duration}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.sharedMid}>
-                      <Text style={styles.sharedTitle} numberOfLines={1}>
-                        {card.title}
-                      </Text>
-                      <Text style={styles.sharedMeta} numberOfLines={2}>
-                        {card.location || "No location available"}
-                      </Text>
-                    </View>
-                    <View style={styles.sharedActions}>
-                      <View style={styles.sharedPills}>
-                        <View style={styles.sharedPill}>
-                          <TrophyIcon color={ACCENT} size={16} />
-                          <Text style={styles.sharedPillText}>
-                            {card.highlights} Highlights
+              {loadingRecordings ? (
+                Array.from({ length: 2 }).map((_, index) => (
+                  <View key={`shared-sk-${index}`} style={[styles.sharedCard, { overflow: "hidden", minHeight: 180 }]}>
+                    <Skeleton width="100%" height={180} loading />
+                  </View>
+                ))
+              ) : (
+                <>
+                  {sharedSubTab === "withMe" && sharedRows.length === 0 ? (
+                    <Text style={styles.emptyList}>
+                      Nothing shared with you yet. When someone shares a recording,
+                      it will show here.
+                    </Text>
+                  ) : null}
+                  {sharedSubTab === "to" && sharedToRows.length === 0 ? (
+                    <Text style={styles.emptyList}>
+                      You have not shared any recordings yet.
+                    </Text>
+                  ) : null}
+                  {(sharedSubTab === "withMe" ? sharedRows : sharedToRows).map(
+                    (card) => (
+                    <Pressable
+                      key={card.id}
+                      style={styles.sharedCard}
+                      onPress={() => {
+                        if (card.recordingId) {
+                          router.push({
+                            pathname: Paths.highlights,
+                            params: { id: card.recordingId },
+                          });
+                        } else if (card.shareToken) {
+                          router.push({
+                            pathname: Paths.sharedMedia,
+                            params: { token: card.shareToken },
+                          });
+                        }
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${card.title}`}
+                    >
+                      <Image
+                        source={card.thumbUrl ? { uri: card.thumbUrl } : BG.arena}
+                        style={styles.sharedMedia}
+                        resizeMode="cover"
+                      />
+                      <LinearGradient
+                        colors={[
+                          "rgba(0,0,0,0.15)",
+                          "rgba(0,0,0,0.45)",
+                          "rgba(0,0,0,0.94)",
+                        ]}
+                        locations={[0, 0.55, 1]}
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <View style={styles.sharedOverlay}>
+                        <View style={styles.sharedTop}>
+                          <View style={styles.sharedReady}>
+                            <Text style={styles.sharedReadyText}>Ready</Text>
+                          </View>
+                          <View style={styles.sharedDur}>
+                            <ClockIcon color="rgba(255,255,255,0.92)" size={14} />
+                            <Text style={styles.sharedDurText}>
+                              {card.duration}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.sharedMid}>
+                          <Text style={styles.sharedTitle} numberOfLines={1}>
+                            {card.title}
+                          </Text>
+                          <Text style={styles.sharedMeta} numberOfLines={2}>
+                            {card.location || "No location available"}
                           </Text>
                         </View>
-                        <Pressable
-                          style={styles.sharedPillTappable}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            setPeopleModal({
-                              label: card.peopleLabel ?? "People",
-                              people: card.people ?? [],
-                            });
-                          }}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel="Show people"
-                        >
-                          <Text style={styles.sharedPillText} numberOfLines={1}>
-                            {card.peopleCount}{" "}
-                            {card.peopleCount === 1 ? "person" : "people"}
-                          </Text>
-                          <MaterialCommunityIcons
-                            name="information-outline"
-                            size={14}
-                            color={ACCENT}
-                          />
-                        </Pressable>
+                        <View style={styles.sharedActions}>
+                          <View style={styles.sharedPills}>
+                            <View style={styles.sharedPill}>
+                              <TrophyIcon color={ACCENT} size={16} />
+                              <Text style={styles.sharedPillText}>
+                                {card.highlights} Highlights
+                              </Text>
+                            </View>
+                            <Pressable
+                              style={styles.sharedPillTappable}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                setPeopleModal({
+                                  label: card.peopleLabel ?? "People",
+                                  people: card.people ?? [],
+                                });
+                              }}
+                              hitSlop={8}
+                              accessibilityRole="button"
+                              accessibilityLabel="Show people"
+                            >
+                              <Text style={styles.sharedPillText} numberOfLines={1}>
+                                {card.peopleCount}{" "}
+                                {card.peopleCount === 1 ? "person" : "people"}
+                              </Text>
+                              <MaterialCommunityIcons
+                                name="information-outline"
+                                size={14}
+                                color={ACCENT}
+                              />
+                            </Pressable>
+                          </View>
+                          <Pressable
+                            style={styles.sharedFab}
+                            accessibilityLabel="Share"
+                            onPress={() => {
+                              if (card.recordingId) {
+                                void onShareRecording(card.recordingId, card.title);
+                              }
+                            }}
+                            hitSlop={8}
+                          >
+                            <ShareIcon color="#0a0a0a" size={18} />
+                          </Pressable>
+                        </View>
                       </View>
-                      <Pressable
-                        style={styles.sharedFab}
-                        accessibilityLabel="Share"
-                        onPress={() => {
-                          if (card.recordingId) {
-                            void onShareRecording(card.recordingId, card.title);
-                          }
-                        }}
-                        hitSlop={8}
-                      >
-                        <ShareIcon color="#0a0a0a" size={18} />
-                      </Pressable>
-                    </View>
-                  </View>
-                </Pressable>
-              ),
+                    </Pressable>
+                  ),
+                  )}
+                </>
               )}
             </View>
           )}
@@ -2158,7 +2220,7 @@ export default function FieldflixRecordingsScreen() {
                   <Text style={styles.findResultsTitle}>
                     {findMatches.length === 0
                       ? "No matches for those details. Try widening the time or double-check the phone number."
-                      : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"} — tap the one that's yours to add it to My Recordings.`}
+                      : `${findMatches.length} match${findMatches.length === 1 ? "" : "es"}, tap the one that's yours to add it to My Recordings.`}
                   </Text>
                   {findMatches.map((r: any) => {
                     const rid = String(r?.id ?? "");
