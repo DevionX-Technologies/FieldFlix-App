@@ -130,7 +130,7 @@ export const CustomModal: React.FC<CustomModalProps> = ({
 
       {showSessionChrome && autoDismissMs ? (
         <Text style={[styles.autoDismissHint, dynamicStyles.sessionHint]}>
-          Closes automatically in a few seconds — tap ✕ to dismiss.
+          Closes automatically in a few seconds, tap ✕ to dismiss.
         </Text>
       ) : null}
 

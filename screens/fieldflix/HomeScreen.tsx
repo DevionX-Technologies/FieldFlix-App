@@ -220,7 +220,7 @@ function compactOneLine(s: string): string {
 function turfRowLocationLabel(t: TurfRow): string {
   const loc = compactOneLine(t.location ?? "");
   if (loc) return loc;
-  return "—";
+  return "";
 }
 
 /** Fold duplicate turf rows (one per camera/QR UUID) into a single homepage card per venue label. */
@@ -987,7 +987,7 @@ export default function FieldflixHomeScreen() {
                           color="#22C55E"
                         />
                         <Text style={styles.recentRowText} numberOfLines={1}>
-                          {session.location || "—"}
+                          {session.location || ""}
                         </Text>
                       </View>
                       <View style={styles.recentRow}>

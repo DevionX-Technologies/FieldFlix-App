@@ -248,42 +248,8 @@ export default function FieldflixFlixShortsScreen() {
             <View style={styles.empty}>
               <ActivityIndicator color={WEB.greenBright} size="large" />
             </View>
-          ) : items.length === 0 ? (
-            <FlickShortsComingSoonEmpty />
           ) : (
-            <FlatList
-              style={styles.list}
-              data={items}
-              keyExtractor={(it) => it.id}
-              pagingEnabled
-              showsVerticalScrollIndicator={false}
-              decelerationRate="fast"
-              snapToInterval={reelHeight}
-              snapToAlignment="start"
-              disableIntervalMomentum
-              onViewableItemsChanged={onViewable}
-              viewabilityConfig={{ itemVisiblePercentThreshold: 70 }}
-              initialNumToRender={2}
-              maxToRenderPerBatch={3}
-              windowSize={5}
-              removeClippedSubviews
-              getItemLayout={(_, index) => ({
-                length: reelHeight,
-                offset: reelHeight * index,
-                index,
-              })}
-              renderItem={({ item, index }) => (
-                <FlickReelCell
-                  item={item}
-                  height={reelHeight}
-                  isActive={index === activeIndex}
-                  liked={!!liked[item.id]}
-                  isLiking={likingId === item.id}
-                  onLike={() => onLike(item)}
-                  onComment={() => setCommentItem(item)}
-                />
-              )}
-            />
+            <FlickShortsComingSoonEmpty />
           )}
         </View>
         <FieldflixBottomNav active="flix" />

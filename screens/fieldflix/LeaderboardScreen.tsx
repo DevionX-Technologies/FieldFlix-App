@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
+import { Skeleton } from '@/components/atoms';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -128,15 +129,13 @@ export default function LeaderboardScreen() {
           ) : null}
 
           {loading ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator color={ACCENT} />
-            </View>
+            <LeaderboardSkeleton />
           ) : error ? (
             <Text style={styles.empty}>{error}</Text>
           ) : rows.length === 0 ? (
             <Text style={styles.empty}>
               No points awarded {period === 'all' ? 'yet' : 'this period'}. Be
-              the first — start a session, share recordings, or get a highlight
+              the first, start a session, share recordings, or get a highlight
               approved as a FlickShort.
             </Text>
           ) : (
@@ -264,7 +263,7 @@ function PodiumPlaceholder() {
       <View style={styles.podiumPlaceholder}>
         <MaterialCommunityIcons name="account" size={36} color={MUTED} />
       </View>
-      <Text style={[styles.podiumName, { color: MUTED }]}>—</Text>
+      <Text style={[styles.podiumName, { color: MUTED }]} />
     </View>
   );
 }
@@ -314,10 +313,49 @@ function formatPeriodWindow(startIso: string, endIso: string): string {
       day: 'numeric',
       month: 'short',
     });
-    return `${sStr} – ${eStr}`;
+    return `${sStr} to ${eStr}`;
   } catch {
     return '';
   }
+}
+
+function LeaderboardSkeleton() {
+  return (
+    <View style={styles.flex}>
+      {/* Podium Skeleton */}
+      <View style={styles.podium}>
+        <View style={styles.podiumSide}>
+          <Skeleton width={86} height={86} style={{ borderRadius: 43 }} loading />
+          <Skeleton width={60} height={14} style={{ marginTop: 10 }} loading />
+          <Skeleton width={40} height={18} style={{ marginTop: 6, borderRadius: 9 }} loading />
+        </View>
+        <View style={styles.podiumCenter}>
+          <Skeleton width={98} height={98} style={{ borderRadius: 49 }} loading />
+          <Skeleton width={70} height={14} style={{ marginTop: 10 }} loading />
+          <Skeleton width={45} height={18} style={{ marginTop: 6, borderRadius: 9 }} loading />
+        </View>
+        <View style={styles.podiumSide}>
+          <Skeleton width={86} height={86} style={{ borderRadius: 43 }} loading />
+          <Skeleton width={60} height={14} style={{ marginTop: 10 }} loading />
+          <Skeleton width={40} height={18} style={{ marginTop: 6, borderRadius: 9 }} loading />
+        </View>
+      </View>
+
+      {/* List Section Skeleton */}
+      <View style={styles.listSection}>
+        <Skeleton width={80} height={12} style={{ marginBottom: 12, marginLeft: 6 }} loading />
+        {Array.from({ length: 5 }).map((_, index) => (
+          <View key={`sk-${index}`} style={styles.row}>
+            <Skeleton width={25} height={14} loading />
+            <Skeleton width={36} height={36} style={{ borderRadius: 18 }} loading />
+            <Skeleton width="45%" height={16} loading />
+            <View style={{ flex: 1 }} />
+            <Skeleton width={50} height={24} style={{ borderRadius: 12 }} loading />
+          </View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

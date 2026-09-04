@@ -51,7 +51,7 @@ export function PaywallSheet({ visible, onClose, onUpgradePress, message }: Prop
           <Text style={styles.title}>Preview ended</Text>
           <Text style={styles.body}>
             {message ??
-              "You've watched the free preview. Unlock full match playback — price is based on the session length you selected when recording started (30-minute steps, plus GST)."}
+              "You've watched the free preview. Unlock full match playback, price is based on the session length you selected when recording started (30-minute steps, plus GST)."}
           </Text>
           <Text style={styles.priceHint}>{PAYWALL_PRICE_HINT}</Text>
           <Pressable

@@ -5,6 +5,7 @@ import {
   type SessionRowForUi,
 } from "@/hooks/useSessionsMyRecordings";
 import { mergeServerUnlockedRecordingIds } from "@/lib/unlockedRecordingSync";
+import { Skeleton } from "@/components/atoms";
 import { FieldflixBottomNav } from "@/screens/fieldflix/BottomNav";
 import { WebShell } from "@/screens/fieldflix/WebShell";
 import { FF } from "@/screens/fieldflix/fonts";
@@ -96,7 +97,7 @@ function mapRecordingToSessionRow(r: any): SessionRowExtended {
   const t = sessionTemplate(sportFilterKeys, sport);
   const when = formatRecordingListWhen(r?.startTime);
   const cityLine = [r?.turf?.city, r?.turf?.state].filter(Boolean).join(", ");
-  const area = cityLine || r?.turf?.address_line || "—";
+  const area = cityLine || r?.turf?.address_line || "";
 
   return {
     id: String(r.id),
@@ -179,9 +180,15 @@ export default function FieldflixSessionsScreen() {
       <WebShell backgroundColor={WEB.sessionsBg}>
         <View style={{ flex: 1 }}>
           <FlatList
-            data={loading || error ? [] : filteredRows}
-            keyExtractor={(item) => item.id}
-            renderItem={renderSessionItem}
+            data={loading ? [1, 2, 3] : (error ? [] : filteredRows)}
+            keyExtractor={(item, index) => loading ? `sk-${index}` : (item as SessionRowExtended).id}
+            renderItem={loading ? () => (
+              <View style={styles.listItemContainer}>
+                <View style={styles.listItemCardWrap}>
+                  <SessionCardSkeleton />
+                </View>
+              </View>
+            ) : (renderSessionItem as any)}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{
               paddingBottom: bottomNavClearance + 16,
@@ -235,9 +242,7 @@ export default function FieldflixSessionsScreen() {
                   })}
                 </ScrollView>
 
-                {loading ? (
-                  <ActivityIndicator color={WEB.green} />
-                ) : error ? (
+                {error ? (
                   <Text style={{ color: "white" }}>{error}</Text>
                 ) : null}
               </>
@@ -259,6 +264,46 @@ export default function FieldflixSessionsScreen() {
         </View>
       </WebShell>
     </ErrorBoundary>
+  );
+}
+
+/* ================= SKELETON CARD ================= */
+
+function SessionCardSkeleton() {
+  return (
+    <View style={styles.card}>
+      <View style={styles.content}>
+        {/* Top */}
+        <View style={styles.rowBetween}>
+          <View style={styles.row}>
+            <Skeleton width={38} height={38} style={{ borderRadius: 19 }} loading />
+            <Skeleton width={100} height={20} loading />
+          </View>
+          <View style={styles.topRightCluster}>
+            <Skeleton width={30} height={30} style={{ borderRadius: 15 }} loading />
+            <Skeleton width={34} height={34} style={{ borderRadius: 17 }} loading />
+          </View>
+        </View>
+
+        {/* Arena */}
+        <Skeleton width="80%" height={18} style={{ marginTop: 8, marginBottom: 8 }} loading />
+
+        {/* Bottom */}
+        <View style={styles.rowBetween}>
+          <View style={[styles.metaCol, { gap: 8 }]}>
+            <View style={styles.metaRow}>
+              <Skeleton width={12} height={12} style={{ borderRadius: 6 }} loading />
+              <Skeleton width="60%" height={12} loading />
+            </View>
+            <View style={styles.metaRow}>
+              <Skeleton width={12} height={12} style={{ borderRadius: 6 }} loading />
+              <Skeleton width="40%" height={12} loading />
+            </View>
+          </View>
+          <Skeleton width={80} height={24} style={{ borderRadius: 12 }} loading />
+        </View>
+      </View>
+    </View>
   );
 }
 

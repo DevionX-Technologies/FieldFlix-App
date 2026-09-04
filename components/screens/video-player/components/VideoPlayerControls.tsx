@@ -66,6 +66,7 @@ export const VideoPlayerControls: React.FC<VideoPlayerControlsProps> = ({
   /** iOS only — Android uses expo-video FullscreenPlayerActivity (SurfaceView/modal incompatibility fix). */
   const [immersiveOpen, setImmersiveOpen] = useState(false);
   const [immersiveSurfaceReady, setImmersiveSurfaceReady] = useState(false);
+  const [contentFit, setContentFit] = useState<"contain" | "cover">("contain");
   const hadPlaybackRef = useRef(false);
   /** Programmatic fullscreen on Android (same player attaches to FullscreenPlayerActivity PlayerView — video paints reliably). */
   const inlineVideoRef = useRef<VideoViewHandle | null>(null);
@@ -289,7 +290,7 @@ export const VideoPlayerControls: React.FC<VideoPlayerControlsProps> = ({
             allowsFullscreen={false}
             allowsPictureInPicture
             showsTimecodes={false}
-            contentFit="contain"
+            contentFit={contentFit}
             onFullscreenEnter={handleFullscreenEnter}
             onFullscreenExit={handleFullscreenExit}
           />
@@ -310,6 +311,14 @@ export const VideoPlayerControls: React.FC<VideoPlayerControlsProps> = ({
             accessibilityLabel="Fullscreen"
           >
             <Ionicons name="expand" size={22} color="#fff" />
+          </Pressable>
+          <Pressable
+            style={[styles.expandBtn, { right: 64 }]}
+            onPress={() => setContentFit((prev) => (prev === "contain" ? "cover" : "contain"))}
+            hitSlop={12}
+            accessibilityLabel="Resize"
+          >
+            <Ionicons name="scan-outline" size={22} color="#fff" />
           </Pressable>
         </View>
       ) : (
@@ -359,7 +368,7 @@ export const VideoPlayerControls: React.FC<VideoPlayerControlsProps> = ({
                   allowsFullscreen={false}
                   allowsPictureInPicture={Platform.OS === "ios"}
                   showsTimecodes={false}
-                  contentFit="contain"
+                  contentFit={contentFit}
                   onFullscreenEnter={handleFullscreenEnter}
                   onFullscreenExit={handleFullscreenExit}
                 />

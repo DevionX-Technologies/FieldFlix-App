@@ -627,7 +627,7 @@ export default function HighlightsScreen({ forcedRecordingId, forcePreview }: Pr
           : '';
       if (!signature || !payId || !data.razorpay_order_id?.trim()) {
         throw new Error(
-          'Payment did not finish — missing Razorpay confirmation. Nothing was charged for access.',
+          'Payment did not finish, missing Razorpay confirmation. Nothing was charged for access.',
         );
       }
       const verified = await verifyRazorpayPayment({
